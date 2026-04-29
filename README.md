@@ -1,17 +1,32 @@
-# vocaboo
+# Vocaboo
 
-A new Flutter project.
+A Cebuano Mother Tongue-First vocabulary acquisition app for Filipino children (ages 9-12) that uses first-language anchoring and spaced repetition principles to improve English vocabulary learning.
 
-## Getting Started
+## 🛠️ Tech Stack
 
-This project is a starting point for a Flutter application.
+**Frontend (Mobile)**
+- Flutter 3.41.8
+- Dart
+- Android (API 34+), iOS, Web, Linux, macOS, Windows
+- SharedPreferences (local storage)
+- HTTP package (API communication)
 
-A few resources to get you started if this is your first Flutter project:
+**Backend (API Server)**
+- Java 17+
+- Spring Boot 3.x
+- Spring Data JPA
+- Maven build tool
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+**Database**
+- PostgreSQL (production via Supabase)
+- H2 (development)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+**Admin Panel**
+- React JS
+- HTTPS communication with backend
+
+**External Services**
+- Text-to-Speech (TTS) - pronunciation playback
+- Automatic Speech Recognition (ASR) - pronunciation evaluation
+- AI Language Model API - sandbox vocabulary generation
+- Supabase - cloud database & authentication

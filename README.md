@@ -8,7 +8,6 @@ A Cebuano Mother Tongue-First vocabulary acquisition app for Filipino children (
 - Flutter 3.41.8
 - Dart
 - Android (API 34+), iOS, Web, Linux, macOS, Windows
-- SharedPreferences (local storage)
 - HTTP package (API communication)
 
 **Backend (API Server)**
@@ -119,8 +118,7 @@ mobile/
 │   │   └── onboarding/          # Onboarding UI screens
 │   ├── services/
 │   │   └── learner_service.dart  # API communication
-│   └── utils/
-│       └── local_storage.dart    # SharedPreferences wrapper
+│   └── utils/                    # Shared helpers
 ├── pubspec.yaml                  # Dependencies
 └── test/
     └── widget_test.dart

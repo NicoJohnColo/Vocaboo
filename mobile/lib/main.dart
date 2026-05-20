@@ -1,9 +1,29 @@
 import 'package:flutter/material.dart';
-import 'screens/onboarding/welcome_screen.dart';
-import 'utils/local_storage.dart';
+import 'package:provider/provider.dart';
+import 'app_router.dart';
+import 'providers/auth_provider.dart';
+import 'providers/lesson_provider.dart';
+import 'services/tts_service.dart';
 
-void main() {
-  runApp(const VocabooApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Text-to-Speech service (Locale English, speech rate 0.4)
+  final ttsService = TtsService();
+  await ttsService.initialize();
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, LessonProvider>(
+          create: (_) => LessonProvider(null),
+          update: (_, auth, previous) => LessonProvider(auth),
+        ),
+      ],
+      child: const VocabooApp(),
+    ),
+  );
 }
 
 class VocabooApp extends StatelessWidget {
@@ -11,88 +31,43 @@ class VocabooApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    AppRouter.setAuth(auth);
+
+    return MaterialApp.router(
       title: 'Vocaboo',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
-      ),
-      home: const SplashRouter(),
-      routes: {
-        '/home': (context) => const HomeScreen(),
-      },
-    );
-  }
-}
-
-class SplashRouter extends StatefulWidget {
-  const SplashRouter({super.key});
-
-  @override
-  State<SplashRouter> createState() => _SplashRouterState();
-}
-
-class _SplashRouterState extends State<SplashRouter> {
-  @override
-  void initState() {
-    super.initState();
-    checkOnboarding();
-  }
-
-  Future<void> checkOnboarding() async {
-    final onboarded = await LocalStorage.isOnboarded();
-    if (mounted) {
-      if (onboarded) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
-    );
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Vocaboo Home'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Welcome to Vocaboo!',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            const Text('Your onboarding is complete.'),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () async {
-                await LocalStorage.clearProfile();
-                if (context.mounted) {
-                  Navigator.pushReplacementNamed(context, '/');
-                }
-              },
-              child: const Text('Logout'),
-            ),
-          ],
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6366F1), // Premium Indigo
+          primary: const Color(0xFF6366F1),
+          secondary: const Color(0xFFF59E0B), // Warm Amber
+          tertiary: const Color(0xFF10B981), // Success Green
+          error: const Color(0xFFEF4444), // Crimson Red
+          background: const Color(0xFF0F172A), // Premium Dark Slate
+          surface: const Color(0xFF1E293B), // Card Slate
+          onPrimary: Colors.white,
+          onSecondary: Colors.black,
+          onBackground: const Color(0xFFF8FAFC),
+          onSurface: const Color(0xFFF8FAFC),
+          brightness: Brightness.dark,
+        ),
+        cardTheme: const CardThemeData(
+          color: Color(0xFF1E293B),
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+          ),
+        ),
+        textTheme: const TextTheme(
+          displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFFF8FAFC), fontFamily: 'Outfit'),
+          titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFFF8FAFC), fontFamily: 'Outfit'),
+          bodyLarge: TextStyle(fontSize: 16, color: Color(0xFFCBD5E1), height: 1.5),
+          bodyMedium: TextStyle(fontSize: 14, color: Color(0xFF94A3B8), height: 1.4),
         ),
       ),
+      routerConfig: AppRouter.router,
     );
   }
 }

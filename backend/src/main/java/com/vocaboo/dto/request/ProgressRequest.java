@@ -28,4 +28,7 @@ public class ProgressRequest {
 
     @NotNull(message = "Status is required")
     private WordStatus status;
+
+    @Builder.Default
+    private Integer moduleNumber = 1;
 }

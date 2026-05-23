@@ -1,8 +1,11 @@
 package com.vocaboo.controller;
 
 import com.vocaboo.dto.response.CategoryResponse;
+import com.vocaboo.dto.response.CategoryReviewResponse;
+import com.vocaboo.dto.response.LessonWordActivityResponse;
 import com.vocaboo.dto.response.LessonResponse;
 import com.vocaboo.dto.response.VocabularyWordResponse;
+import com.vocaboo.dto.response.ConfusableWordPairResponse;
 import com.vocaboo.service.LessonService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -34,5 +37,20 @@ public class LessonController {
     @GetMapping("/lessons/{id}/vocabulary")
     public ResponseEntity<List<VocabularyWordResponse>> getVocabulary(@PathVariable("id") UUID lessonId) {
         return ResponseEntity.ok(lessonService.getVocabularyForLesson(lessonId));
+    }
+
+    @GetMapping("/categories/{id}/activity")
+    public ResponseEntity<List<LessonWordActivityResponse>> getCategoryActivity(@PathVariable("id") UUID categoryId) {
+        return ResponseEntity.ok(lessonService.getCategoryActivityForCategory(categoryId));
+    }
+
+    @GetMapping("/lessons/{id}/activity")
+    public ResponseEntity<List<LessonWordActivityResponse>> getLessonActivity(@PathVariable("id") UUID lessonId) {
+        return ResponseEntity.ok(lessonService.getLessonActivityForLesson(lessonId));
+    }
+
+    @GetMapping("/lessons/{id}/confusable-pairs")
+    public ResponseEntity<List<ConfusableWordPairResponse>> getConfusablePairs(@PathVariable("id") UUID lessonId) {
+        return ResponseEntity.ok(lessonService.getConfusablePairsForLesson(lessonId));
     }
 }

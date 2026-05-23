@@ -9,4 +9,5 @@ import java.util.UUID;
 @Repository
 public interface IntroductionSessionRepository extends JpaRepository<IntroductionSession, UUID> {
     Optional<IntroductionSession> findFirstByLearnerLearnerIdAndLessonLessonIdAndIsActiveTrue(UUID learnerId, UUID lessonId);
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

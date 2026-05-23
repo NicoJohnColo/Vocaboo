@@ -10,4 +10,7 @@ import java.util.UUID;
 public interface PronunciationAttemptRepository extends JpaRepository<PronunciationAttempt, UUID> {
     List<PronunciationAttempt> findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(UUID sessionId, UUID wordId, Integer moduleNumber);
     long countBySessionSessionIdAndWordWordIdAndModuleNumber(UUID sessionId, UUID wordId, Integer moduleNumber);
+    long countByLearnerLearnerId(UUID learnerId);
+    long countByLearnerLearnerIdAndIsCorrect(UUID learnerId, Boolean isCorrect);
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

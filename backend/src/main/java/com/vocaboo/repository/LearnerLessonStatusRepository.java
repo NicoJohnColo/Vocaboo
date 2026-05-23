@@ -11,4 +11,5 @@ import java.util.UUID;
 public interface LearnerLessonStatusRepository extends JpaRepository<LearnerLessonStatus, UUID> {
     Optional<LearnerLessonStatus> findByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
     List<LearnerLessonStatus> findByLearnerLearnerId(UUID learnerId);
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

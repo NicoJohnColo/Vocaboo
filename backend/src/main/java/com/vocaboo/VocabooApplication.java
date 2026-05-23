@@ -7,6 +7,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class VocabooApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(VocabooApplication.class, args);
+        SpringApplication.run(VocabooApplication.class, args); 
     }
 }

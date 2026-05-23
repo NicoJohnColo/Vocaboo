@@ -48,32 +48,123 @@ public class DatabaseSeeder implements CommandLineRunner {
         }
     }
 
-    @Override
-    public void run(String... args) throws Exception {
-        long categoryCount = 0;
-        long wordCount = 0;
+    private void createSchemaIfNeeded() {
+        String[] tableQueries = {
+            "CREATE TABLE IF NOT EXISTS review_sessions (" +
+            "  session_id UUID PRIMARY KEY," +
+            "  learner_id UUID NOT NULL," +
+            "  lesson_id UUID NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE," +
+            "  mastery_score NUMERIC(5,2) NULL," +
+            "  completed_at TIMESTAMPTZ NULL," +
+            "  created_at TIMESTAMPTZ DEFAULT NOW()," +
+            "  updated_at TIMESTAMPTZ DEFAULT NOW()" +
+            ")",
+            
+            "CREATE TABLE IF NOT EXISTS review_items (" +
+            "  item_id UUID PRIMARY KEY," +
+            "  session_id UUID NOT NULL REFERENCES review_sessions(session_id) ON DELETE CASCADE," +
+            "  word_id UUID NOT NULL REFERENCES vocabulary_words(word_id) ON DELETE CASCADE," +
+            "  is_correct BOOLEAN NOT NULL," +
+            "  created_at TIMESTAMPTZ DEFAULT NOW()" +
+            ")",
+            
+            "CREATE TABLE IF NOT EXISTS sandbox_sessions (" +
+            "  session_id UUID PRIMARY KEY," +
+            "  learner_id UUID NOT NULL," +
+            "  topic VARCHAR(255) NULL," +
+            "  custom_word VARCHAR(100) NULL," +
+            "  mastery_score NUMERIC(5,2) NULL," +
+            "  completed_at TIMESTAMPTZ NULL," +
+            "  created_at TIMESTAMPTZ DEFAULT NOW()," +
+            "  updated_at TIMESTAMPTZ DEFAULT NOW()" +
+            ")",
+            
+            "CREATE TABLE IF NOT EXISTS sandbox_words (" +
+            "  word_id UUID PRIMARY KEY," +
+            "  session_id UUID NOT NULL REFERENCES sandbox_sessions(session_id) ON DELETE CASCADE," +
+            "  english_word VARCHAR(100) NOT NULL," +
+            "  cebuano_meaning TEXT NOT NULL," +
+            "  example_sentence_english TEXT NOT NULL," +
+            "  example_sentence_cebuano TEXT NULL," +
+            "  phonological_tip_key VARCHAR(100) NULL," +
+            "  word_order INTEGER NOT NULL," +
+            "  created_at TIMESTAMPTZ DEFAULT NOW()" +
+            ")",
+            
+            "CREATE TABLE IF NOT EXISTS sandbox_word_progress (" +
+            "  progress_id UUID PRIMARY KEY," +
+            "  session_id UUID NOT NULL REFERENCES sandbox_sessions(session_id) ON DELETE CASCADE," +
+            "  word_id UUID NOT NULL REFERENCES sandbox_words(word_id) ON DELETE CASCADE," +
+            "  module_number INTEGER NOT NULL CHECK (module_number BETWEEN 1 AND 4)," +
+            "  step_completed INTEGER NOT NULL DEFAULT 0 CHECK (step_completed BETWEEN 0 AND 4)," +
+            "  status word_status_enum NOT NULL DEFAULT 'INTRODUCED'," +
+            "  completed_at TIMESTAMPTZ NULL," +
+            "  created_at TIMESTAMPTZ DEFAULT NOW()," +
+            "  updated_at TIMESTAMPTZ DEFAULT NOW()," +
+            "  UNIQUE(session_id, word_id, module_number)" +
+            ")"
+        };
         
-        try {
-            categoryCount = categoryRepository.count();
-            wordCount = wordRepository.count();
-            System.out.println("Checking database state... Categories: " + categoryCount + ", Words: " + wordCount);
-        } catch (Exception e) {
-            System.out.println("Tables may not fully exist yet: " + e.getMessage());
-        }
-        
-        if (categoryCount == 0 || wordCount == 0) {
-            System.out.println("Database is incomplete (missing categories or vocabulary words). Seeding types and data...");
+        for (String query : tableQueries) {
             try {
-                // 1. Programmatically create the custom PostgreSQL ENUM types safely
-                createEnumTypes();
+                jdbcTemplate.execute(query);
+            } catch (Exception e) {
+                System.err.println("Failed to create table: " + e.getMessage());
+            }
+        }
 
-                // 2. Direct seed categories, lessons, and vocabulary words
-                System.out.println("Executing V2__seed_content.sql against Hibernate-generated schema...");
-                ResourceDatabasePopulator dataPopulator = new ResourceDatabasePopulator();
-                dataPopulator.addScript(new ClassPathResource("V2__seed_content.sql"));
-                dataPopulator.execute(dataSource);
+        // Enable RLS and setup permissive policies
+        String[] rlsQueries = {
+            "ALTER TABLE review_sessions ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE review_items ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE sandbox_sessions ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE sandbox_words ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE sandbox_word_progress ENABLE ROW LEVEL SECURITY"
+        };
+        for (String query : rlsQueries) {
+            try {
+                jdbcTemplate.execute(query);
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+
+        String[] policyQueries = {
+            "CREATE POLICY review_sessions_policy ON review_sessions FOR ALL USING (true)",
+            "CREATE POLICY review_items_policy ON review_items FOR ALL USING (true)",
+            "CREATE POLICY sandbox_sessions_policy ON sandbox_sessions FOR ALL USING (true)",
+            "CREATE POLICY sandbox_words_policy ON sandbox_words FOR ALL USING (true)",
+            "CREATE POLICY sandbox_word_progress_policy ON sandbox_word_progress FOR ALL USING (true)"
+        };
+        for (String query : policyQueries) {
+            try {
+                jdbcTemplate.execute(query);
+            } catch (Exception e) {
+                // Policy already exists
+            }
+        }
+    }
+
+    @Override
+    public void run(String... args) {
+        try {
+            // Ensure enum types exist
+            createEnumTypes();
+            // Ensure schemas exist on startup
+            createSchemaIfNeeded();
+        } catch (Exception e) {
+            System.err.println("Error initializing database enums/schema: " + e.getMessage());
+        }
+
+        if (categoryRepository.count() == 0 && wordRepository.count() == 0) {
+            try {
+                // Execute SQL migration / seed scripts if present on the classpath
+                ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
+                populator.addScript(new ClassPathResource("V1__create_tables.sql"));
+                populator.addScript(new ClassPathResource("V2__seed_content.sql"));
+                populator.execute(dataSource);
+
                 System.out.println("Database data seeded successfully!");
-                
                 System.out.println("Database initialization and seeding completed successfully!");
             } catch (Exception e) {
                 System.err.println("Failed to seed database: " + e.getMessage());
@@ -81,6 +172,15 @@ public class DatabaseSeeder implements CommandLineRunner {
             }
         } else {
             System.out.println("Database already contains seeded categories and vocabulary words. Skipping seeding.");
+        }
+
+        try {
+            ResourceDatabasePopulator activityPopulator = new ResourceDatabasePopulator();
+            activityPopulator.addScript(new ClassPathResource("V3__seed_word_activity_data.sql"));
+            activityPopulator.execute(dataSource);
+        } catch (Exception e) {
+            System.err.println("Failed to seed word activity data: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

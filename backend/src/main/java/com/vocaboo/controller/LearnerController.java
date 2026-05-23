@@ -34,4 +34,24 @@ public class LearnerController {
         UUID learnerId = UUID.fromString(principal.getName());
         return ResponseEntity.ok(learnerService.getProfile(learnerId));
     }
+
+    @lombok.Data
+    public static class PreferencesRequest {
+        private String displayName;
+        private String languagePreference;
+    }
+
+    @PatchMapping("/preferences")
+    public ResponseEntity<LearnerResponse> updatePreferences(@RequestBody PreferencesRequest request, Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        LearnerResponse response = learnerService.updatePreferences(learnerId, request.getDisplayName(), request.getLanguagePreference());
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/reset-progress")
+    public ResponseEntity<Void> resetProgress(Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        learnerService.resetProgress(learnerId);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -29,15 +29,17 @@ public class WordProgressService {
         IntroductionSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found"));
 
+        int moduleNum = request.getModuleNumber() != null ? request.getModuleNumber() : 1;
+
         WordProgress progress = progressRepository
-                .findBySessionSessionIdAndWordWordIdAndModuleNumber(sessionId, request.getWordId(), 1)
+                .findBySessionSessionIdAndWordWordIdAndModuleNumber(sessionId, request.getWordId(), moduleNum)
                 .orElseGet(() -> WordProgress.builder()
                         .session(session)
                         .learner(session.getLearner())
                         .lesson(session.getLesson())
                         .word(wordRepository.findById(request.getWordId())
                                 .orElseThrow(() -> new IllegalArgumentException("Word not found")))
-                        .moduleNumber(1)
+                        .moduleNumber(moduleNum)
                         .build());
 
         progress.setPathway(request.getPathway());
@@ -51,7 +53,7 @@ public class WordProgressService {
         progress = progressRepository.save(progress);
 
         // Check if all words in this lesson are completed
-        checkAndCompleteLesson(session);
+        checkAndCompleteLesson(session, moduleNum);
 
         return ProgressResponse.builder()
                 .progressId(progress.getProgressId())
@@ -64,27 +66,39 @@ public class WordProgressService {
                 .build();
     }
 
-    private void checkAndCompleteLesson(IntroductionSession session) {
+    private void checkAndCompleteLesson(IntroductionSession session, int moduleNumber) {
+        if (moduleNumber != 3) {
+            // Lesson completion is now tied to completing Module 3
+            return;
+        }
+
         List<VocabularyWord> totalWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(session.getLesson().getLessonId());
         int totalWordCount = totalWords.size();
 
         long completedWordsCount = totalWords.stream()
                 .filter(w -> progressRepository
-                        .findBySessionSessionIdAndWordWordIdAndModuleNumber(session.getSessionId(), w.getWordId(), 1)
+                        .findBySessionSessionIdAndWordWordIdAndModuleNumber(session.getSessionId(), w.getWordId(), 3)
                         .map(p -> p.getStepCompleted() == 4)
                         .orElse(false))
                 .count();
 
         if (completedWordsCount == totalWordCount && totalWordCount > 0) {
             // Calculate mastery score
-            // Let's count how many words were pronounced correctly in the session
+            // Let's count how many words were pronounced correctly in either module 1 or 3
             long correctWordsCount = 0;
             for (VocabularyWord word : totalWords) {
                 boolean correct = pronunciationAttemptRepository
                         .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(
-                                session.getSessionId(), word.getWordId(), 1)
+                                session.getSessionId(), word.getWordId(), 3)
                         .stream()
                         .anyMatch(attempt -> Boolean.TRUE.equals(attempt.getIsCorrect()));
+                if (!correct) {
+                    correct = pronunciationAttemptRepository
+                            .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(
+                                    session.getSessionId(), word.getWordId(), 1)
+                            .stream()
+                            .anyMatch(attempt -> Boolean.TRUE.equals(attempt.getIsCorrect()));
+                }
                 if (correct) {
                     correctWordsCount++;
                 }

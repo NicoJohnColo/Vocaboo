@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
 
 class DiagnosticSummaryScreen extends StatelessWidget {
   final String lessonId;
+  final String categoryId;
   final List<Map<String, dynamic>> knownWords;
   final List<Map<String, dynamic>> unknownWords;
   final List<Map<String, dynamic>> allWords;
@@ -13,6 +15,7 @@ class DiagnosticSummaryScreen extends StatelessWidget {
   const DiagnosticSummaryScreen({
     super.key,
     required this.lessonId,
+    required this.categoryId,
     required this.knownWords,
     required this.unknownWords,
     required this.allWords,
@@ -20,7 +23,6 @@ class DiagnosticSummaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final pref = auth.learner?.languagePreference;
     final state = GoRouterState.of(context);
@@ -32,14 +34,19 @@ class DiagnosticSummaryScreen extends StatelessWidget {
         : 0.0;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
         title: Text(
           LocalizationService.translate(pref, 'diagnostic_summary'),
-          style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontFamily: 'Outfit',
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+          ),
         ),
       ),
       body: SafeArea(
@@ -49,13 +56,13 @@ class DiagnosticSummaryScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 16),
-              // Pie/Progress Summary Card
+              // Progress Summary Card
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
+                  color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
                 ),
                 child: Row(
                   children: [
@@ -68,13 +75,17 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                           child: CircularProgressIndicator(
                             value: percentage / 100,
                             strokeWidth: 8,
-                            backgroundColor: theme.colorScheme.background,
-                            valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.tertiary),
+                            backgroundColor: const Color(0xFFE2E8F0),
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
                           ),
                         ),
                         Text(
                           '${percentage.toStringAsFixed(0)}%',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: Color(0xFF0F172A),
+                          ),
                         ),
                       ],
                     ),
@@ -85,12 +96,16 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                         children: [
                           Text(
                             LocalizationService.translate(pref, 'diagnostic_complete'),
-                            style: theme.textTheme.titleLarge?.copyWith(fontSize: 18),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             LocalizationService.translate(pref, 'know_ratio', args: ['${knownWords.length}', '${allWords.length}']),
-                            style: const TextStyle(color: Color(0xFF94A3B8)),
+                            style: const TextStyle(color: Color(0xFF64748B)),
                           ),
                         ],
                       ),
@@ -113,13 +128,13 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.tertiary.withOpacity(0.1),
+                              color: const Color(0xFF10B981).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               LocalizationService.translate(pref, 'i_know', args: ['${knownWords.length}']),
-                              style: TextStyle(
-                                color: theme.colorScheme.tertiary,
+                              style: const TextStyle(
+                                color: Color(0xFF10B981),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
                                 letterSpacing: 0.5,
@@ -139,16 +154,21 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                                 : ListView.builder(
                                     itemCount: knownWords.length,
                                     itemBuilder: (context, index) {
-                                      return Card(
-                                        color: theme.colorScheme.surface,
+                                      return Container(
                                         margin: const EdgeInsets.only(bottom: 8),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                          child: Text(
-                                            knownWords[index]['englishWord'],
-                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                            textAlign: TextAlign.center,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF8FAFC),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        ),
+                                        child: Text(
+                                          knownWords[index]['englishWord'],
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w600,
                                           ),
+                                          textAlign: TextAlign.center,
                                         ),
                                       );
                                     },
@@ -167,13 +187,13 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.1),
+                              color: const Color(0xFF0EA5E9).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               LocalizationService.translate(pref, 'to_learn', args: ['${unknownWords.length}']),
-                              style: TextStyle(
-                                color: theme.colorScheme.primary,
+                              style: const TextStyle(
+                                color: Color(0xFF0EA5E9),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
                                 letterSpacing: 0.5,
@@ -193,16 +213,21 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                                 : ListView.builder(
                                     itemCount: unknownWords.length,
                                     itemBuilder: (context, index) {
-                                      return Card(
-                                        color: theme.colorScheme.surface,
+                                      return Container(
                                         margin: const EdgeInsets.only(bottom: 8),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                          child: Text(
-                                            unknownWords[index]['englishWord'],
-                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                            textAlign: TextAlign.center,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF8FAFC),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        ),
+                                        child: Text(
+                                          unknownWords[index]['englishWord'],
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w600,
                                           ),
+                                          textAlign: TextAlign.center,
                                         ),
                                       );
                                     },
@@ -217,7 +242,32 @@ class DiagnosticSummaryScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+                  final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+                  final activityData = categoryId.isNotEmpty
+                      ? await lessonProvider.loadCategoryActivity(categoryId)
+                      : await lessonProvider.loadLessonActivity(lessonId);
+                  final activityByWordId = {
+                    for (final item in activityData)
+                      if ((item['wordId'] ?? '').toString().isNotEmpty) item['wordId'].toString(): item,
+                  };
+
+                  final enrichedAllWords = allWords.map((word) {
+                    final wordId = (word['wordId'] ?? '').toString();
+                    final activity = activityByWordId[wordId];
+                    if (activity == null) {
+                      return word;
+                    }
+                    return <String, dynamic>{
+                      ...word,
+                      ...activity,
+                    };
+                  }).toList();
+
+                  if (!context.mounted) {
+                    return;
+                  }
+
                   final knownIds = knownWords.map((w) => w['wordId'] as String).toList();
                   final unknownIds = unknownWords.map((w) => w['wordId'] as String).toList();
 
@@ -225,19 +275,22 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                     '/session/$sessionId/introduction',
                     extra: {
                       'lessonId': lessonId,
+                      'categoryId': categoryId,
                       'knownWordIds': knownIds,
                       'unknownWordIds': unknownIds,
-                      'allWords': allWords,
+                      'allWords': enrichedAllWords,
+                      'isSandbox': false,
                     },
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: const Color(0xFF0F172A),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
+                  elevation: 0,
                 ),
                 child: Text(
                   LocalizationService.translate(pref, 'start_module_1'),

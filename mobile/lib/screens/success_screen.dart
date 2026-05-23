@@ -3,74 +3,70 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/localization_service.dart';
+import '../widgets/mascot_bubble.dart';
 
 class SuccessScreen extends StatelessWidget {
   const SuccessScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final displayName = auth.learner?.displayName ?? 'Learner';
     final pref = auth.learner?.languagePreference;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Spacer(),
-              // Success Animation/Icon
-              Center(
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.colorScheme.tertiary.withOpacity(0.15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.tertiary.withOpacity(0.2),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.check_circle,
-                    size: 90,
-                    color: theme.colorScheme.tertiary,
+              // Yellow progress bar at 100% (4/4 filled)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: const SizedBox(
+                  height: 8,
+                  child: LinearProgressIndicator(
+                    value: 1.0,
+                    backgroundColor: Color(0xFFE2E8F0),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
-              Text(
-                LocalizationService.translate(pref, 'profile_success'),
-                style: theme.textTheme.displayLarge?.copyWith(fontSize: 28),
-                textAlign: TextAlign.center,
+              const SizedBox(height: 36),
+
+              // Mascot Bubble for Starry (isCelebrating = true)
+              MascotBubble(
+                mascotName: 'starry',
+                speechText: LocalizationService.translate(pref, 'profile_success'),
+                isCelebrating: true,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 28),
+
+              // Success Subtitle
               Text(
                 LocalizationService.translate(pref, 'success_subtitle'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF94A3B8), height: 1.5, fontSize: 15),
+                style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  height: 1.5,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              const SizedBox(height: 32),
-              
-              // Premium Card display for User's Registered Name
+              const Spacer(),
+
+              // Premium display of registered user name
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
+                  color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.02),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -79,22 +75,22 @@ class SuccessScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      LocalizationService.translate(pref, 'name_prompt'),
-                      style: TextStyle(
+                      LocalizationService.translate(pref, 'learner_id'),
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.secondary,
+                        color: Color(0xFF94A3B8),
                         letterSpacing: 1.0,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
                       displayName,
                       style: const TextStyle(
                         fontFamily: 'Outfit',
-                        fontSize: 26,
+                        fontSize: 28,
                         fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                        color: Color(0xFF0F172A),
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -102,18 +98,20 @@ class SuccessScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+
+              // START LEARNING Button (black)
               ElevatedButton(
                 onPressed: () {
                   context.go('/home');
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: const Color(0xFF0F172A), // Black
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  elevation: 4,
+                  elevation: 0,
                 ),
                 child: Text(
                   LocalizationService.translate(pref, 'start_learning'),

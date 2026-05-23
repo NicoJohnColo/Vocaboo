@@ -9,11 +9,19 @@ class AudioRecorderService {
     return await _audioRecorder.hasPermission();
   }
 
+  Stream<double> get onAmplitudeChanged {
+    return _audioRecorder.onAmplitudeChanged(const Duration(milliseconds: 50)).map((amp) {
+      double current = amp.current;
+      if (current < -40) current = -40;
+      return (current + 40) / 40.0; // Normalizes to 0.0 - 1.0
+    }).asBroadcastStream();
+  }
+
   Future<void> startRecording() async {
     if (await _audioRecorder.hasPermission()) {
       final tempDir = Directory.systemTemp;
       _recordingPath = '${tempDir.path}/vocaboo_speech_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      
+
       await _audioRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,

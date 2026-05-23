@@ -1,0 +1,252 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/lesson_provider.dart';
+import '../services/localization_service.dart';
+import '../services/tts_service.dart';
+import 'vocabulary_introduction_screen.dart';
+
+class SandboxModeScreen extends StatefulWidget {
+  const SandboxModeScreen({super.key});
+
+  @override
+  State<SandboxModeScreen> createState() => _SandboxModeScreenState();
+}
+
+class _SandboxModeScreenState extends State<SandboxModeScreen> {
+  final TextEditingController _topicController = TextEditingController();
+  final TextEditingController _customWordController = TextEditingController();
+
+  bool _loading = false;
+  String? _error;
+  Map<String, dynamic>? _session;
+  List<Map<String, dynamic>> _words = [];
+
+  @override
+  void dispose() {
+    _topicController.dispose();
+    _customWordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final lookup = await InternetAddress.lookup('example.com');
+      if (lookup.isEmpty || lookup.first.rawAddress.isEmpty) {
+        throw const SocketException('No internet');
+      }
+    } on SocketException {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Sandbox Mode requires an internet connection.';
+      });
+      return;
+    }
+
+    final result = await provider.generateSandbox(
+      topic: _topicController.text.trim().isEmpty ? null : _topicController.text.trim(),
+      customWord: _customWordController.text.trim().isEmpty ? null : _customWordController.text.trim(),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _loading = false;
+      final sessionValue = result?['session'];
+      final wordsValue = result?['words'];
+      _session = sessionValue is Map ? Map<String, dynamic>.from(sessionValue) : null;
+      _words = wordsValue is List
+          ? wordsValue.whereType<Map>().map((word) => Map<String, dynamic>.from(word)).toList()
+          : <Map<String, dynamic>>[];
+      _error = _session == null || _words.isEmpty
+          ? 'Sandbox generation failed. Try another topic or custom word.'
+          : null;
+    });
+
+    // If we successfully generated a sandbox session with words, immediately
+    // launch the Module 1 introduction flow reusing the existing lesson screens.
+    if (_session != null && _words.isNotEmpty) {
+      final sessionId = _session!['sessionId']?.toString() ?? '';
+      final lessonId = _session!['lessonId']?.toString() ?? sessionId;
+
+      // Push the VocabularyIntroductionScreen directly so the existing
+      // module flow (Modules 1..4) can reuse the provided `allWords` payload.
+      if (sessionId.isNotEmpty) {
+        if (!mounted) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (ctx) => VocabularyIntroductionScreen(
+            sessionId: sessionId,
+            lessonId: lessonId,
+            categoryId: '',
+            knownWordIds: <String>[],
+            unknownWordIds: <String>[],
+            allWords: _words,
+            moduleNumber: 1,
+            isSandbox: true,
+          ),
+        ));
+      }
+    }
+  }
+
+  void _speakFirstWord() {
+    if (_words.isEmpty) return;
+    final word = _words.first['englishWord']?.toString() ?? '';
+    if (word.isNotEmpty) {
+      TTSService.speak(word);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pref = Provider.of<AuthProvider>(context, listen: false).learner?.languagePreference;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          LocalizationService.translate(pref, 'sandbox_mode'),
+          style: const TextStyle(
+            fontFamily: 'Outfit',
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Build a sandbox practice set by topic or custom word.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _topicController,
+                decoration: const InputDecoration(
+                  labelText: 'Topic',
+                  hintText: 'food, animals, places, colors',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _customWordController,
+                decoration: const InputDecoration(
+                  labelText: 'Custom word',
+                  hintText: 'Optional seed word',
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loading ? null : _generate,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF06A6FF),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: _loading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text(
+                        'GENERATE SANDBOX',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                ),
+              ],
+              if (_session != null) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Session: ${_session!['sessionId'] ?? ''}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _session!['topic']?.toString() ?? _session!['customWord']?.toString() ?? 'Sandbox practice',
+                        style: const TextStyle(color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton(
+                        onPressed: _speakFirstWord,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0F172A),
+                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text('Hear first word'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ..._words.map(
+                  (word) => Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          word['englishWord']?.toString() ?? '',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          word['cebuanoMeaning']?.toString() ?? '',
+                          style: const TextStyle(color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

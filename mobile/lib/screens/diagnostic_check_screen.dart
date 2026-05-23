@@ -8,8 +8,9 @@ import '../services/localization_service.dart';
 
 class DiagnosticCheckScreen extends StatefulWidget {
   final String lessonId;
+  final String categoryId;
 
-  const DiagnosticCheckScreen({super.key, required this.lessonId});
+  const DiagnosticCheckScreen({super.key, required this.lessonId, required this.categoryId});
 
   @override
   State<DiagnosticCheckScreen> createState() => _DiagnosticCheckScreenState();
@@ -41,7 +42,6 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
         _currentIndex++;
       });
     } else {
-      // Complete diagnostic check, submit responses
       setState(() {
         _submitting = true;
       });
@@ -50,7 +50,6 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
       final result = await provider.submitDiagnostic(widget.lessonId, _answers);
 
       if (result != null && mounted) {
-        // Build known and unknown lists
         final List<Map<String, dynamic>> known = [];
         final List<Map<String, dynamic>> unknown = [];
         final List<Map<String, dynamic>> all = [];
@@ -73,6 +72,7 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
             'unknownWords': unknown,
             'allWords': all,
             'sessionId': result.sessionId,
+            'categoryId': widget.categoryId,
           },
         );
       } else {
@@ -85,34 +85,34 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final provider = Provider.of<LessonProvider>(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final pref = auth.learner?.languagePreference;
 
     if (provider.isLoading && _localWords.isEmpty) {
-      return Scaffold(
-        backgroundColor: theme.colorScheme.background,
-        body: const Center(child: CircularProgressIndicator()),
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_localWords.isEmpty) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.background,
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: Colors.transparent,
+          backgroundColor: Colors.white,
           elevation: 0,
         ),
         body: const Center(
-          child: Text('No words loaded. Make sure the backend is seeded.'),
+          child: Text('No words loaded. Make sure the backend is seeded.',
+              style: TextStyle(color: Color(0xFF64748B))),
         ),
       );
     }
 
     if (_submitting) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.background,
+        backgroundColor: Colors.white,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -121,7 +121,7 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
               const SizedBox(height: 24),
               Text(
                 LocalizationService.translate(pref, 'saving_results'),
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 16),
               ),
             ],
           ),
@@ -133,17 +133,22 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
     final progress = (_currentIndex + 1) / _localWords.length;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: Colors.white),
+          icon: const Icon(Icons.close_rounded, color: Color(0xFF0F172A)),
           onPressed: () => context.pop(),
         ),
         title: Text(
           LocalizationService.translate(pref, 'diagnostic_check'),
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+          ),
         ),
       ),
       body: SafeArea(
@@ -158,8 +163,8 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
                 child: LinearProgressIndicator(
                   value: progress,
                   minHeight: 8,
-                  backgroundColor: theme.colorScheme.surface,
-                  valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                  backgroundColor: const Color(0xFFE2E8F0),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0EA5E9)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -179,12 +184,12 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
               Container(
                 height: 240,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
+                  color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 15,
                       offset: const Offset(0, 5),
                     )
@@ -200,16 +205,16 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
                         style: const TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.w900,
-                          color: Colors.white,
+                          color: Color(0xFF0F172A),
                           letterSpacing: -0.5,
                         ),
                       ),
                       const SizedBox(height: 20),
                       Text(
                         LocalizationService.translate(pref, 'know_word_prompt'),
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: Color(0xFF64748B),
                         ),
                       ),
                     ],
@@ -222,19 +227,19 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
               ElevatedButton(
                 onPressed: () => _answerCurrent(true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: const Color(0xFF0EA5E9),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  elevation: 2,
+                  elevation: 0,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle_outline, size: 22),
-                    SizedBox(width: 12),
+                    const Icon(Icons.check_circle_outline, size: 22),
+                    const SizedBox(width: 12),
                     Text(
                       LocalizationService.translate(pref, 'yes_know'),
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
@@ -246,8 +251,8 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
               OutlinedButton(
                 onPressed: () => _answerCurrent(false),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
+                  foregroundColor: const Color(0xFF0F172A),
+                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -256,11 +261,11 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.help_outline_rounded, size: 22, color: Color(0xFFF59E0B)),
-                    SizedBox(width: 12),
+                    const Icon(Icons.help_outline_rounded, size: 22, color: Color(0xFFD97706)),
+                    const SizedBox(width: 12),
                     Text(
                       LocalizationService.translate(pref, 'no_dont_know'),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Color(0xFF0F172A)),
                     ),
                   ],
                 ),

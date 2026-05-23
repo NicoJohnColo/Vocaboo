@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../widgets/mascot_bubble.dart';
 
 class PinSetupScreen extends StatefulWidget {
   final Map<String, dynamic> learnerData;
@@ -13,12 +14,24 @@ class PinSetupScreen extends StatefulWidget {
 class _PinSetupScreenState extends State<PinSetupScreen> {
   final _pinController = TextEditingController();
   final _confirmPinController = TextEditingController();
+  final _pinFocus = FocusNode();
+  final _confirmPinFocus = FocusNode();
   String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild screen when pin changes to update the visual circles
+    _pinController.addListener(() => setState(() {}));
+    _confirmPinController.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
     _pinController.dispose();
     _confirmPinController.dispose();
+    _pinFocus.dispose();
+    _confirmPinFocus.dispose();
     super.dispose();
   }
 
@@ -66,96 +79,59 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top Progress indicator
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
+              // Yellow progress bar at 50% (2/4 filled)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: const SizedBox(
+                  height: 8,
+                  child: LinearProgressIndicator(
+                    value: 0.50,
+                    backgroundColor: Color(0xFFE2E8F0),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'STEP 2 OF 3',
-                style: TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  letterSpacing: 1.0,
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
-                'Create a profile PIN',
-                style: theme.textTheme.displayLarge?.copyWith(fontSize: 28),
+
+              // Mascot Bubble for Toti
+              const MascotBubble(
+                mascotName: 'toti',
+                speechText: "Hi! I'm Toti! Can you make a 4-digit secret PIN?",
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Enter a 4-digit PIN to lock and protect your progress.',
-                style: TextStyle(color: Color(0xFF94A3B8)),
-              ),
-              const SizedBox(height: 36),
+              const SizedBox(height: 28),
 
               if (_errorText != null) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.error.withOpacity(0.15),
+                    color: const Color(0xFFFEF2F2),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: theme.colorScheme.error),
+                    border: Border.all(color: const Color(0xFFEF4444)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.error_outline, color: theme.colorScheme.error),
+                      const Icon(Icons.error_outline, color: Color(0xFFEF4444)),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           _errorText!,
-                          style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
+                          style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
@@ -164,89 +140,109 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                 const SizedBox(height: 24),
               ],
 
-              // PIN Input
+              // ENTER PIN Circle visual representation
               const Text(
-                'ENTER 4-DIGIT PIN',
+                'Enter PIN',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 0.5,
+                  color: Color(0xFF334155),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _pinController,
-                obscureText: true,
-                maxLength: 4,
-                style: const TextStyle(color: Colors.white, letterSpacing: 24, fontSize: 24),
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: '••••',
-                  hintStyle: const TextStyle(color: Color(0xFF64748B), letterSpacing: 24),
-                  filled: true,
-                  fillColor: theme.colorScheme.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: () => _pinFocus.requestFocus(),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(4, (index) {
+                    final isFilled = _pinController.text.length > index;
+                    return Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isFilled ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                        border: Border.all(
+                          color: isFilled ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+                          width: 1.5,
+                        ),
+                      ),
+                    );
+                  }),
                 ),
-                keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 24),
+              // Hidden TextField for Enter PIN input
+              SizedBox(
+                height: 0,
+                width: 0,
+                child: TextFormField(
+                  controller: _pinController,
+                  focusNode: _pinFocus,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  obscureText: true,
+                  decoration: const InputDecoration(counterText: ''),
+                ),
+              ),
+              const SizedBox(height: 36),
 
-              // Confirm PIN Input
+              // CONFIRM PIN Circle visual representation
               const Text(
-                'CONFIRM 4-DIGIT PIN',
+                'Confirm PIN',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 0.5,
+                  color: Color(0xFF334155),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _confirmPinController,
-                obscureText: true,
-                maxLength: 4,
-                style: const TextStyle(color: Colors.white, letterSpacing: 24, fontSize: 24),
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: '••••',
-                  hintStyle: const TextStyle(color: Color(0xFF64748B), letterSpacing: 24),
-                  filled: true,
-                  fillColor: theme.colorScheme.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: () => _confirmPinFocus.requestFocus(),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(4, (index) {
+                    final isFilled = _confirmPinController.text.length > index;
+                    return Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isFilled ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                        border: Border.all(
+                          color: isFilled ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+                          width: 1.5,
+                        ),
+                      ),
+                    );
+                  }),
                 ),
-                keyboardType: TextInputType.number,
+              ),
+              // Hidden TextField for Confirm PIN input
+              SizedBox(
+                height: 0,
+                width: 0,
+                child: TextFormField(
+                  controller: _confirmPinController,
+                  focusNode: _confirmPinFocus,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  obscureText: true,
+                  decoration: const InputDecoration(counterText: ''),
+                ),
               ),
               const SizedBox(height: 48),
 
+              // NEXT button (black)
               ElevatedButton(
                 onPressed: _validateAndProceed,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: const Color(0xFF0F172A), // Black
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
+                  elevation: 0,
                 ),
                 child: const Text(
                   'NEXT',

@@ -44,6 +44,12 @@ class SttService {
         }),
       );
 
+      // Debug logging for server response
+      // ignore: avoid_print
+      print('STT evaluate response code: ${response.statusCode}');
+      // ignore: avoid_print
+      print('STT evaluate response body: ${response.body}');
+
       if (response.statusCode == 200) {
         return PronunciationAttemptModel.fromJson(json.decode(response.body));
       } else {

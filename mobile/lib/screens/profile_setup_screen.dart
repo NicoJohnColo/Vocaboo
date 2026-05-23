@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../widgets/mascot_bubble.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -74,108 +75,70 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Top Progress indicator
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
+                // Yellow progress bar at 25% (1/4 filled)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: const SizedBox(
+                    height: 8,
+                    child: LinearProgressIndicator(
+                      value: 0.25,
+                      backgroundColor: Color(0xFFE2E8F0),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)), // Amber/Yellow
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'STEP 1 OF 3',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    letterSpacing: 1.0,
                   ),
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  'Tell us about yourself!',
-                  style: theme.textTheme.displayLarge?.copyWith(fontSize: 28),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Enter your details to create your Vocaboo learning profile.',
-                  style: TextStyle(color: Color(0xFF94A3B8)),
+                
+                // Mascot Bubble for Bibo
+                const MascotBubble(
+                  mascotName: 'bibo',
+                  speechText: "Hi! I'm Bibo! What's your name and how old are you?",
                 ),
                 const SizedBox(height: 36),
-                
-                // Name Field
+
+                // Name Input
                 const Text(
-                  'WHAT IS YOUR NAME?',
+                  'Name',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
+                    color: Color(0xFF334155),
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _nameController,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
-                    hintText: 'Enter name',
-                    hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                    hintText: 'Enter name...',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                     filled: true,
-                    fillColor: theme.colorScheme.surface,
-                    border: OutlineInputBorder(
+                    fillColor: const Color(0xFFF8FAFC),
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                      borderSide: const BorderSide(color: Color(0xFFFBBF24), width: 2),
                     ),
                     errorText: _nameError,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -184,32 +147,31 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Age Field
+                // Age Input
                 const Text(
-                  'HOW OLD ARE YOU?',
+                  'Age',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
+                    color: Color(0xFF334155),
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _ageController,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
-                    hintText: 'Enter age (9-12)',
-                    hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                    hintText: 'Enter age...',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                     filled: true,
-                    fillColor: theme.colorScheme.surface,
-                    border: OutlineInputBorder(
+                    fillColor: const Color(0xFFF8FAFC),
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                      borderSide: const BorderSide(color: Color(0xFFFBBF24), width: 2),
                     ),
                     errorText: _ageError,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -218,15 +180,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ),
                 const SizedBox(height: 48),
 
+                // NEXT button (black)
                 ElevatedButton(
                   onPressed: _validateAndProceed,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
+                    backgroundColor: const Color(0xFF0F172A), // Black
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
+                    elevation: 0,
                   ),
                   child: const Text(
                     'NEXT',

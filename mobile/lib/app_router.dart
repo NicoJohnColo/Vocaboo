@@ -1,3 +1,4 @@
+﻿// app_router.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -14,12 +15,27 @@ import 'screens/vocabulary_introduction_screen.dart';
 import 'screens/diagnostic_check_screen.dart';
 import 'screens/diagnostic_summary_screen.dart';
 import 'screens/round_one_completed_screen.dart';
+import 'screens/active_practice_screen.dart';
+import 'screens/sentence_building_screen.dart';
+import 'screens/confusable_words_distinction_screen.dart';
+import 'screens/cumulative_mixed_review_screen.dart';
+import 'screens/mastery_result_screen.dart';
+import 'screens/sandbox_mode_screen.dart';
+import 'screens/user_dashboard_screen.dart';
+import 'screens/settings_screen.dart';
+
+class _AuthListenable extends ChangeNotifier {
+  final AuthProvider _auth;
+  _AuthListenable(this._auth) {
+    _auth.addListener(() => notifyListeners());
+  }
+}
 
 class AppRouter {
-  static final _authListenable = _AuthListenable();
+  static late final _AuthListenable _authListenable;
 
   static void setAuth(AuthProvider auth) {
-    _authListenable.setAuth(auth);
+    _authListenable = _AuthListenable(auth);
   }
 
   static final GoRouter router = GoRouter(
@@ -27,12 +43,9 @@ class AppRouter {
     refreshListenable: _authListenable,
     redirect: (BuildContext context, GoRouterState state) async {
       final auth = Provider.of<AuthProvider>(context, listen: false);
-
-      // Try auto-login on first load
       if (!auth.isInitialized) {
         await auth.tryAutoLogin();
       }
-
       final isLoggedIn = auth.isAuthenticated;
       final isGoingToAuth = state.matchedLocation == '/' ||
           state.matchedLocation == '/login' ||
@@ -40,130 +53,160 @@ class AppRouter {
           state.matchedLocation == '/pin-setup' ||
           state.matchedLocation == '/language-preference' ||
           state.matchedLocation == '/success';
-
-      // If logged in and trying to access auth screens, redirect to home
       if (isLoggedIn && (state.matchedLocation == '/' || state.matchedLocation == '/login')) {
         return '/home';
       }
-
-      // If not logged in and trying to access protected screens, redirect to welcome
       if (!isLoggedIn && !isGoingToAuth) {
         return '/';
       }
-
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const WelcomeScreen(),
-      ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
-      GoRoute(
-        path: '/profile-setup',
-        builder: (context, state) => const ProfileSetupScreen(),
-      ),
+      GoRoute(path: '/', builder: (c, s) => const WelcomeScreen()),
+      GoRoute(path: '/login', builder: (c, s) => const LoginScreen()),
+      GoRoute(path: '/profile-setup', builder: (c, s) => const ProfileSetupScreen()),
       GoRoute(
         path: '/pin-setup',
-        builder: (context, state) {
-          final data = state.extra as Map<String, dynamic>;
-          return PinSetupScreen(learnerData: data);
-        },
+        builder: (c, s) => PinSetupScreen(learnerData: s.extra as Map<String, dynamic>),
       ),
       GoRoute(
         path: '/language-preference',
-        builder: (context, state) {
-          final data = state.extra as Map<String, dynamic>;
-          return LanguagePreferenceScreen(learnerData: data);
-        },
+        builder: (c, s) => LanguagePreferenceScreen(learnerData: s.extra as Map<String, dynamic>),
       ),
-      GoRoute(
-        path: '/success',
-        builder: (context, state) => const SuccessScreen(),
-      ),
-      GoRoute(
-        path: '/home',
-        builder: (context, state) => const HomeScreen(),
-      ),
+      GoRoute(path: '/success', builder: (c, s) => const SuccessScreen()),
+      GoRoute(path: '/home', builder: (c, s) => const HomeScreen()),
       GoRoute(
         path: '/category/:categoryId/lessons',
-        builder: (context, state) {
-          final categoryId = state.pathParameters['categoryId']!;
-          final categoryName = state.uri.queryParameters['name'] ?? 'Lessons';
-          return LessonPathScreen(
-            categoryId: categoryId,
-            categoryName: categoryName,
+        builder: (c, s) => LessonPathScreen(
+          categoryId: s.pathParameters['categoryId']!,
+          categoryName: s.uri.queryParameters['name'] ?? 'Lessons',
+        ),
+      ),
+      GoRoute(
+        path: '/lesson/:lessonId/diagnostic',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>?;
+          return DiagnosticCheckScreen(
+            lessonId: s.pathParameters['lessonId']!,
+            categoryId: e?['categoryId']?.toString() ?? '',
           );
         },
       ),
       GoRoute(
-        path: '/lesson/:lessonId/diagnostic',
-        builder: (context, state) {
-          final lessonId = state.pathParameters['lessonId']!;
-          return DiagnosticCheckScreen(lessonId: lessonId);
-        },
-      ),
-      GoRoute(
         path: '/lesson/:lessonId/diagnostic-summary',
-        builder: (context, state) {
-          final lessonId = state.pathParameters['lessonId']!;
-          final extra = state.extra as Map<String, dynamic>;
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
           return DiagnosticSummaryScreen(
-            lessonId: lessonId,
-            knownWords: extra['knownWords'] as List<Map<String, dynamic>>,
-            unknownWords: extra['unknownWords'] as List<Map<String, dynamic>>,
-            allWords: extra['allWords'] as List<Map<String, dynamic>>,
+            lessonId: s.pathParameters['lessonId']!,
+            categoryId: e['categoryId']?.toString() ?? '',
+            knownWords: e['knownWords'] as List<Map<String, dynamic>>,
+            unknownWords: e['unknownWords'] as List<Map<String, dynamic>>,
+            allWords: e['allWords'] as List<Map<String, dynamic>>,
           );
         },
       ),
       GoRoute(
         path: '/session/:sessionId/introduction',
-        builder: (context, state) {
-          final sessionId = state.pathParameters['sessionId']!;
-          final extra = state.extra as Map<String, dynamic>;
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
           return VocabularyIntroductionScreen(
-            sessionId: sessionId,
-            lessonId: extra['lessonId'] as String,
-            knownWordIds: extra['knownWordIds'] as List<String>,
-            unknownWordIds: extra['unknownWordIds'] as List<String>,
-            allWords: extra['allWords'] as List<Map<String, dynamic>>,
+            sessionId: s.pathParameters['sessionId']!,
+            lessonId: e['lessonId'] as String,
+            categoryId: e['categoryId']?.toString() ?? '',
+            knownWordIds: List<String>.from(e['knownWordIds']),
+            unknownWordIds: List<String>.from(e['unknownWordIds']),
+            allWords: List<Map<String, dynamic>>.from(e['allWords']),
+            returnToPractice: e['returnToPractice'] as bool? ?? false,
+            isSandbox: e['isSandbox'] as bool? ?? false,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/session/:sessionId/practice',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
+          return ActivePracticeScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            lessonId: e['lessonId'] as String,
+            categoryId: e['categoryId']?.toString() ?? '',
+            knownWordIds: List<String>.from(e['knownWordIds']),
+            unknownWordIds: List<String>.from(e['unknownWordIds']),
+            allWords: List<Map<String, dynamic>>.from(e['allWords']),
+            isSandbox: e['isSandbox'] as bool? ?? false,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/session/:sessionId/sentence-building',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
+          return SentenceBuildingScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            lessonId: e['lessonId'] as String,
+            categoryId: e['categoryId']?.toString() ?? '',
+            allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
+            isSandbox: e['isSandbox'] as bool? ?? false,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/session/:sessionId/confusable-distinction',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
+          return ConfusableWordsDistinctionScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            lessonId: e['lessonId'] as String,
+            confusablePairs: List<Map<String, dynamic>>.from(e['confusablePairs']),
           );
         },
       ),
       GoRoute(
         path: '/session/:sessionId/round-completed',
-        builder: (context, state) {
-          final sessionId = state.pathParameters['sessionId']!;
-          final extra = state.extra as Map<String, dynamic>;
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
           return RoundOneCompletedScreen(
-            sessionId: sessionId,
-            introducedCount: extra['introducedCount'] as int,
-            knownCount: extra['knownCount'] as int,
+            sessionId: s.pathParameters['sessionId']!,
+            introducedCount: e['introducedCount'] as int,
+            knownCount: e['knownCount'] as int,
+            lessonId: e['lessonId'] as String? ?? '',
+            categoryId: e['categoryId']?.toString() ?? '',
+            knownWordIds: List<String>.from(e['knownWordIds'] ?? []),
+            unknownWordIds: List<String>.from(e['unknownWordIds'] ?? []),
+            allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? []),
+            isSandbox: e['isSandbox'] as bool? ?? false,
           );
         },
       ),
+      GoRoute(
+        path: '/session/:sessionId/cumulative-review',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>?;
+          return CumulativeMixedReviewScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            allWords: List<Map<String, dynamic>>.from(e?['allWords'] ?? const []),
+            categoryId: e?['categoryId']?.toString() ?? '',
+            isSandbox: e?['isSandbox'] as bool? ?? false,
+            priorityWordIds: List<String>.from(e?['priorityWordIds'] ?? const []),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/session/:sessionId/mastery-result',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
+          return MasteryResultScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            categoryId: e['categoryId']?.toString() ?? '',
+            isSandbox: e['isSandbox'] as bool? ?? false,
+            totalItems: e['totalItems'] as int,
+            masteredCount: e['masteredCount'] as int,
+            allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
+          );
+        },
+      ),
+      GoRoute(path: '/sandbox', builder: (c, s) => const SandboxModeScreen()),
+      GoRoute(path: '/dashboard', builder: (c, s) => const UserDashboardScreen()),
+      GoRoute(path: '/settings', builder: (c, s) => const SettingsScreen()),
     ],
   );
 }
-
-class _AuthListenable extends ChangeNotifier {
-  AuthProvider? _auth;
-
-  void setAuth(AuthProvider auth) {
-    if (_auth != auth) {
-      _auth?.removeListener(notifyListeners);
-      _auth = auth;
-      _auth?.addListener(notifyListeners);
-    }
-  }
-
-  @override
-  void dispose() {
-    _auth?.removeListener(notifyListeners);
-    super.dispose();
-  }
-}
-

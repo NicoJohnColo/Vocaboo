@@ -8,27 +8,37 @@ class RoundOneCompletedScreen extends StatelessWidget {
   final String sessionId;
   final int introducedCount;
   final int knownCount;
+  final String lessonId;
+  final String categoryId;
+  final List<String> knownWordIds;
+  final List<String> unknownWordIds;
+  final List<dynamic> allWords;
+  final bool isSandbox;
 
   const RoundOneCompletedScreen({
     super.key,
     required this.sessionId,
     required this.introducedCount,
     required this.knownCount,
+    required this.lessonId,
+    required this.categoryId,
+    required this.knownWordIds,
+    required this.unknownWordIds,
+    required this.allWords,
+    this.isSandbox = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final pref = auth.learner?.languagePreference;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
@@ -39,99 +49,135 @@ class RoundOneCompletedScreen extends StatelessWidget {
                   height: 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFFF59E0B).withOpacity(0.15),
+                    color: const Color(0xFFFEF3C7), // Light amber
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFF59E0B).withOpacity(0.2),
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
                         blurRadius: 20,
-                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
                       )
                     ],
                   ),
                   child: const Icon(
                     Icons.emoji_events_rounded,
                     size: 80,
-                    color: Color(0xFFF59E0B),
+                    color: Color(0xFFD97706),
                   ),
                 ),
               ),
               const SizedBox(height: 36),
               Text(
                 LocalizationService.translate(pref, 'lesson_completed'),
-                style: theme.textTheme.displayLarge?.copyWith(fontSize: 28),
+                style: const TextStyle(
+                  fontFamily: 'Outfit',
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
                 LocalizationService.translate(pref, 'round_completed_subtitle'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF94A3B8), height: 1.5),
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 36),
 
               // Statistics Card
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.01),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Column(
-                      children: [
-                        Text(
-                          LocalizationService.translate(pref, 'introduced'),
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '$introducedCount',
-                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(LocalizationService.translate(pref, 'words'), style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                      ],
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            LocalizationService.translate(pref, 'introduced'),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '$introducedCount',
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     Container(
-                      width: 1,
+                      width: 1.5,
                       height: 50,
-                      color: const Color(0xFF334155),
+                      color: const Color(0xFFE2E8F0),
                     ),
-                    Column(
-                      children: [
-                        Text(
-                          LocalizationService.translate(pref, 'diagnostic_known'),
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '$knownCount',
-                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: theme.colorScheme.secondary),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(LocalizationService.translate(pref, 'words'), style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                      ],
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            LocalizationService.translate(pref, 'diagnostic_known'),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '$knownCount',
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF10B981),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
               const Spacer(),
 
+              // Primary back action (Black)
               ElevatedButton(
                 onPressed: () {
-                  // Navigate back to categories dashboard
                   context.go('/home');
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: const Color(0xFF0F172A), // Black
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
+                  elevation: 0,
                 ),
                 child: Text(
                   LocalizationService.translate(pref, 'back_to_path'),
@@ -143,14 +189,25 @@ class RoundOneCompletedScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
+              // Secondary practice action (Outlined slate)
               OutlinedButton(
                 onPressed: () {
-                  context.push('/module-two-placeholder');
+                  context.go(
+                    '/session/$sessionId/practice',
+                    extra: {
+                      'lessonId': lessonId,
+                      'categoryId': categoryId,
+                      'knownWordIds': knownWordIds,
+                      'unknownWordIds': unknownWordIds,
+                      'allWords': allWords,
+                      'isSandbox': isSandbox,
+                    },
+                  );
                 },
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  foregroundColor: const Color(0xFF0F172A),
+                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -158,9 +215,9 @@ class RoundOneCompletedScreen extends StatelessWidget {
                 child: Text(
                   LocalizationService.translate(pref, 'practice_more'),
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
+                    letterSpacing: 1.0,
                   ),
                 ),
               ),

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
-import '../services/localization_service.dart';
 
 class LessonPathScreen extends StatefulWidget {
   final String categoryId;
@@ -32,21 +30,24 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = Provider.of<LessonProvider>(context);
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final pref = auth.learner?.languagePreference;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () => context.pop(),
         ),
         title: Text(
           widget.categoryName,
-          style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontFamily: 'Outfit',
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+          ),
         ),
       ),
       body: RefreshIndicator(
@@ -57,7 +58,12 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
               : provider.error != null
                   ? Center(child: Text(provider.error!, style: const TextStyle(color: Colors.red)))
                   : provider.lessons.isEmpty
-                      ? const Center(child: Text('No lessons available in this category.'))
+                      ? const Center(
+                          child: Text(
+                            'No lessons available in this category.',
+                            style: TextStyle(color: Color(0xFF64748B)),
+                          ),
+                        )
                       : ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
                           itemCount: provider.lessons.length,
@@ -65,7 +71,6 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                             final lesson = provider.lessons[index];
                             final isLast = index == provider.lessons.length - 1;
 
-                            // Determine colors and icons based on status
                             Color nodeColor;
                             IconData nodeIcon;
                             bool isEnabled = false;
@@ -75,16 +80,15 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                               nodeIcon = Icons.check_circle_rounded;
                               isEnabled = true;
                             } else if (lesson.status == 'UNLOCKED') {
-                              nodeColor = theme.colorScheme.primary; // Indigo
+                              nodeColor = const Color(0xFF0EA5E9); // Blue
                               nodeIcon = Icons.play_arrow_rounded;
                               isEnabled = true;
                             } else {
-                              nodeColor = const Color(0xFF64748B); // Locked Gray
+                              nodeColor = const Color(0xFFCBD5E1); // Light gray locked
                               nodeIcon = Icons.lock_rounded;
                               isEnabled = false;
                             }
 
-                            // Alternating left/right positioning to create a playful board-game trail layout
                             final isLeft = index % 2 == 0;
 
                             return Column(
@@ -96,7 +100,12 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                     GestureDetector(
                                       onTap: isEnabled
                                           ? () {
-                                              context.push('/lesson/${lesson.lessonId}/diagnostic');
+                                              context.push(
+                                                '/lesson/${lesson.lessonId}/diagnostic',
+                                                extra: {
+                                                  'categoryId': widget.categoryId,
+                                                },
+                                              );
                                             }
                                           : null,
                                       child: Column(
@@ -108,7 +117,9 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                             height: 80,
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
-                                              color: isEnabled ? nodeColor.withOpacity(0.15) : theme.colorScheme.surface,
+                                              color: isEnabled
+                                                  ? nodeColor.withValues(alpha: 0.12)
+                                                  : const Color(0xFFF1F5F9),
                                               border: Border.all(
                                                 color: nodeColor,
                                                 width: 3,
@@ -116,7 +127,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                               boxShadow: isEnabled
                                                   ? [
                                                       BoxShadow(
-                                                        color: nodeColor.withOpacity(0.3),
+                                                        color: nodeColor.withValues(alpha: 0.2),
                                                         blurRadius: 12,
                                                         spreadRadius: 1,
                                                       )
@@ -132,16 +143,26 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                             ),
                                           ),
                                           const SizedBox(height: 12),
-                                          // Title and Details Card
+                                          // Title Card
                                           Container(
                                             width: 180,
                                             padding: const EdgeInsets.all(12),
                                             decoration: BoxDecoration(
-                                              color: theme.colorScheme.surface,
+                                              color: Colors.white,
                                               borderRadius: BorderRadius.circular(16),
                                               border: Border.all(
-                                                color: isEnabled ? nodeColor.withOpacity(0.3) : Colors.transparent,
+                                                color: isEnabled
+                                                    ? nodeColor.withValues(alpha: 0.2)
+                                                    : const Color(0xFFE2E8F0),
+                                                width: 1.5,
                                               ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withValues(alpha: 0.03),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                )
+                                              ],
                                             ),
                                             child: Column(
                                               children: [
@@ -150,7 +171,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 14,
-                                                    color: Colors.white,
+                                                    color: Color(0xFF0F172A),
                                                   ),
                                                   textAlign: TextAlign.center,
                                                   maxLines: 1,
@@ -159,9 +180,9 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                 const SizedBox(height: 4),
                                                 Text(
                                                   '${lesson.totalWordCount} words',
-                                                  style: TextStyle(
+                                                  style: const TextStyle(
                                                     fontSize: 11,
-                                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                                    color: Color(0xFF64748B),
                                                   ),
                                                 ),
                                                 if (lesson.status == 'COMPLETED' && lesson.masteryScore != null) ...[
@@ -169,14 +190,14 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                   Container(
                                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                                     decoration: BoxDecoration(
-                                                      color: theme.colorScheme.tertiary.withOpacity(0.15),
+                                                      color: nodeColor.withValues(alpha: 0.12),
                                                       borderRadius: BorderRadius.circular(8),
                                                     ),
                                                     child: Text(
                                                       'Score: ${lesson.masteryScore!.toStringAsFixed(0)}%',
                                                       style: TextStyle(
                                                         fontSize: 10,
-                                                        color: theme.colorScheme.tertiary,
+                                                        color: nodeColor,
                                                         fontWeight: FontWeight.bold,
                                                       ),
                                                     ),
@@ -192,13 +213,14 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                   ],
                                 ),
                                 if (!isLast)
-                                  // Connecting dotted / dashed line
                                   Container(
                                     height: 50,
                                     width: 4,
                                     margin: const EdgeInsets.symmetric(vertical: 8),
                                     decoration: BoxDecoration(
-                                      color: isEnabled ? nodeColor.withOpacity(0.4) : const Color(0xFF334155),
+                                      color: isEnabled
+                                          ? nodeColor.withValues(alpha: 0.3)
+                                          : const Color(0xFFE2E8F0),
                                       borderRadius: BorderRadius.circular(2),
                                     ),
                                   ),

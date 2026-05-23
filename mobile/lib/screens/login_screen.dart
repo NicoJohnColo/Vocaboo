@@ -63,36 +63,44 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final auth = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Welcome Back!',
-                  style: theme.textTheme.displayLarge?.copyWith(fontSize: 28),
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 const Text(
                   'Log in using your Learner ID and PIN.',
-                  style: TextStyle(color: Color(0xFF94A3B8)),
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 36),
 
@@ -100,18 +108,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.error.withOpacity(0.15),
+                      color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: theme.colorScheme.error),
+                      border: Border.all(color: const Color(0xFFEF4444)),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline, color: theme.colorScheme.error),
+                        const Icon(Icons.error_outline, color: Color(0xFFEF4444)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             auth.error!,
-                            style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
+                            style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
@@ -124,28 +132,28 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text(
                   'LEARNER ID',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Color(0xFF334155),
                     letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _idController,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
-                    hintText: 'Enter Learner ID (UUID)',
-                    hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                    hintText: 'Enter Learner ID...',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                     filled: true,
-                    fillColor: theme.colorScheme.surface,
-                    border: OutlineInputBorder(
+                    fillColor: const Color(0xFFF8FAFC),
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                      borderSide: const BorderSide(color: Color(0xFFFBBF24), width: 2),
                     ),
                     errorText: _idError,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -158,9 +166,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text(
                   '4-DIGIT PIN',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Color(0xFF334155),
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -169,24 +177,29 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _pinController,
                   obscureText: true,
                   maxLength: 4,
-                  style: const TextStyle(color: Colors.white, letterSpacing: 24, fontSize: 24),
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    letterSpacing: 24,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(
                     counterText: '',
                     hintText: '••••',
-                    hintStyle: const TextStyle(color: Color(0xFF64748B), letterSpacing: 24),
+                    hintStyle: const TextStyle(color: Color(0xFFCBD5E1), letterSpacing: 24),
                     filled: true,
-                    fillColor: theme.colorScheme.surface,
-                    border: OutlineInputBorder(
+                    fillColor: const Color(0xFFF8FAFC),
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                      borderSide: const BorderSide(color: Color(0xFFFBBF24), width: 2),
                     ),
                     errorText: _pinError,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                   keyboardType: TextInputType.number,
                 ),
@@ -195,12 +208,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ElevatedButton(
                   onPressed: auth.isLoading ? null : _submitLogin,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
+                    backgroundColor: const Color(0xFF0F172A), // Black
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
+                    elevation: 0,
                   ),
                   child: auth.isLoading
                       ? const SizedBox(

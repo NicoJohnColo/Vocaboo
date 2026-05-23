@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../widgets/mascot_visual.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
@@ -18,79 +17,48 @@ class WelcomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              // Stylized premium mascot container
-              Center(
-                child: Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        theme.colorScheme.primary.withOpacity(0.4),
-                        theme.colorScheme.primary.withOpacity(0.0),
-                      ],
-                    ),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 110,
-                      height: 110,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.colorScheme.surface,
-                        border: Border.all(
-                          color: theme.colorScheme.primary.withOpacity(0.5),
-                          width: 2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.colorScheme.primary.withOpacity(0.3),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.translate_rounded,
-                        size: 54,
-                        color: Color(0xFFF59E0B), // Warm Amber
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
+              // Title "Vocaboo"
+              const Text(
                 'Vocaboo',
-                style: theme.textTheme.displayLarge?.copyWith(
+                style: TextStyle(
+                  fontSize: 48,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                  color: Colors.white,
+                  letterSpacing: -1.0,
+                  color: Color(0xFF0F172A),
+                  fontFamily: 'Outfit',
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               const Text(
                 'Learning English through Cebuano',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Color(0xFF94A3B8),
-                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
               ),
               const Spacer(),
+              // Group Mascot Graphic visual
+              Center(
+                child: MascotVisual(
+                  type: MascotType.group,
+                  size: 260,
+                ),
+              ),
+              const Spacer(),
+              // GET STARTED Button (black)
               ElevatedButton(
                 onPressed: () => context.push('/profile-setup'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: const Color(0xFF0F172A), // Black
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  elevation: 2,
+                  elevation: 0,
                 ),
                 child: const Text(
                   'GET STARTED',
@@ -102,21 +70,15 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              OutlinedButton(
+              // LOGIN Button / Link (optional, styled as simple link text button)
+              TextButton(
                 onPressed: () => context.push('/login'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
                 child: const Text(
                   'I ALREADY HAVE AN ACCOUNT',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
+                    color: Color(0xFF475569),
                     letterSpacing: 0.5,
                   ),
                 ),

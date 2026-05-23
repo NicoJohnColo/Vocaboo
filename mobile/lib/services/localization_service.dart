@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 
 class LocalizationService {
   static const Map<String, Map<String, String>> _translations = {
@@ -48,6 +47,7 @@ class LocalizationService {
       'hello': 'Kumusta',
       'your_categories': 'Imong mga Kategoriya',
       'logout': 'Gawas',
+      'sandbox_mode': 'Sandbox Mode',
 
       // Lesson Path Screen
       'lessons': 'Mga Leksyon',
@@ -143,6 +143,7 @@ class LocalizationService {
       'hello': 'Kumusta / Hello',
       'your_categories': 'Your Categories / Kategoriya',
       'logout': 'Logout',
+      'sandbox_mode': 'Sandbox Mode',
 
       // Lesson Path Screen
       'lessons': 'Lessons / Leksyon',
@@ -238,6 +239,7 @@ class LocalizationService {
       'hello': 'Hello',
       'your_categories': 'Your Categories',
       'logout': 'Logout',
+      'sandbox_mode': 'Sandbox Mode',
 
       // Lesson Path Screen
       'lessons': 'Lessons',

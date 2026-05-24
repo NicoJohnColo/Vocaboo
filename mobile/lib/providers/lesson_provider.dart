@@ -7,6 +7,12 @@ import '../models/category_model.dart';
 import '../models/lesson_model.dart';
 import '../models/vocabulary_word_model.dart';
 import '../models/diagnostic_result_model.dart';
+import '../services/scoring_service.dart';
+import '../services/local_storage_service.dart';
+
+const double lessonWeight = ScoringService.lessonWeight;
+const double reviewWeight = ScoringService.reviewWeight;
+const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
   final AuthProvider? _auth;
@@ -432,6 +438,44 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
+  double computeFinalScore({
+    required double lesson1Score,
+    required double lesson2Score,
+    required double cumulativeReviewScore,
+  }) {
+    return ScoringService.computeFinalScoreFromLessons(lesson1Score, lesson2Score, cumulativeReviewScore);
+  }
+
+  bool didPass(double finalScore) {
+    return finalScore >= passingThreshold;
+  }
+
+  Future<void> persistModuleScore(String lessonId, int moduleNumber, int correctCount, int totalCount) async {
+    final score = ScoringService.computeLessonScore(correctCount, totalCount);
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/progress/module-score'),
+        headers: _headers,
+        body: json.encode({
+          'lessonId': lessonId,
+          'moduleNumber': moduleNumber,
+          'correctCount': correctCount,
+          'totalCount': totalCount,
+          'score': score,
+        }),
+      );
+
+      if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.persistModuleScore backend sync error: $e');
+    }
+
+    await LocalStorageService.saveModuleScore(lessonId, moduleNumber, correctCount, totalCount);
+    await LocalStorageService.saveLessonScore(lessonId, score);
+  }
+
   /// Placeholder sandbox prompt generator.
   /// In a full implementation this would call the backend to generate a prompt based on a seed word.
   Future<String?> getSandboxPrompt() async {
@@ -561,6 +605,46 @@ class LessonProvider with ChangeNotifier {
       debugPrint('LessonProvider.resetProgress error: $e');
     }
 
+  }
+
+  /// Submits mastery data to the backend for server-side validation.
+  Future<Map<String, dynamic>?> submitMastery({
+    required String categoryId,
+    required List<String> lessonIds,
+    required double lessonScore,
+    required double cumulativeReviewScore,
+    required double finalScore,
+    required bool passed,
+    required int totalItems,
+    required int masteredCount,
+    required List<String> missedWordIds,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/mastery'),
+        headers: _headers,
+        body: json.encode({
+          'categoryId': categoryId,
+          'lessonIds': lessonIds,
+          'lessonScore': lessonScore,
+          'cumulativeReviewScore': cumulativeReviewScore,
+          'finalScore': finalScore,
+          'passed': passed,
+          'totalItems': totalItems,
+          'masteredCount': masteredCount,
+          'missedWordIds': missedWordIds,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.submitMastery error: $e');
+    }
+
+    return null;
   }
 
 }

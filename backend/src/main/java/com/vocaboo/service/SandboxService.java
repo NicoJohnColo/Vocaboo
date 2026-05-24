@@ -87,6 +87,7 @@ public class SandboxService {
                 .map(entry -> MatchingWordResponse.builder()
                     .englishWord(entry.get("english_word"))
                     .cebuanoMeaning(entry.get("cebuano_meaning"))
+                    .imageAssetPath(entry.get("image_asset_path"))
                     .build())
                 .toList())
             .sentenceArrangementTokens(dto.getSentenceArrangementTokens())

@@ -41,6 +41,15 @@ public class ReviewController {
         private Double score;
     }
 
+    @Data
+    public static class ModuleScoreRequest {
+        private UUID lessonId;
+        private Integer moduleNumber;
+        private Integer correctCount;
+        private Integer totalCount;
+        private Double score;
+    }
+
     @PostMapping("/lessons/{lessonId}/review/start")
     public ResponseEntity<ReviewSession> startReview(@PathVariable UUID lessonId, Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
@@ -52,6 +61,20 @@ public class ReviewController {
     public ResponseEntity<ReviewItem> submitReviewItem(@RequestBody ReviewItemRequest request) {
         ReviewItem item = reviewService.saveReviewItem(request.getSessionId(), request.getWordId(), request.getIsCorrect());
         return ResponseEntity.ok(item);
+    }
+
+    @PostMapping("/progress/module-score")
+    public ResponseEntity<Void> saveModuleScore(@RequestBody ModuleScoreRequest request, Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        reviewService.saveModuleScore(
+                learnerId,
+                request.getLessonId(),
+                request.getModuleNumber(),
+                request.getCorrectCount(),
+                request.getTotalCount(),
+                request.getScore()
+        );
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/progress/lesson-completion")

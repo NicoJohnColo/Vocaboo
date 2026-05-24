@@ -6,6 +6,9 @@ enum ActivityFormat {
   matching,
   fillInTheBlank,
   imageMatching,
+  listeningTyping,
+  translationMatching,
+  flashcardRecall,
 }
 
 enum ReinforcementStatus {
@@ -254,6 +257,26 @@ class LocalStorageService {
     await _prefs!.setString('practice_session_state_$sessionId', json.encode(data));
   }
 
+  static Future<void> saveModuleProgressSnapshot(
+    String sessionId,
+    Map<String, dynamic> snapshot,
+  ) async {
+    await init();
+    await _prefs!.setString('module_progress_snapshot_$sessionId', json.encode(snapshot));
+  }
+
+  static Future<Map<String, dynamic>?> getModuleProgressSnapshot(String sessionId) async {
+    await init();
+    final raw = _prefs!.getString('module_progress_snapshot_$sessionId');
+    if (raw == null) return null;
+    return json.decode(raw) as Map<String, dynamic>;
+  }
+
+  static Future<void> clearModuleProgressSnapshot(String sessionId) async {
+    await init();
+    await _prefs!.remove('module_progress_snapshot_$sessionId');
+  }
+
   static Future<Map<String, dynamic>?> getPracticeSessionState(String sessionId) async {
     await init();
     final raw = _prefs!.getString('practice_session_state_$sessionId');
@@ -333,6 +356,75 @@ class LocalStorageService {
   static Future<void> clearCumulativeReviewState(String sessionId) async {
     await init();
     await _prefs!.remove('cumulative_review_state_$sessionId');
+  }
+
+  static Future<void> saveReviewCompletionState(String sessionId, Map<String, dynamic> state) async {
+    await init();
+    await _prefs!.setString('review_completion_state_$sessionId', json.encode(state));
+  }
+
+  static Future<Map<String, dynamic>?> getReviewCompletionState(String sessionId) async {
+    await init();
+    final raw = _prefs!.getString('review_completion_state_$sessionId');
+    if (raw == null) return null;
+    return json.decode(raw) as Map<String, dynamic>;
+  }
+
+  static Future<void> clearReviewCompletionState(String sessionId) async {
+    await init();
+    await _prefs!.remove('review_completion_state_$sessionId');
+  }
+
+  // --- Module Scoring Persistence ---
+  static Future<void> saveModuleScore(String lessonId, int moduleNumber, int correctCount, int totalCount) async {
+    await init();
+    final data = {
+      'correct': correctCount,
+      'total': totalCount,
+    };
+    await _prefs!.setString('lesson_${lessonId}_module_${moduleNumber}_score', json.encode(data));
+  }
+
+  static Future<Map<String, int>?> getModuleScore(String lessonId, int moduleNumber) async {
+    await init();
+    final raw = _prefs!.getString('lesson_${lessonId}_module_${moduleNumber}_score');
+    if (raw == null) return null;
+    final decoded = json.decode(raw) as Map<String, dynamic>;
+    return {
+      'correct': decoded['correct'] as int? ?? 0,
+      'total': decoded['total'] as int? ?? 0,
+    };
+  }
+
+  static Future<void> saveLessonScore(String lessonId, double score) async {
+    await init();
+    await _prefs!.setDouble('lesson_${lessonId}_score', score);
+  }
+
+  static Future<double?> getLessonScore(String lessonId) async {
+    await init();
+    return _prefs!.getDouble('lesson_${lessonId}_score');
+  }
+
+  // --- Retry Queue Persistence ---
+  static Future<void> saveModule4RetryQueue(String sessionId, List<String> wordIds) async {
+    await init();
+    await _prefs!.setStringList('module4_retry_queue_$sessionId', wordIds);
+  }
+
+  static Future<List<String>> getModule4RetryQueue(String sessionId) async {
+    await init();
+    return _prefs!.getStringList('module4_retry_queue_$sessionId') ?? [];
+  }
+
+  static Future<void> saveFailedWords(String sessionId, List<String> wordIds) async {
+    await init();
+    await _prefs!.setStringList('failed_words_$sessionId', wordIds);
+  }
+
+  static Future<List<String>> getFailedWords(String sessionId) async {
+    await init();
+    return _prefs!.getStringList('failed_words_$sessionId') ?? [];
   }
 
   // --- App Preferences ---

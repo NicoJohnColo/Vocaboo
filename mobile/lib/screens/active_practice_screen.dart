@@ -7,6 +7,7 @@ import '../providers/lesson_provider.dart';
 import '../models/vocabulary_word_model.dart';
 import '../widgets/mascot_bubble.dart';
 import '../services/local_storage_service.dart';
+import '../services/scoring_service.dart';
 import '../services/tts_service.dart';
 import '../widgets/image_matching_widget.dart';
 
@@ -67,6 +68,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   // Multiple Choice / Fill In The Blank Selected Index
   int _selectedOptionIndex = -1;
   List<String> _options = [];
+  final TextEditingController _typingController = TextEditingController();
+
+  // Flashcard Recall State
+  bool _flashcardFlipped = false;
 
   // Reinforcement Mode Variables
   bool _isReinforcementMode = false;
@@ -77,13 +82,19 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   static const int _reinforcementDuplicates = 2; // adds 2 copies
 
   // Session Completed State
-  bool _isCompleted = false;
+  final bool _isCompleted = false;
 
   @override
   void initState() {
     super.initState();
     _words = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
     _initializeSession();
+  }
+
+  @override
+  void dispose() {
+    _typingController.dispose();
+    super.dispose();
   }
 
   Future<void> _initializeSession() async {
@@ -121,43 +132,61 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   void _buildPracticeQueue() {
     _practiceQueue.clear();
     final random = Random();
+    final requiredFormats = [
+      ActivityFormat.multipleChoice,
+      ActivityFormat.listeningTyping,
+      ActivityFormat.fillInTheBlank,
+      ActivityFormat.imageMatching,
+      ActivityFormat.translationMatching,
+      ActivityFormat.flashcardRecall,
+    ];
+    final allFormats = ActivityFormat.values.toList();
+    final shuffledWords = List<VocabularyWordModel>.from(_words)..shuffle(random);
 
-    for (int i = 0; i < _words.length; i++) {
-      final word = _words[i];
-      // Rotate activity format across available formats
-      var format = ActivityFormat.values[i % ActivityFormat.values.length];
-      // If imageMatching selected but no image for this word, fallback to multipleChoice
-      if (format == ActivityFormat.imageMatching && (word.imageAssetPath == null || word.imageAssetPath!.isEmpty)) {
-        format = ActivityFormat.multipleChoice;
+    for (final format in requiredFormats) {
+      if (shuffledWords.isEmpty) {
+        break;
       }
-
-      _practiceQueue.add(
-        PracticeItemModel(
-          wordId: word.wordId,
-          englishWord: word.englishWord,
-          cebuanoMeaning: word.cebuanoMeaning,
-          exampleSentenceEnglish: word.exampleSentenceEnglish,
-          exampleSentenceCebuano: word.exampleSentenceCebuano,
-          activityFormat: format,
-            imageAssetPath: word.imageAssetPath,
-          distractors: _resolveDistractors(word),
-          mcDistractor1: word.mcDistractor1,
-          mcDistractor2: word.mcDistractor2,
-          mcDistractor3: word.mcDistractor3,
-          fitbSentence: word.fitbSentence,
-          fitbAnswer: word.fitbAnswer,
-          matchingSet: word.matchingSet,
-          sentenceArrangementTokens: word.sentenceArrangementTokens,
-          sentenceCompletionSentence: word.sentenceCompletionSentence,
-          sentenceCompletionAnswer: word.sentenceCompletionAnswer,
-          sentenceCompletionOption1: word.sentenceCompletionOption1,
-          sentenceCompletionOption2: word.sentenceCompletionOption2,
-          sentenceCompletionOption3: word.sentenceCompletionOption3,
-        ),
-      );
+      final word = shuffledWords[_practiceQueue.length % shuffledWords.length];
+      _practiceQueue.add(_createPracticeItem(word, format));
     }
-    // Shuffle the queue to ensure variety
+
+    for (final word in shuffledWords) {
+      final format = allFormats[random.nextInt(allFormats.length)];
+      _practiceQueue.add(_createPracticeItem(word, format));
+    }
+
     _practiceQueue.shuffle(random);
+  }
+
+  PracticeItemModel _createPracticeItem(VocabularyWordModel word, ActivityFormat format) {
+    var resolvedFormat = format;
+    if (resolvedFormat == ActivityFormat.imageMatching && (word.imageAssetPath == null || word.imageAssetPath!.isEmpty)) {
+      resolvedFormat = ActivityFormat.multipleChoice;
+    }
+
+    return PracticeItemModel(
+      wordId: word.wordId,
+      englishWord: word.englishWord,
+      cebuanoMeaning: word.cebuanoMeaning,
+      exampleSentenceEnglish: word.exampleSentenceEnglish,
+      exampleSentenceCebuano: word.exampleSentenceCebuano,
+      activityFormat: resolvedFormat,
+      imageAssetPath: word.imageAssetPath,
+      distractors: _resolveDistractors(word),
+      mcDistractor1: word.mcDistractor1,
+      mcDistractor2: word.mcDistractor2,
+      mcDistractor3: word.mcDistractor3,
+      fitbSentence: word.fitbSentence,
+      fitbAnswer: word.fitbAnswer,
+      matchingSet: word.matchingSet,
+      sentenceArrangementTokens: word.sentenceArrangementTokens,
+      sentenceCompletionSentence: word.sentenceCompletionSentence,
+      sentenceCompletionAnswer: word.sentenceCompletionAnswer,
+      sentenceCompletionOption1: word.sentenceCompletionOption1,
+      sentenceCompletionOption2: word.sentenceCompletionOption2,
+      sentenceCompletionOption3: word.sentenceCompletionOption3,
+    );
   }
 
   List<String> _resolveDistractors(VocabularyWordModel targetWord) {
@@ -199,11 +228,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         .map((w) => w.englishWord)
         .toList();
 
-    if (list.length < 2) {
-      // Fallback standard English vocabulary distractors if lesson is too small
-      list.addAll(['apple', 'house', 'water', 'run', 'happy', 'friend']);
-    }
-
     list.shuffle();
     return list.take(2).toList();
   }
@@ -215,6 +239,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _selectedCebuano = null;
     _selectedEnglish = null;
     _currentMatches.clear();
+    _typingController.clear();
+    _flashcardFlipped = false;
 
     if (_currentIndex >= _practiceQueue.length) return;
     final item = _practiceQueue[_currentIndex];
@@ -225,7 +251,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
       _options = [item.englishWord, ...distractors];
       _options.shuffle(Random(item.wordId.hashCode)); // consistent shuffle for this word
-    } else if (item.activityFormat == ActivityFormat.matching) {
+    } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       final matchingList = _resolveMatchingSet(item);
       _matchingCebuanoList = matchingList.map((entry) => (entry['cebuanoMeaning'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
       _matchingEnglishList = matchingList.map((entry) => (entry['englishWord'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
@@ -253,9 +279,14 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       case ActivityFormat.imageMatching:
         return 'Look at the image and choose the correct word.';
       case ActivityFormat.matching:
+      case ActivityFormat.translationMatching:
         return 'Help our mascots find the matching words! Tap a Cebuano word, then its English match.';
       case ActivityFormat.fillInTheBlank:
         return 'Select the missing word to complete the sentence.';
+      case ActivityFormat.listeningTyping:
+        return 'Listen carefully, type what you hear, then check your answer.';
+      case ActivityFormat.flashcardRecall:
+        return 'Think first, then flip to reveal the answer and confirm you know it.';
     }
   }
 
@@ -311,7 +342,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       if (_selectedOptionIndex == -1) return;
       learnerAns = _options[_selectedOptionIndex];
       correct = (learnerAns == item.englishWord);
-    } else if (item.activityFormat == ActivityFormat.matching) {
+    } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+      learnerAns = _typingController.text.trim();
+      final correctTarget = (item.fitbAnswer ?? item.englishWord).trim();
+      correct = learnerAns.toLowerCase() == correctTarget.toLowerCase();
+      correctAns = correctTarget;
+    } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       // Matching is correct if the target word is matched correctly AND all matching inputs are correct
       bool targetCorrect = _currentMatches[item.cebuanoMeaning] == item.englishWord;
       
@@ -339,6 +375,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       correct = targetCorrect && othersCorrect;
       learnerAns = _currentMatches.toString();
       correctAns = 'All correct matches';
+    } else if (item.activityFormat == ActivityFormat.flashcardRecall) {
+      // Flashcard recall is always considered correct if the user flips and confirms
+      correct = _flashcardFlipped;
+      learnerAns = 'Flashcard flipped';
+      correctAns = 'Flashcard confirmed';
     }
 
     // Save practice result log
@@ -487,32 +528,52 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         );
       }
     } else {
-      // Complete!
-      setState(() {
-        _isCompleted = true;
-      });
-      await _generateAndSaveSummary();
+      await _completeModuleAndAdvance();
     }
   }
 
-  Future<void> _generateAndSaveSummary() async {
-    final double mastery = _words.isNotEmpty
-        ? ((_words.length - _reinforcementQueue.where((item) => item.status != ReinforcementStatus.reinforcedComplete).length) / _words.length) * 100.0
-        : 0.0;
+  Future<void> _completeModuleAndAdvance() async {
+    final total = _words.length;
+    final moduleScore = ScoringService.computeLessonScore(_initialPassCorrectCount, total);
+    final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    await lessonProvider.persistModuleScore(widget.lessonId, 2, _initialPassCorrectCount, total);
 
     final summary = SessionSummaryModel(
       sessionId: widget.sessionId,
-      learnerId: Provider.of<AuthProvider>(context, listen: false).learner?.learnerId ?? 'anonymous',
+      learnerId: authProvider.learner?.learnerId ?? 'anonymous',
       lessonId: widget.lessonId,
-      totalWordsPracticed: _words.length,
+      totalWordsPracticed: total,
       initialPassCorrectCount: _initialPassCorrectCount,
       reinforcementPassCorrectCount: _reinforcementPassCorrectCount,
-      overallMasteryPercentage: mastery,
+      overallMasteryPercentage: moduleScore,
       summaryGeneratedAt: DateTime.now(),
     );
 
     await LocalStorageService.saveSessionSummary(summary);
     await LocalStorageService.clearPracticeSessionState(widget.sessionId);
+    await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
+    await LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
+      'lessonIds': [widget.lessonId],
+      'reviewItems': [],
+      'queue': [],
+      'currentIndex': 0,
+      'results': {},
+      'retryQueue': [],
+      'weightedScore': moduleScore,
+    });
+
+    if (!mounted) return;
+    context.go(
+      '/session/${widget.sessionId}/sentence-building',
+      extra: {
+        'lessonId': widget.lessonId,
+        'categoryId': widget.categoryId,
+        'allWords': widget.allWords,
+        'isSandbox': widget.isSandbox,
+      },
+    );
   }
 
   // --- UI Builders ---
@@ -616,9 +677,14 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       case ActivityFormat.imageMatching:
         return _buildImageMatching(item);
       case ActivityFormat.matching:
+      case ActivityFormat.translationMatching:
         return _buildMatching(item);
       case ActivityFormat.fillInTheBlank:
         return _buildFillInTheBlank(item);
+      case ActivityFormat.listeningTyping:
+        return _buildListeningTyping(item);
+      case ActivityFormat.flashcardRecall:
+        return _buildFlashcardRecall(item);
     }
   }
 
@@ -1010,6 +1076,121 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     );
   }
 
+  Widget _buildFlashcardRecall(PracticeItemModel item) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Flashcard recall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: _flashcardFlipped ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _flashcardFlipped ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.englishWord, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 10),
+                  if (_flashcardFlipped) ...[
+                    Text(item.cebuanoMeaning, style: const TextStyle(fontSize: 16, color: Color(0xFF475569), height: 1.45)),
+                    const SizedBox(height: 8),
+                    Text(item.exampleSentenceEnglish, style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Color(0xFF64748B))),
+                  ] else ...[
+                    const Text('Think first, then flip to confirm.', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _flashcardFlipped = !_flashcardFlipped;
+                });
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF06A6FF),
+                side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(_flashcardFlipped ? 'HIDE ANSWER' : 'REVEAL ANSWER', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListeningTyping(PracticeItemModel item) {
+    final prompt = (item.fitbSentence ?? item.exampleSentenceEnglish).trim();
+    final answer = (item.fitbAnswer ?? item.englishWord).trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Listen and type what you hear',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                prompt,
+                style: const TextStyle(fontSize: 18, height: 1.45, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _typingController,
+                onChanged: (_) {
+                  if (mounted) setState(() {});
+                },
+                decoration: InputDecoration(
+                  labelText: 'Type what you hear',
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: () => _ttsService.speak(answer),
+                icon: const Icon(Icons.volume_up_rounded),
+                label: const Text('Hear it again'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF06A6FF),
+                  side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // Bottom action bar (Check answers / Feedback banners)
   Widget _buildBottomPanel(ThemeData theme, String? pref) {
     final item = _practiceQueue[_currentIndex];
@@ -1020,8 +1201,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         item.activityFormat == ActivityFormat.fillInTheBlank ||
         item.activityFormat == ActivityFormat.imageMatching) {
       isActionEnabled = _selectedOptionIndex != -1;
-    } else if (item.activityFormat == ActivityFormat.matching) {
+    } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       isActionEnabled = _currentMatches.length == _matchingCebuanoList.length;
+    } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+      isActionEnabled = _typingController.text.trim().isNotEmpty;
+    } else if (item.activityFormat == ActivityFormat.flashcardRecall) {
+      isActionEnabled = _flashcardFlipped;
     }
 
     if (!_showFeedback) {

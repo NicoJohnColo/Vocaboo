@@ -45,6 +45,9 @@ public class VocabularyWord {
     @Column(name = "audio_asset_path", columnDefinition = "TEXT")
     private String audioAssetPath;
 
+    @Column(name = "image_asset_path", columnDefinition = "TEXT")
+    private String imageAssetPath;
+
     @Column(name = "part_of_speech", length = 50)
     private String partOfSpeech;
 

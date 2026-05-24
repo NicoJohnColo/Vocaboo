@@ -23,6 +23,7 @@ public class LessonWordActivityResponse {
     private String exampleSentenceEnglish;
     private String exampleSentenceCebuano;
     private String audioAssetPath;
+    private String imageAssetPath;
     private String partOfSpeech;
     private GradeLevel gradeLevel;
     private Integer wordOrder;

@@ -334,4 +334,26 @@ class LocalStorageService {
     await init();
     await _prefs!.remove('cumulative_review_state_$sessionId');
   }
+
+  // --- App Preferences ---
+
+  static Future<void> saveThemeMode(String mode) async {
+    await init();
+    await _prefs!.setString('pref_theme_mode', mode);
+  }
+
+  static Future<String> getThemeMode() async {
+    await init();
+    return _prefs!.getString('pref_theme_mode') ?? 'light';
+  }
+
+  static Future<void> saveNotificationsEnabled(bool enabled) async {
+    await init();
+    await _prefs!.setBool('pref_notifications_enabled', enabled);
+  }
+
+  static Future<bool> getNotificationsEnabled() async {
+    await init();
+    return _prefs!.getBool('pref_notifications_enabled') ?? true;
+  }
 }

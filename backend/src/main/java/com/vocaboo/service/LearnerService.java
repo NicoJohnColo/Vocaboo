@@ -2,6 +2,7 @@ package com.vocaboo.service;
 
 import com.vocaboo.dto.request.LoginRequest;
 import com.vocaboo.dto.request.RegisterRequest;
+import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
 import com.vocaboo.entity.Learner;
@@ -64,6 +65,10 @@ public class LearnerService {
                 .onboardingComplete(learner.getOnboardingComplete())
                 .languagePreference(learner.getLanguagePreference())
                 .build();
+    }
+
+    public boolean isNameAvailable(String displayName) {
+        return learnerRepository.findByDisplayNameIgnoreCase(displayName.trim()).isEmpty();
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -137,6 +142,19 @@ public class LearnerService {
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
                 .build();
+    }
+
+    @Transactional
+    public void changePin(UUID learnerId, ChangePinRequest request) {
+        Learner learner = learnerRepository.findById(learnerId)
+                .orElseThrow(() -> new IllegalArgumentException("Learner profile not found."));
+
+        if (!passwordEncoder.matches(request.getCurrentPin(), learner.getPinHash())) {
+            throw new BadCredentialsException("Current PIN is incorrect.");
+        }
+
+        learner.setPinHash(passwordEncoder.encode(request.getNewPin()));
+        learnerRepository.save(learner);
     }
 
     @Transactional

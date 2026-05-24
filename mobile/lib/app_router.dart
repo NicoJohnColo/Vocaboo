@@ -71,7 +71,7 @@ class AppRouter {
       ),
       GoRoute(
         path: '/language-preference',
-        builder: (c, s) => LanguagePreferenceScreen(learnerData: s.extra as Map<String, dynamic>),
+        builder: (c, s) => LanguagePreferenceScreen(learnerData: s.extra as Map<String, dynamic>?),
       ),
       GoRoute(path: '/success', builder: (c, s) => const SuccessScreen()),
       GoRoute(path: '/home', builder: (c, s) => const HomeScreen()),

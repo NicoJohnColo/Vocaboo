@@ -2,6 +2,7 @@ package com.vocaboo.controller;
 
 import com.vocaboo.dto.request.LoginRequest;
 import com.vocaboo.dto.request.RegisterRequest;
+import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
 import com.vocaboo.service.LearnerService;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/learners")
@@ -22,6 +24,12 @@ public class LearnerController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.ok(learnerService.register(request));
+    }
+
+    @GetMapping("/check-name")
+    public ResponseEntity<Map<String, Boolean>> checkName(@RequestParam String displayName) {
+        boolean available = learnerService.isNameAvailable(displayName);
+        return ResponseEntity.ok(Map.of("available", available));
     }
 
     @PostMapping("/login")
@@ -46,6 +54,13 @@ public class LearnerController {
         UUID learnerId = UUID.fromString(principal.getName());
         LearnerResponse response = learnerService.updatePreferences(learnerId, request.getDisplayName(), request.getLanguagePreference());
         return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/change-pin")
+    public ResponseEntity<Void> changePin(@Valid @RequestBody ChangePinRequest request, Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        learnerService.changePin(learnerId, request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/reset-progress")

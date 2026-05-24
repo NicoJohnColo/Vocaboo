@@ -14,10 +14,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  String? _previousLanguagePreference;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      _previousLanguagePreference = auth.learner?.languagePreference;
       Provider.of<LessonProvider>(context, listen: false).loadCategories();
     });
   }
@@ -56,6 +60,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final learner = auth.learner;
     final pref = learner?.languagePreference;
+
+    // Check if language preference changed and reload categories
+    if (pref != _previousLanguagePreference) {
+      _previousLanguagePreference = pref;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Provider.of<LessonProvider>(context, listen: false).loadCategories();
+      });
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), // Premium Light Background

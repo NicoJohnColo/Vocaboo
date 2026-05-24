@@ -28,6 +28,22 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> checkNameAvailable(String displayName) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/check-name?displayName=${Uri.encodeComponent(displayName)}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        return body['available'] == true;
+      }
+      return true; // fail open if endpoint unavailable
+    } catch (e) {
+      return true; // fail open on connection error
+    }
+  }
+
   Future<void> tryAutoLogin() async {
     if (_isInitialized) return;
     _isInitialized = true;
@@ -175,6 +191,111 @@ class AuthProvider with ChangeNotifier {
     } catch (e) {
       // Ignore
     }
+  }
+
+  Future<bool> updateProfile(String displayName, int age) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/learners/preferences'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'displayName': displayName,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        await fetchProfile();
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        final body = json.decode(response.body);
+        _error = body['message'] ?? 'Failed to update profile.';
+      }
+    } catch (e) {
+      _error = 'Connection error. Please check your internet connection.';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> changePin(String currentPin, String newPin) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/learners/change-pin'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'currentPin': currentPin,
+          'newPin': newPin,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        final body = json.decode(response.body);
+        _error = body['message'] ?? 'Failed to change PIN.';
+      }
+    } catch (e) {
+      _error = 'Connection error. Please check your internet connection.';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> updateLanguagePreference(String languagePreference) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/learners/preferences'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'languagePreference': languagePreference,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        await fetchProfile();
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        final body = json.decode(response.body);
+        _error = body['message'] ?? 'Failed to update language preference.';
+      }
+    } catch (e) {
+      _error = 'Connection error. Please check your internet connection.';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    return false;
   }
 
   Future<void> logout() async {

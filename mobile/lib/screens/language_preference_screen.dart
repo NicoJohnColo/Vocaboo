@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/localization_service.dart';
 import '../widgets/mascot_bubble.dart';
 
 class LanguagePreferenceScreen extends StatefulWidget {
-  final Map<String, dynamic> learnerData;
+  final Map<String, dynamic>? learnerData;
 
-  const LanguagePreferenceScreen({super.key, required this.learnerData});
+  const LanguagePreferenceScreen({super.key, this.learnerData});
 
   @override
   State<LanguagePreferenceScreen> createState() => _LanguagePreferenceScreenState();
@@ -16,18 +17,50 @@ class LanguagePreferenceScreen extends StatefulWidget {
 class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
   String _selectedOption = 'CEBUANO_TO_ENGLISH';
 
-  void _submitAndRegister() async {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    
-    final success = await auth.register(
-      widget.learnerData['displayName'],
-      widget.learnerData['age'],
-      widget.learnerData['pin'],
-      _selectedOption,
-    );
+  bool get _isSettingsMode => widget.learnerData == null;
 
-    if (success && mounted) {
-      context.go('/success', extra: auth.learner?.learnerId);
+  @override
+  void initState() {
+    super.initState();
+    if (_isSettingsMode) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      _selectedOption = auth.learner?.languagePreference ?? 'CEBUANO_TO_ENGLISH';
+    }
+  }
+
+  Future<void> _submit() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+
+    if (_isSettingsMode) {
+      final success = await auth.updateLanguagePreference(_selectedOption);
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              LocalizationService.translate(
+                auth.learner?.languagePreference,
+                'profile_updated',
+              ),
+            ),
+          ),
+        );
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(auth.error ?? 'Error')),
+        );
+      }
+    } else {
+      final success = await auth.register(
+        widget.learnerData!['displayName'],
+        widget.learnerData!['age'],
+        widget.learnerData!['pin'],
+        _selectedOption,
+      );
+      if (success && mounted) {
+        context.go('/success', extra: auth.learner?.learnerId);
+      }
     }
   }
 
@@ -40,17 +73,13 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
     final isSelected = _selectedOption == value;
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedOption = value;
-        });
-      },
+      onTap: () => setState(() => _selectedOption = value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE0F2FE) : Colors.white, // Sky blue tint if selected
+          color: isSelected ? const Color(0xFFE0F2FE) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
@@ -96,10 +125,7 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF64748B),
-                    ),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                   ),
                 ],
               ),
@@ -117,6 +143,7 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
+    final pref = _isSettingsMode ? auth.learner?.languagePreference : null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -125,8 +152,19 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => context.pop(),
+          onPressed: () => GoRouter.of(context).pop(),
         ),
+        title: _isSettingsMode
+            ? Text(
+                LocalizationService.translate(pref, 'language_preference'),
+                style: const TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  color: Color(0xFF0F172A),
+                ),
+              )
+            : null,
       ),
       body: SafeArea(
         child: Padding(
@@ -134,26 +172,27 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Yellow progress bar at 75% (3/4 filled)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: const SizedBox(
-                  height: 8,
-                  child: LinearProgressIndicator(
-                    value: 0.75,
-                    backgroundColor: Color(0xFFE2E8F0),
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+              if (!_isSettingsMode) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: const SizedBox(
+                    height: 8,
+                    child: LinearProgressIndicator(
+                      value: 0.75,
+                      backgroundColor: Color(0xFFE2E8F0),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-
-              // Mascot Bubble for Sippy
-              const MascotBubble(
-                mascotName: 'sippy',
-                speechText: "Hi! I'm Sippy! Which language do you prefer for buttons and menus?",
-              ),
-              const SizedBox(height: 28),
+                const SizedBox(height: 24),
+                const MascotBubble(
+                  mascotName: 'sippy',
+                  speechText: "Hi! I'm Sippy! Which language do you prefer for buttons and menus?",
+                ),
+                const SizedBox(height: 28),
+              ] else ...[
+                const SizedBox(height: 8),
+              ],
 
               if (auth.error != null) ...[
                 Container(
@@ -165,7 +204,10 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
                   ),
                   child: Text(
                     auth.error!,
-                    style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -198,14 +240,12 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
               ),
 
               ElevatedButton(
-                onPressed: auth.isLoading ? null : _submitAndRegister,
+                onPressed: auth.isLoading ? null : _submit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A), // Black
+                  backgroundColor: const Color(0xFF0F172A),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),
                 child: auth.isLoading
@@ -214,15 +254,18 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
                         width: 20,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
-                    : const Text(
-                        'FINISH',
-                        style: TextStyle(
+                    : Text(
+                        _isSettingsMode
+                            ? LocalizationService.translate(pref, 'save_changes')
+                            : 'FINISH',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.0,
                         ),
                       ),
               ),
+              const SizedBox(height: 16),
             ],
           ),
         ),

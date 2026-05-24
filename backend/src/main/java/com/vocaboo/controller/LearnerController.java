@@ -2,6 +2,7 @@ package com.vocaboo.controller;
 
 import com.vocaboo.dto.request.LoginRequest;
 import com.vocaboo.dto.request.RegisterRequest;
+import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
 import com.vocaboo.service.LearnerService;
@@ -46,6 +47,13 @@ public class LearnerController {
         UUID learnerId = UUID.fromString(principal.getName());
         LearnerResponse response = learnerService.updatePreferences(learnerId, request.getDisplayName(), request.getLanguagePreference());
         return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/change-pin")
+    public ResponseEntity<Void> changePin(@Valid @RequestBody ChangePinRequest request, Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        learnerService.changePin(learnerId, request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/reset-progress")

@@ -218,20 +218,20 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
                   physics: const BouncingScrollPhysics(),
                   children: [
                     _buildOptionCard(
-                      title: 'Cebuano translation',
-                      subtitle: 'Translates interface buttons, settings, and home page.',
+                      title: LocalizationService.translate(pref, 'cebuano_to_english'),
+                      subtitle: LocalizationService.translate(pref, 'cebuano_to_english_subtitle'),
                       value: 'CEBUANO_TO_ENGLISH',
                       icon: Icons.language_rounded,
                     ),
                     _buildOptionCard(
-                      title: 'Full English interface',
-                      subtitle: 'Keeps buttons, settings, and home page in English only.',
+                      title: LocalizationService.translate(pref, 'full_english'),
+                      subtitle: LocalizationService.translate(pref, 'full_english_subtitle'),
                       value: 'FULL_ENGLISH',
                       icon: Icons.abc_rounded,
                     ),
                     _buildOptionCard(
-                      title: 'Cebuano/English Mixed',
-                      subtitle: 'Mixed translation for menus and buttons.',
+                      title: LocalizationService.translate(pref, 'cebuano_english_mixed'),
+                      subtitle: LocalizationService.translate(pref, 'cebuano_english_mixed_subtitle'),
                       value: 'CEBUANO_ENGLISH_MIXED',
                       icon: Icons.translate_rounded,
                     ),

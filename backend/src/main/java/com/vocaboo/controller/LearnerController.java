@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/learners")
@@ -23,6 +24,12 @@ public class LearnerController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.ok(learnerService.register(request));
+    }
+
+    @GetMapping("/check-name")
+    public ResponseEntity<Map<String, Boolean>> checkName(@RequestParam String displayName) {
+        boolean available = learnerService.isNameAvailable(displayName);
+        return ResponseEntity.ok(Map.of("available", available));
     }
 
     @PostMapping("/login")

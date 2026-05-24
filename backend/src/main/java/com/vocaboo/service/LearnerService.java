@@ -67,6 +67,10 @@ public class LearnerService {
                 .build();
     }
 
+    public boolean isNameAvailable(String displayName) {
+        return learnerRepository.findByDisplayNameIgnoreCase(displayName.trim()).isEmpty();
+    }
+
     public AuthResponse login(LoginRequest request) {
         String identifier = request.getLearnerId().trim();
         Learner learner = null;

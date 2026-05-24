@@ -15,36 +15,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String _themeMode = 'light';
-  bool _notificationsEnabled = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreferences();
-  }
-
-  Future<void> _loadPreferences() async {
-    final theme = await LocalStorageService.getThemeMode();
-    final notif = await LocalStorageService.getNotificationsEnabled();
-    if (mounted) {
-      setState(() {
-        _themeMode = theme;
-        _notificationsEnabled = notif;
-      });
-    }
-  }
-
-  Future<void> _saveTheme(String mode) async {
-    await LocalStorageService.saveThemeMode(mode);
-    setState(() => _themeMode = mode);
-  }
-
-  Future<void> _saveNotifications(bool value) async {
-    await LocalStorageService.saveNotificationsEnabled(value);
-    setState(() => _notificationsEnabled = value);
-  }
-
   void _showEditProfileDialog(BuildContext context, AuthProvider auth, String? pref) {
     final nameController = TextEditingController(text: auth.learner?.displayName ?? '');
     final formKey = GlobalKey<FormState>();
@@ -400,41 +370,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _settingsTile(
                 icon: Icons.language,
                 title: LocalizationService.translate(pref, 'language_preference'),
-                subtitle: pref ?? 'N/A',
+                subtitle: pref != null ? LocalizationService.translate(pref, pref.toLowerCase()) : 'N/A',
                 onTap: () => GoRouter.of(context).push('/language-preference'),
-              ),
-
-              // APP PREFERENCES section
-              _sectionHeader(LocalizationService.translate(pref, 'app_preferences_section')),
-              _settingsTile(
-                icon: Icons.brightness_6_outlined,
-                title: LocalizationService.translate(pref, 'theme_mode'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _themeMode == 'light'
-                          ? LocalizationService.translate(pref, 'theme_light')
-                          : LocalizationService.translate(pref, 'theme_dark'),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                    ),
-                    const SizedBox(width: 4),
-                    Switch(
-                      value: _themeMode == 'dark',
-                      activeColor: const Color(0xFF0F172A),
-                      onChanged: (val) => _saveTheme(val ? 'dark' : 'light'),
-                    ),
-                  ],
-                ),
-              ),
-              _settingsTile(
-                icon: Icons.notifications_outlined,
-                title: LocalizationService.translate(pref, 'notifications'),
-                trailing: Switch(
-                  value: _notificationsEnabled,
-                  activeColor: const Color(0xFF0F172A),
-                  onChanged: _saveNotifications,
-                ),
               ),
 
               const SizedBox(height: 24),

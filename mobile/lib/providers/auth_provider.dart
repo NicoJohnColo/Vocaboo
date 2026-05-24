@@ -28,6 +28,22 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> checkNameAvailable(String displayName) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/check-name?displayName=${Uri.encodeComponent(displayName)}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        return body['available'] == true;
+      }
+      return true; // fail open if endpoint unavailable
+    } catch (e) {
+      return true; // fail open on connection error
+    }
+  }
+
   Future<void> tryAutoLogin() async {
     if (_isInitialized) return;
     _isInitialized = true;

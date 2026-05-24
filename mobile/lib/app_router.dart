@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
+import 'models/vocabulary_word_model.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_setup_screen.dart';
@@ -23,6 +24,7 @@ import 'screens/mastery_result_screen.dart';
 import 'screens/sandbox_mode_screen.dart';
 import 'screens/user_dashboard_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/lesson_score_screen.dart';
 
 class _AuthListenable extends ChangeNotifier {
   final AuthProvider _auth;
@@ -129,6 +131,7 @@ class AppRouter {
             sessionId: s.pathParameters['sessionId']!,
             lessonId: e['lessonId'] as String,
             categoryId: e['categoryId']?.toString() ?? '',
+            lessonTitle: e['lessonTitle'] as String?,
             knownWordIds: List<String>.from(e['knownWordIds']),
             unknownWordIds: List<String>.from(e['unknownWordIds']),
             allWords: List<Map<String, dynamic>>.from(e['allWords']),
@@ -144,7 +147,26 @@ class AppRouter {
             sessionId: s.pathParameters['sessionId']!,
             lessonId: e['lessonId'] as String,
             categoryId: e['categoryId']?.toString() ?? '',
+            lessonTitle: e['lessonTitle'] as String?,
             allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
+            isSandbox: e['isSandbox'] as bool? ?? false,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/session/:sessionId/lesson-score',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
+          return LessonScoreScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            lessonId: e['lessonId'] as String,
+            categoryId: e['categoryId']?.toString() ?? '',
+            lessonTitle: e['lessonTitle'] as String,
+            allWords: List<VocabularyWordModel>.from(e['allWords'].map((w) => VocabularyWordModel.fromJson(w as Map<String, dynamic>))),
+            wordPronunciationCorrect: Map<String, bool>.from(e['wordPronunciationCorrect']),
+            wordPronunciationAttempts: Map<String, int>.from(e['wordPronunciationAttempts']),
+            failedSentenceWordIds: Set<String>.from(e['failedSentenceWordIds']),
+            overallScore: (e['overallScore'] as num).toDouble(),
             isSandbox: e['isSandbox'] as bool? ?? false,
           );
         },

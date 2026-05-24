@@ -375,6 +375,67 @@ class LocalStorageService {
     await _prefs!.remove('review_completion_state_$sessionId');
   }
 
+  // --- Cumulative Review Completion ---
+  static Future<void> saveCumulativeReviewCompleted(String categoryId, double masteryScore, int masteredCount, int totalItems, String sessionId, List<String> missedWordIds, List<Map<String, dynamic>> allWords) async {
+    await init();
+    await _prefs!.setBool('cumulative_review_completed_$categoryId', true);
+    await _prefs!.setDouble('cumulative_review_score_$categoryId', masteryScore);
+    await _prefs!.setInt('cumulative_review_mastered_$categoryId', masteredCount);
+    await _prefs!.setInt('cumulative_review_total_$categoryId', totalItems);
+    await _prefs!.setString('cumulative_review_session_id_$categoryId', sessionId);
+    await _prefs!.setStringList('cumulative_review_missed_$categoryId', missedWordIds);
+    await _prefs!.setString('cumulative_review_all_words_$categoryId', json.encode(allWords));
+  }
+
+  static Future<bool> getCumulativeReviewCompleted(String categoryId) async {
+    await init();
+    return _prefs!.getBool('cumulative_review_completed_$categoryId') ?? false;
+  }
+
+  static Future<double?> getCumulativeReviewScore(String categoryId) async {
+    await init();
+    return _prefs!.getDouble('cumulative_review_score_$categoryId');
+  }
+
+  static Future<int?> getCumulativeReviewMasteredCount(String categoryId) async {
+    await init();
+    return _prefs!.getInt('cumulative_review_mastered_$categoryId');
+  }
+
+  static Future<int?> getCumulativeReviewTotalItems(String categoryId) async {
+    await init();
+    return _prefs!.getInt('cumulative_review_total_$categoryId');
+  }
+
+  static Future<String?> getCumulativeReviewSessionId(String categoryId) async {
+    await init();
+    return _prefs!.getString('cumulative_review_session_id_$categoryId');
+  }
+
+  static Future<List<String>> getCumulativeReviewMissedWordIds(String categoryId) async {
+    await init();
+    return _prefs!.getStringList('cumulative_review_missed_$categoryId') ?? [];
+  }
+
+  static Future<List<Map<String, dynamic>>> getCumulativeReviewAllWords(String categoryId) async {
+    await init();
+    final raw = _prefs!.getString('cumulative_review_all_words_$categoryId');
+    if (raw == null) return [];
+    final decoded = json.decode(raw) as List<dynamic>;
+    return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  static Future<void> clearCumulativeReviewCompletion(String categoryId) async {
+    await init();
+    await _prefs!.remove('cumulative_review_completed_$categoryId');
+    await _prefs!.remove('cumulative_review_score_$categoryId');
+    await _prefs!.remove('cumulative_review_mastered_$categoryId');
+    await _prefs!.remove('cumulative_review_total_$categoryId');
+    await _prefs!.remove('cumulative_review_session_id_$categoryId');
+    await _prefs!.remove('cumulative_review_missed_$categoryId');
+    await _prefs!.remove('cumulative_review_all_words_$categoryId');
+  }
+
   // --- Module Scoring Persistence ---
   static Future<void> saveModuleScore(String lessonId, int moduleNumber, int correctCount, int totalCount) async {
     await init();
@@ -404,6 +465,23 @@ class LocalStorageService {
   static Future<double?> getLessonScore(String lessonId) async {
     await init();
     return _prefs!.getDouble('lesson_${lessonId}_score');
+  }
+
+  static Future<void> saveLessonScoreDetails(String lessonId, Map<String, dynamic> details) async {
+    await init();
+    await _prefs!.setString('lesson_${lessonId}_score_details', json.encode(details));
+  }
+
+  static Future<Map<String, dynamic>?> getLessonScoreDetails(String lessonId) async {
+    await init();
+    final raw = _prefs!.getString('lesson_${lessonId}_score_details');
+    if (raw == null) return null;
+    return json.decode(raw) as Map<String, dynamic>;
+  }
+
+  static Future<void> clearLessonScoreDetails(String lessonId) async {
+    await init();
+    await _prefs!.remove('lesson_${lessonId}_score_details');
   }
 
   // --- Retry Queue Persistence ---

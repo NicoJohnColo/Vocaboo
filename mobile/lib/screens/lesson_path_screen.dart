@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../models/lesson_model.dart';
 import '../providers/lesson_provider.dart';
+import '../services/local_storage_service.dart';
+import 'mastery_result_screen.dart';
 
 class LessonPathScreen extends StatefulWidget {
   final String categoryId;
@@ -19,12 +21,33 @@ class LessonPathScreen extends StatefulWidget {
 }
 
 class _LessonPathScreenState extends State<LessonPathScreen> {
+  Map<String, double> _localScores = {};
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<LessonProvider>(context, listen: false).loadLessons(widget.categoryId);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final provider = Provider.of<LessonProvider>(context, listen: false);
+      await provider.loadLessons(widget.categoryId);
+      await _loadLocalScores(provider);
     });
+  }
+
+  Future<void> _loadLocalScores(LessonProvider provider) async {
+    final scores = <String, double>{};
+    for (final lesson in provider.lessons) {
+      if (lesson.status == 'COMPLETED') {
+        final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
+        if (localScore != null && localScore >= 0) {
+          scores[lesson.lessonId] = localScore;
+        }
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _localScores = scores;
+      });
+    }
   }
 
   @override
@@ -33,10 +56,30 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     final provider = Provider.of<LessonProvider>(context);
     
     // Find composite review lesson if present
-    final compositeReviewLesson = provider.lessons.cast<LessonModel?>().firstWhere(
+    LessonModel? compositeReviewLesson = provider.lessons.cast<LessonModel?>().firstWhere(
       (lesson) => lesson?.isCompositeReview ?? false,
       orElse: () => null,
     );
+
+    // If backend doesn't provide a composite review lesson, construct a local static one
+    if (compositeReviewLesson == null && provider.lessons.length >= 2) {
+      final lesson1 = provider.lessons[0];
+      final lesson2 = provider.lessons[1];
+      compositeReviewLesson = LessonModel(
+        lessonId: 'local_cumulative_review',
+        categoryId: widget.categoryId,
+        lessonTitle: 'Cumulative Review',
+        lessonDescription: 'Cumulative review of Lessons 1 and 2',
+        gradeLevel: 'GRADE_4',
+        lessonOrder: 3,
+        totalWordCount: lesson1.totalWordCount + lesson2.totalWordCount,
+        status: (lesson1.status == 'COMPLETED' && lesson2.status == 'COMPLETED') ? 'UNLOCKED' : 'LOCKED',
+        lessonType: 'COMPOSITE_REVIEW',
+        sourceLessonIds: [lesson1.lessonId, lesson2.lessonId],
+        compositeReviewAfterLessonId: lesson2.lessonId,
+      );
+    }
+    
     final hasReviewNode = compositeReviewLesson != null;
     
     // Determine insertion index based on compositeReviewAfterLessonId
@@ -60,9 +103,13 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     
     // Check if review is unlocked (all source lessons completed)
     final reviewUnlocked = hasReviewNode && sourceLessonIds.isNotEmpty && 
-        sourceLessonIds.every((id) => 
-            provider.lessons.firstWhere((l) => l.lessonId == id, orElse: () => provider.lessons.first).status == 'COMPLETED'
-        );
+        sourceLessonIds.every((id) {
+          final found = provider.lessons.cast<LessonModel?>().firstWhere(
+            (l) => l?.lessonId == id,
+            orElse: () => null,
+          );
+          return found != null && found.status == 'COMPLETED';
+        });
     
     final totalItems = provider.lessons.length + (hasReviewNode ? 1 : 0);
 
@@ -86,7 +133,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         ),
       ),
       body: RefreshIndicator(
-        onRefresh: () => provider.loadLessons(widget.categoryId),
+        onRefresh: () async {
+          await provider.loadLessons(widget.categoryId);
+          await _loadLocalScores(provider);
+        },
         child: SafeArea(
           child: provider.isLoading && provider.lessons.isEmpty
               ? const Center(child: CircularProgressIndicator())
@@ -140,12 +190,16 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                     GestureDetector(
                                       onTap: isEnabled
                                           ? () {
-                                              context.push(
-                                                '/lesson/${lesson.lessonId}/diagnostic',
-                                                extra: {
-                                                  'categoryId': widget.categoryId,
-                                                },
-                                              );
+                                              if (lesson.status == 'COMPLETED') {
+                                                _showCompletedLessonOptions(lesson);
+                                              } else {
+                                                context.push(
+                                                  '/lesson/${lesson.lessonId}/diagnostic',
+                                                  extra: {
+                                                    'categoryId': widget.categoryId,
+                                                  },
+                                                );
+                                              }
                                             }
                                           : null,
                                       child: Column(
@@ -225,22 +279,28 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                     color: Color(0xFF64748B),
                                                   ),
                                                 ),
-                                                if (lesson.status == 'COMPLETED' && lesson.masteryScore != null) ...[
-                                                  const SizedBox(height: 6),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: nodeColor.withValues(alpha: 0.12),
-                                                      borderRadius: BorderRadius.circular(8),
-                                                    ),
-                                                    child: Text(
-                                                      'Score: ${lesson.masteryScore!.toStringAsFixed(0)}%',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: nodeColor,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
+                                                if (lesson.status == 'COMPLETED') ...[
+                                                  Builder(
+                                                    builder: (context) {
+                                                      final displayScore = _localScores[lesson.lessonId] ?? lesson.masteryScore;
+                                                      if (displayScore == null) return const SizedBox.shrink();
+                                                      return Container(
+                                                        margin: const EdgeInsets.only(top: 6),
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: nodeColor.withValues(alpha: 0.12),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                        ),
+                                                        child: Text(
+                                                          'Score: ${displayScore.toStringAsFixed(0)}%',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            color: nodeColor,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
                                                   ),
                                                 ],
                                               ],
@@ -273,17 +333,175 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     );
   }
 
+  void _showCompletedLessonOptions(LessonModel lesson) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          lesson.lessonTitle,
+          style: const TextStyle(
+            fontFamily: 'Outfit',
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0F172A),
+            fontSize: 20,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'You completed this lesson. What would you like to do?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF64748B),
+            height: 1.5,
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          // View Score button
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _viewLessonScore(lesson);
+            },
+            icon: const Icon(Icons.visibility_rounded, size: 18),
+            label: const Text('View Score'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF06A6FF),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(
+                fontFamily: 'Outfit',
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Retry button
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _retryLesson(lesson);
+            },
+            icon: const Icon(Icons.replay_rounded, size: 18),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(
+                fontFamily: 'Outfit',
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _viewLessonScore(LessonModel lesson) async {
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+
+    // Load vocabulary words for this lesson
+    final words = await provider.loadVocabulary(lesson.lessonId);
+    final allWords = words.map((w) => w.toJson()).toList();
+
+    if (!mounted) return;
+
+    // Load stored score data from local storage
+    final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
+    final scoreDetails = await LocalStorageService.getLessonScoreDetails(lesson.lessonId);
+
+    final overallScore = localScore ?? lesson.masteryScore ?? 0.0;
+
+    // Extract per-word data if available
+    Map<String, bool> wordPronunciationCorrect = {};
+    Map<String, int> wordPronunciationAttempts = {};
+    Set<String> failedSentenceWordIds = {};
+
+    if (scoreDetails != null) {
+      final correctRaw = scoreDetails['wordPronunciationCorrect'];
+      if (correctRaw is Map) {
+        wordPronunciationCorrect = Map<String, bool>.from(correctRaw);
+      }
+      final attemptsRaw = scoreDetails['wordPronunciationAttempts'];
+      if (attemptsRaw is Map) {
+        wordPronunciationAttempts = Map<String, int>.from(attemptsRaw);
+      }
+      final failedRaw = scoreDetails['failedSentenceWordIds'];
+      if (failedRaw is List) {
+        failedSentenceWordIds = Set<String>.from(failedRaw.map((e) => e.toString()));
+      }
+    }
+
+    // Ensure all words have entries (default false/0 for graceful display)
+    for (final word in words) {
+      wordPronunciationCorrect.putIfAbsent(word.wordId, () => false);
+      wordPronunciationAttempts.putIfAbsent(word.wordId, () => 0);
+    }
+
+    if (!mounted) return;
+
+    final sessionId = 'review_${lesson.lessonId}_${DateTime.now().millisecondsSinceEpoch}';
+
+    context.push(
+      '/session/$sessionId/lesson-score',
+      extra: {
+        'sessionId': sessionId,
+        'lessonId': lesson.lessonId,
+        'categoryId': widget.categoryId,
+        'lessonTitle': lesson.lessonTitle,
+        'allWords': allWords,
+        'wordPronunciationCorrect': wordPronunciationCorrect,
+        'wordPronunciationAttempts': wordPronunciationAttempts,
+        'failedSentenceWordIds': failedSentenceWordIds,
+        'overallScore': overallScore,
+        'isSandbox': false,
+      },
+    );
+  }
+
+  Future<void> _retryLesson(LessonModel lesson) async {
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+
+    // Attempt backend reset
+    final success = await provider.resetLesson(lesson.lessonId);
+
+    // Always clear local score data for this lesson
+    await LocalStorageService.saveLessonScore(lesson.lessonId, 0.0);
+    await LocalStorageService.clearLessonScoreDetails(lesson.lessonId);
+
+    if (!mounted) return;
+
+    // Refresh lessons from backend if reset succeeded, or reload anyway
+    await provider.loadLessons(widget.categoryId);
+    await _loadLocalScores(provider);
+
+    if (!mounted) return;
+
+    // Navigate to diagnostic as a fresh start
+    context.push(
+      '/lesson/${lesson.lessonId}/diagnostic',
+      extra: {
+        'categoryId': widget.categoryId,
+      },
+    );
+  }
+
   Widget _buildReviewNode(BuildContext context, ThemeData theme, bool reviewUnlocked, List<String> lessonIds) {
     final color = reviewUnlocked ? const Color(0xFF10B981) : const Color(0xFFCBD5E1);
     final icon = reviewUnlocked ? Icons.auto_graph_rounded : Icons.lock_rounded;
     
     // Generate dynamic label based on lesson IDs
-    String reviewLabel = 'Review';
-    if (lessonIds.length == 2) {
-      reviewLabel = 'Review: Lessons 1–2';
-    } else if (lessonIds.isNotEmpty) {
-      reviewLabel = 'Review: ${lessonIds.length} Lessons';
-    }
+    String reviewLabel = 'Cumulative Review';
     
     String unlockMessage = reviewUnlocked 
         ? 'Tap to start mixed review' 
@@ -298,16 +516,25 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
           children: [
             GestureDetector(
               onTap: reviewUnlocked
-                  ? () {
-                      final reviewSessionId = 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
-                      context.push(
-                        '/session/$reviewSessionId/cumulative-review',
-                        extra: {
-                          'categoryId': widget.categoryId,
-                          'lessonIds': lessonIds,
-                          'isSandbox': false,
-                        },
-                      );
+                  ? () async {
+                      // Check if cumulative review has been completed
+                      final isCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
+                      
+                      if (!mounted) return;
+                      
+                      if (isCompleted) {
+                        _showCompletedReviewOptions(context, lessonIds);
+                      } else {
+                        final reviewSessionId = 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
+                        context.push(
+                          '/session/$reviewSessionId/cumulative-review',
+                          extra: {
+                            'categoryId': widget.categoryId,
+                            'lessonIds': lessonIds,
+                            'isSandbox': false,
+                          },
+                        );
+                      }
                     }
                   : null,
               child: Column(
@@ -372,6 +599,122 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  void _showCompletedReviewOptions(BuildContext context, List<String> lessonIds) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'Cumulative Review',
+          style: TextStyle(
+            fontFamily: 'Outfit',
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0F172A),
+            fontSize: 20,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'You completed the cumulative review. What would you like to do?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF64748B),
+            height: 1.5,
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          // View Score button
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _viewCumulativeReviewScore();
+            },
+            icon: const Icon(Icons.visibility_rounded, size: 18),
+            label: const Text('View Score'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF06A6FF),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(
+                fontFamily: 'Outfit',
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Retry button
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _retryCumulativeReview(lessonIds);
+            },
+            icon: const Icon(Icons.replay_rounded, size: 18),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(
+                fontFamily: 'Outfit',
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _viewCumulativeReviewScore() async {
+    final masteryScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId);
+    final masteredCount = await LocalStorageService.getCumulativeReviewMasteredCount(widget.categoryId);
+    final totalItems = await LocalStorageService.getCumulativeReviewTotalItems(widget.categoryId);
+    final sessionId = await LocalStorageService.getCumulativeReviewSessionId(widget.categoryId) ?? 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
+    final missedWordIds = await LocalStorageService.getCumulativeReviewMissedWordIds(widget.categoryId);
+    final allWords = await LocalStorageService.getCumulativeReviewAllWords(widget.categoryId);
+
+    if (!mounted) return;
+
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MasteryResultScreen(
+        sessionId: sessionId,
+        categoryId: widget.categoryId,
+        isSandbox: false,
+        totalItems: totalItems ?? 0,
+        masteredCount: masteredCount ?? 0,
+        missedWordIds: missedWordIds,
+        allWords: allWords,
+        masteryScore: masteryScore,
+      ),
+    ));
+  }
+
+  Future<void> _retryCumulativeReview(List<String> lessonIds) async {
+    // Clear cumulative review completion state
+    await LocalStorageService.clearCumulativeReviewCompletion(widget.categoryId);
+
+    if (!mounted) return;
+
+    // Navigate to cumulative review with a fresh session
+    final reviewSessionId = 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
+    context.push(
+      '/session/$reviewSessionId/cumulative-review',
+      extra: {
+        'categoryId': widget.categoryId,
+        'lessonIds': lessonIds,
+        'isSandbox': false,
+      },
     );
   }
 }

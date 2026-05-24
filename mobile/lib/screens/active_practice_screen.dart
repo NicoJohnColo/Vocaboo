@@ -15,6 +15,7 @@ class ActivePracticeScreen extends StatefulWidget {
   final String sessionId;
   final String lessonId;
   final String categoryId;
+  final String? lessonTitle;
   final List<String> knownWordIds;
   final List<String> unknownWordIds;
   final List<Map<String, dynamic>> allWords;
@@ -25,6 +26,7 @@ class ActivePracticeScreen extends StatefulWidget {
     required this.sessionId,
     required this.lessonId,
     required this.categoryId,
+    this.lessonTitle,
     required this.knownWordIds,
     required this.unknownWordIds,
     required this.allWords,
@@ -570,6 +572,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       extra: {
         'lessonId': widget.lessonId,
         'categoryId': widget.categoryId,
+        'lessonTitle': widget.lessonTitle,
         'allWords': widget.allWords,
         'isSandbox': widget.isSandbox,
       },
@@ -1418,6 +1421,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                     extra: {
                       'lessonId': widget.lessonId,
                       'categoryId': widget.categoryId,
+                      'lessonTitle': widget.lessonTitle,
                       'allWords': widget.allWords,
                       'isSandbox': widget.isSandbox,
                     },

@@ -8,6 +8,7 @@ import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
 import '../services/tts_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/scoring_service.dart';
 import '../widgets/mascot_visual.dart';
 import 'mastery_result_screen.dart';
 
@@ -16,8 +17,9 @@ class CumulativeMixedReviewScreen extends StatefulWidget {
   final List<Map<String, dynamic>> allWords;
   final String categoryId;
   final bool isSandbox;
+  final List<String>? lessonIds;
   final List<String>? priorityWordIds;
-  const CumulativeMixedReviewScreen({super.key, required this.sessionId, this.allWords = const [], required this.categoryId, this.isSandbox = false, this.priorityWordIds});
+  const CumulativeMixedReviewScreen({super.key, required this.sessionId, this.allWords = const [], required this.categoryId, this.isSandbox = false, this.lessonIds, this.priorityWordIds});
 
   @override
   State<CumulativeMixedReviewScreen> createState() => _CumulativeMixedReviewScreenState();
@@ -29,6 +31,19 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   final Map<String, bool> _results = {};
   Map<String, dynamic>? _pendingSavedState;
   bool _showResumePrompt = false;
+  bool _showFailurePrompt = false;
+  final List<Map<String, dynamic>> _retryQueue = [];
+  int _firstPassCorrectCount = 0;
+  double? _failedFinalScore;
+  static const List<String> _mainFormats = [
+    'FLASHCARD_RECALL',
+    'MULTIPLE_CHOICE',
+    'LISTENING_TYPING',
+    'SENTENCE_RECONSTRUCTION',
+    'FILL_IN_THE_BLANK',
+    'IMAGE_MATCHING',
+    'TRANSLATION_MATCHING',
+  ];
 
   // Working queue with activityFormat assigned
   final List<Map<String, dynamic>> _queue = [];
@@ -36,6 +51,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   double? _weightedScore;
   String? _selectedMatchingWord;
   List<String> _matchingOptions = [];
+  bool _flashcardFlipped = false;
+  final TextEditingController _typingController = TextEditingController();
+  final List<String> _scrambledWords = [];
+  final List<String> _assembledWords = [];
 
   Map<String, dynamic>? get _currentItem => _currentIndex < _queue.length ? _queue[_currentIndex] : null;
 
@@ -44,6 +63,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       case 'FILL_IN_THE_BLANK':
         return MascotType.sippy;
       case 'MATCHING':
+      case 'TRANSLATION_MATCHING':
         return MascotType.toti;
       default:
         return MascotType.bibo;
@@ -56,17 +76,61 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     _fetchReviewItems();
   }
 
+  @override
+  void dispose() {
+    _typingController.dispose();
+    super.dispose();
+  }
+
   void _prepareCurrentActivityState() {
     _selectedMatchingWord = null;
     _matchingOptions = [];
+    _flashcardFlipped = false;
+    _typingController.clear();
+    _scrambledWords.clear();
+    _assembledWords.clear();
 
     final item = _currentItem;
     if (item == null) return;
 
     final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
-    if (fmt == 'MATCHING') {
+    if (fmt == 'MATCHING' || fmt == 'TRANSLATION_MATCHING') {
       _matchingOptions = _buildMatchingOptions(item);
+    } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
+      _scrambledWords.addAll(_sentenceTokens(item));
+      _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_scramble'.hashCode));
     }
+  }
+
+  List<String> _sentenceTokens(Map<String, dynamic> item) {
+    final explicit = (item['sentenceArrangementTokens'] as List<dynamic>?)?.map((token) => token.toString()).where((token) => token.trim().isNotEmpty).toList();
+    if (explicit != null && explicit.length >= 2) return explicit;
+
+    final sentence = (item['sentenceCompletionSentence'] ?? item['example'] ?? '').toString().trim();
+    if (sentence.isEmpty) {
+      final word = (item['word'] ?? '').toString().trim();
+      return word.isEmpty ? const [] : [word];
+    }
+
+    return sentence
+        .replaceAll(RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~(?)]'), '')
+        .split(' ')
+        .where((word) => word.trim().isNotEmpty)
+        .toList();
+  }
+
+  List<String> _buildQueueFormats(int count) {
+    final rnd = Random();
+    final planned = <String>[];
+    for (var index = 0; index < count; index++) {
+      var choice = _mainFormats[rnd.nextInt(_mainFormats.length)];
+      if (planned.length >= 2 && planned[planned.length - 1] == choice && planned[planned.length - 2] == choice) {
+        final alternatives = _mainFormats.where((fmt) => fmt != choice).toList();
+        choice = alternatives[rnd.nextInt(alternatives.length)];
+      }
+      planned.add(choice);
+    }
+    return planned;
   }
 
   List<String> _buildMatchingOptions(Map<String, dynamic> item) {
@@ -104,18 +168,20 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     return options;
   }
 
-  @override
-  void dispose() {
-    if (!_loading && _queue.isNotEmpty) {
-      LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
-        'reviewItems': _reviewItems,
-        'queue': _queue,
-        'currentIndex': _currentIndex,
-        'results': _results,
-        'weightedScore': _weightedScore,
-      });
+  Future<List<String>> _resolveLessonIds(LessonProvider lessons) async {
+    if (widget.lessonIds != null && widget.lessonIds!.isNotEmpty) {
+      return List<String>.from(widget.lessonIds!);
     }
-    super.dispose();
+
+    if (widget.categoryId.isNotEmpty) {
+      await lessons.loadLessons(widget.categoryId);
+      final selected = lessons.lessons.take(2).map((lesson) => lesson.lessonId).where((id) => id.isNotEmpty).toList();
+      if (selected.isNotEmpty) {
+        return selected;
+      }
+    }
+
+    return const [];
   }
 
   Future<void> _fetchReviewItems() async {
@@ -132,11 +198,20 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
 
     if (!mounted) return;
     final lessons = Provider.of<LessonProvider>(context, listen: false);
-    final items = widget.isSandbox
-        ? widget.allWords
-        : widget.categoryId.isNotEmpty
-            ? await lessons.loadCategoryActivity(widget.categoryId)
-            : widget.allWords;
+    final lessonIds = await _resolveLessonIds(lessons);
+    List<Map<String, dynamic>> items;
+
+    if (widget.allWords.isNotEmpty) {
+      items = widget.allWords;
+    } else if (lessonIds.isNotEmpty) {
+      final lessonBatches = await Future.wait(lessonIds.map((lessonId) => lessons.loadVocabulary(lessonId)));
+      items = lessonBatches.expand((batch) => batch).map((word) => word.toJson()).toList();
+    } else if (widget.categoryId.isNotEmpty) {
+      items = await lessons.loadCategoryActivity(widget.categoryId);
+    } else {
+      items = const [];
+    }
+
     final list = items.map((e) {
       final item = Map<String, dynamic>.from(e);
       return <String, dynamic>{
@@ -156,13 +231,21 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     // Ensure every item has a wordId and englishWord
     list.removeWhere((it) => ((it['wordId'] ?? it['vocabularyId'] ?? '')).toString().isEmpty);
 
-    // Build queue ensuring each word appears at least once
+    // Build queue ensuring each word appears at least once and formats stay varied.
     final rnd = Random();
     _queue.clear();
-    for (final it in list) {
-      final formats = ['MULTIPLE_CHOICE', 'FILL_IN_THE_BLANK', 'MATCHING'];
-      final fmt = formats[rnd.nextInt(formats.length)];
-      _queue.add({...it, 'activityFormat': fmt});
+    final plannedFormats = _buildQueueFormats(list.length);
+    for (var index = 0; index < list.length; index++) {
+      final item = list[index];
+      var fmt = plannedFormats[index];
+      final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
+      if (fmt == 'IMAGE_MATCHING' && !hasImage) {
+        fmt = 'MULTIPLE_CHOICE';
+      }
+      if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
+        fmt = 'FILL_IN_THE_BLANK';
+      }
+      _queue.add({...item, 'activityFormat': fmt});
     }
 
     // If retry priority provided, append duplicates of those words
@@ -170,12 +253,18 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       final prioritySet = widget.priorityWordIds!.toSet();
       final prioritized = list.where((it) => prioritySet.contains((it['wordId'] ?? '').toString())).toList();
       for (final it in prioritized) {
-        final fmt = ['MULTIPLE_CHOICE', 'FILL_IN_THE_BLANK', 'MATCHING'][rnd.nextInt(3)];
+        var fmt = _buildQueueFormats(1).first;
+        if (fmt == 'IMAGE_MATCHING' && (it['imageAssetPath'] ?? '').toString().isEmpty) {
+          fmt = 'MULTIPLE_CHOICE';
+        }
+        if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(it).length < 2) {
+          fmt = 'FILL_IN_THE_BLANK';
+        }
         _queue.add({...it, 'activityFormat': fmt});
       }
     }
 
-    _queue.shuffle();
+    _queue.shuffle(rnd);
 
     setState(() {
       _reviewItems = list;
@@ -183,6 +272,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _currentIndex = 0;
       // Do not compute final weighted score yet; will compute on finish using prior-module data.
       _weightedScore = null;
+      _firstPassCorrectCount = 0;
+      _retryQueue.clear();
+      _results.clear();
       _prepareCurrentActivityState();
     });
 
@@ -190,8 +282,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
       'reviewItems': _reviewItems,
       'queue': _queue,
+      'retryQueue': _retryQueue,
       'currentIndex': _currentIndex,
       'results': _results,
+      'firstPassCorrectCount': _firstPassCorrectCount,
       'weightedScore': _weightedScore,
     });
   }
@@ -204,10 +298,14 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _queue
         ..clear()
         ..addAll((saved['queue'] as List<dynamic>? ?? const []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)));
+      _retryQueue
+        ..clear()
+        ..addAll((saved['retryQueue'] as List<dynamic>? ?? const []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)));
       _currentIndex = saved['currentIndex'] as int? ?? 0;
       _results
         ..clear()
         ..addAll((saved['results'] as Map?)?.map((k, v) => MapEntry(k.toString(), v as bool)) ?? {});
+      _firstPassCorrectCount = saved['firstPassCorrectCount'] as int? ?? _results.values.where((value) => value).length;
       _weightedScore = (saved['weightedScore'] as num?)?.toDouble();
       _pendingSavedState = null;
       _showResumePrompt = false;
@@ -221,6 +319,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     setState(() {
       _pendingSavedState = null;
       _showResumePrompt = false;
+      _showFailurePrompt = false;
+      _failedFinalScore = null;
       _loading = true;
     });
     // Re-run fetch to build a fresh queue
@@ -232,14 +332,20 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   }
 
   void _recordAnswer(String wordId, bool correct) {
-    _results[wordId] = correct;
-    // When incorrect, enqueue reinforcement with a different activity format
-    if (!correct) {
+    if (!_results.containsKey(wordId)) {
+      _results[wordId] = correct;
+      if (correct) {
+        _firstPassCorrectCount++;
+      }
+    }
+
+    // When incorrect on the first pass, enqueue reinforcement with a different activity format
+    if (!correct && !_retryQueue.any((item) => (item['wordId'] ?? '').toString() == wordId)) {
       final rnd = Random();
       final fmt = ['MULTIPLE_CHOICE', 'FILL_IN_THE_BLANK', 'MATCHING'][rnd.nextInt(3)];
       final original = _reviewItems.firstWhere((it) => ((it['wordId'] ?? '').toString()) == wordId, orElse: () => null);
       if (original != null) {
-        _queue.add({...original, 'activityFormat': fmt});
+        _retryQueue.add({...original, 'activityFormat': fmt});
       }
     }
   }
@@ -250,34 +356,105 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _prepareCurrentActivityState();
     });
     if (_currentIndex >= _queue.length) {
-      _finishReview();
+      if (_retryQueue.isNotEmpty) {
+        setState(() {
+          _queue
+            ..clear()
+            ..addAll(_retryQueue);
+          _retryQueue.clear();
+          _currentIndex = 0;
+          _prepareCurrentActivityState();
+        });
+        LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
+          'reviewItems': _reviewItems,
+          'queue': _queue,
+          'retryQueue': _retryQueue,
+          'currentIndex': _currentIndex,
+          'results': _results,
+          'firstPassCorrectCount': _firstPassCorrectCount,
+          'weightedScore': _weightedScore,
+        });
+      } else {
+        _finishReview();
+      }
     }
   }
 
   Future<void> _finishReview() async {
     final lessons = Provider.of<LessonProvider>(context, listen: false);
-    final module4Percent = _queue.isEmpty ? 0.0 : (_results.values.where((v) => v).length / _queue.length) * 100.0;
+    final lessonIds = await _resolveLessonIds(lessons);
+    final lessonScores = <double>[];
 
-    // Try to load prior session summary (Modules 1-3) to compute weighted mastery.
-    final prevSummary = await LocalStorageService.getSessionSummary(widget.sessionId);
-    final prevMastery = prevSummary?.overallMasteryPercentage ?? 0.0;
+    for (final lessonId in lessonIds) {
+      final storedLessonScore = await LocalStorageService.getLessonScore(lessonId);
+      if (storedLessonScore != null) {
+        lessonScores.add(storedLessonScore);
+        continue;
+      }
 
-    // Weighting: Modules 1-3 = 60%, Module 4 = 30% (final mastery expressed as percent)
-    final weighted = (prevMastery * 0.60) + (module4Percent * 0.30);
-    _weightedScore = weighted;
+      final module2 = await LocalStorageService.getModuleScore(lessonId, 2);
+      final module3 = await LocalStorageService.getModuleScore(lessonId, 3);
+      final scores = <double>[];
+      final module2Total = module2?['total'] ?? 0;
+      final module2Correct = module2?['correct'] ?? 0;
+      final module3Total = module3?['total'] ?? 0;
+      final module3Correct = module3?['correct'] ?? 0;
+      if (module2Total > 0) {
+        scores.add(ScoringService.computeLessonScore(module2Correct, module2Total));
+      }
+      if (module3Total > 0) {
+        scores.add(ScoringService.computeLessonScore(module3Correct, module3Total));
+      }
+      lessonScores.add(scores.isEmpty ? 0.0 : ScoringService.computeCombinedLessonScore(scores.first, scores.length > 1 ? scores[1] : scores.first));
+    }
 
-    final result = widget.isSandbox
+    final lessonScore = lessonScores.isEmpty ? 0.0 : lessonScores.reduce((a, b) => a + b) / lessonScores.length;
+    final cumulativeReviewScore = _reviewItems.isEmpty ? 0.0 : (_firstPassCorrectCount / _reviewItems.length) * 100.0;
+    _weightedScore = ScoringService.computeFinalScore(lessonScore, cumulativeReviewScore);
+    bool passed = ScoringService.isPassing(_weightedScore ?? 0.0);
+
+    // Call backend mastery endpoint for server-side validation
+    final masteryResult = passed && !widget.isSandbox
+        ? await lessons.submitMastery(
+            categoryId: widget.categoryId,
+            lessonIds: lessonIds,
+            lessonScore: lessonScore,
+            cumulativeReviewScore: cumulativeReviewScore,
+            finalScore: _weightedScore ?? 0.0,
+            passed: passed,
+            totalItems: _reviewItems.length,
+            masteredCount: _firstPassCorrectCount,
+            missedWordIds: _reviewItems
+                .where((it) => _results[(it['wordId'] ?? '').toString()] == false)
+                .map((it) => (it['wordId'] ?? '').toString())
+                .where((id) => id.isNotEmpty)
+                .toList(),
+          )
+        : null;
+
+    // Use server-validated score if available
+    if (masteryResult != null) {
+      _weightedScore = (masteryResult['finalScore'] as num?)?.toDouble() ?? _weightedScore;
+      final serverPassed = masteryResult['passed'] as bool? ?? passed;
+      if (serverPassed != passed) {
+        passed = serverPassed;
+      }
+    }
+
+    final result = passed
+      ? widget.isSandbox
         ? await lessons.completeSandbox(widget.sessionId)
         : await lessons.completeCategoryReview(
-            sessionId: widget.sessionId,
-            categoryId: widget.categoryId,
-            score: _weightedScore ?? module4Percent,
-          );
+          sessionId: widget.sessionId,
+          categoryId: widget.categoryId,
+          score: _weightedScore ?? cumulativeReviewScore,
+          )
+      : null;
 
-    int total = _queue.length;
-    int mastered = _results.values.where((v) => v).length;
-    List<String> missed = _queue
-        .where((it) => !_results.containsKey((it['wordId'] ?? '').toString()) || _results[(it['wordId'] ?? '').toString()] == false)
+    int total = _reviewItems.length;
+    int mastered = _firstPassCorrectCount;
+    List<String> missed = _reviewItems
+        .where((it) => _results[(it['wordId'] ?? '').toString()] == false)
         .map((it) => (it['wordId'] ?? '').toString())
         .where((id) => id.isNotEmpty)
         .toList();
@@ -285,14 +462,34 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     if (result != null) {
       total = result['totalItems'] as int? ?? total;
       mastered = result['masteredCount'] as int? ?? (result['correctCount'] as int? ?? mastered);
-      _weightedScore = (result['score'] as num?)?.toDouble() ?? module4Percent;
+      _weightedScore = (result['score'] as num?)?.toDouble() ?? _weightedScore;
       final backendMissed = result['missedWordIds'] ?? result['wordsToReview'] ?? result['missedWords'];
       if (backendMissed is List) {
         missed = backendMissed.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
       }
     }
 
-    await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
+    if (passed) {
+      await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
+      await LocalStorageService.clearReviewCompletionState(widget.sessionId);
+    } else {
+      await LocalStorageService.saveReviewCompletionState(widget.sessionId, {
+        'lessonScore': lessonScore,
+        'cumulativeReviewScore': cumulativeReviewScore,
+        'finalScore': _weightedScore,
+        'passed': false,
+        'retryQueue': _retryQueue,
+      });
+    }
+
+    if (!passed) {
+      if (!mounted) return;
+      setState(() {
+        _showFailurePrompt = true;
+        _failedFinalScore = _weightedScore;
+      });
+      return;
+    }
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -309,18 +506,436 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     ));
   }
 
+  Widget _buildFailurePrompt(ThemeData theme) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        title: const Text('Review not passed'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.replay_circle_filled_rounded, size: 72, color: Color(0xFFF59E0B)),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'You are close, but not yet at mastery.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Final score: ${(_failedFinalScore ?? _weightedScore ?? 0.0).toStringAsFixed(1)}%. Pass at 70.0%.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, color: Color(0xFF475569), height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Retrying will rebuild the review queue and give you another full pass through the lesson content.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.45),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            child: const Text('Exit'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _startFresh,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF06A6FF),
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Retry Review'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCurrentActivity() {
     if (_currentIndex >= _queue.length) return const SizedBox.shrink();
     final item = _queue[_currentIndex];
     final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
     switch (fmt) {
-      case 'FILL_IN_THE_BLANK':
-        return _buildFillInBlank(item);
+      case 'FLASHCARD_RECALL':
+        return _buildFlashcardRecall(item);
+      case 'LISTENING_TYPING':
+        return _buildListeningTyping(item);
+      case 'SENTENCE_RECONSTRUCTION':
+        return _buildSentenceReconstruction(item);
+      case 'IMAGE_MATCHING':
+        return _buildImageMatching(item);
+      case 'TRANSLATION_MATCHING':
       case 'MATCHING':
         return _buildMatching(item);
+      case 'FILL_IN_THE_BLANK':
+        return _buildFillInBlank(item);
       default:
         return _buildMultipleChoice(item);
     }
+  }
+
+  Widget _buildFlashcardRecall(Map<String, dynamic> item) {
+    final word = (item['word'] ?? '').toString();
+    final definition = (item['definition'] ?? '').toString();
+    final example = (item['example'] ?? '').toString();
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Flashcard recall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: _flashcardFlipped ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _flashcardFlipped ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(word, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 10),
+                  if (_flashcardFlipped) ...[
+                    Text(definition, style: const TextStyle(fontSize: 16, color: Color(0xFF475569), height: 1.45)),
+                    const SizedBox(height: 8),
+                    Text(example, style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Color(0xFF64748B))),
+                  ] else ...[
+                    const Text('Think first, then flip to confirm.', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _flashcardFlipped = !_flashcardFlipped;
+                });
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF06A6FF),
+                side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(_flashcardFlipped ? 'HIDE ANSWER' : 'REVEAL ANSWER', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () {
+                _recordAnswer((item['wordId'] ?? '').toString(), true);
+                _nextItem();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              child: const Text('GOT IT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListeningTyping(Map<String, dynamic> item) {
+    final answer = (item['fitbAnswer'] ?? item['word'] ?? '').toString().trim();
+    final prompt = (item['fitbSentence'] ?? item['example'] ?? '').toString().trim();
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Listening and typing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 10),
+            Text(prompt, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF0F172A), height: 1.45)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _typingController,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Type what you heard',
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => _playAudio(answer),
+              icon: const Icon(Icons.volume_up_rounded),
+              label: const Text('Hear it again'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF06A6FF),
+                side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: _typingController.text.trim().isEmpty
+                  ? null
+                  : () {
+                      final learner = _typingController.text.trim();
+                      final isCorrect = learner.toLowerCase() == answer.toLowerCase();
+                      _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
+                      _nextItem();
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF06A6FF),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              child: const Text('CHECK', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSentenceReconstruction(Map<String, dynamic> item) {
+    final answerTokens = _sentenceTokens(item);
+    if (_scrambledWords.isEmpty) {
+      _scrambledWords.addAll(answerTokens);
+      _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
+    }
+    final sentencePreview = _assembledWords.join(' ').trim();
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Sentence reconstruction', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 10),
+            Text((item['example'] ?? '').toString(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF0F172A), height: 1.45)),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _assembledWords.isEmpty
+                    ? [const Text('Drop words here', style: TextStyle(color: Color(0xFF94A3B8)))]
+                    : _assembledWords.map((word) {
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _assembledWords.remove(word);
+                              _scrambledWords.add(word);
+                            });
+                          },
+                          child: _wordChip(word, selected: true),
+                        );
+                      }).toList(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            DragTarget<String>(
+              onAcceptWithDetails: (details) {
+                setState(() {
+                  _scrambledWords.remove(details.data);
+                  _assembledWords.add(details.data);
+                });
+              },
+              builder: (context, candidateData, rejectedData) {
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _scrambledWords.map((word) {
+                    return Draggable<String>(
+                      data: word,
+                      feedback: Material(color: Colors.transparent, child: _wordChip(word, selected: true)),
+                      childWhenDragging: Opacity(opacity: 0.35, child: _wordChip(word)),
+                      child: _wordChip(word),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            Text('Sentence preview: ${sentencePreview.isEmpty ? '...' : sentencePreview}', style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _playAudio((item['word'] ?? '').toString()),
+              icon: const Icon(Icons.volume_up_rounded),
+              label: const Text('Hear sentence word'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF06A6FF),
+                side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _assembledWords.length < answerTokens.length
+                  ? null
+                  : () {
+                      final expected = answerTokens.join(' ').toLowerCase().trim();
+                      final learner = _assembledWords.join(' ').toLowerCase().trim();
+                      final isCorrect = learner == expected;
+                      _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
+                      _nextItem();
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF06A6FF),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              child: const Text('CHECK SENTENCE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageMatching(Map<String, dynamic> item) {
+    final correct = (item['word'] ?? '').toString();
+    final imagePath = (item['imageAssetPath'] ?? '').toString();
+    final provided = [item['mcDistractor1'], item['mcDistractor2'], item['mcDistractor3']].whereType<String>().where((value) => value.isNotEmpty).toList();
+    final options = <String>[correct];
+    if (provided.isNotEmpty) {
+      options.addAll(provided.take(3));
+    } else {
+      final other = _reviewItems.map((e) => e['word']?.toString() ?? '').where((word) => word.isNotEmpty && word != correct).toList()..shuffle();
+      options.addAll(other.take(3));
+    }
+    options.shuffle(Random('${item['wordId'] ?? correct}_image'.hashCode));
+
+    if (imagePath.isEmpty) {
+      return _buildMultipleChoice(item);
+    }
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Image-to-word matching', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 12),
+            Image.asset(
+              imagePath,
+              height: 180,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                height: 180,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2E8F0))),
+                child: const Text('Image not available', style: TextStyle(color: Color(0xFF64748B))),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...options.map((opt) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: ElevatedButton(
+                  onPressed: () {
+                    final isCorrect = opt == correct;
+                    _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
+                    _nextItem();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF0F172A),
+                    elevation: 0,
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: Text(opt, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _wordChip(String word, {bool selected = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFF06A6FF).withValues(alpha: 0.10) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: selected ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        word,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: selected ? const Color(0xFF0369A1) : const Color(0xFF0F172A),
+        ),
+      ),
+    );
   }
 
   Widget _buildMultipleChoice(Map<String, dynamic> item) {
@@ -724,6 +1339,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
           ),
         ),
       );
+    }
+
+    if (_showFailurePrompt) {
+      return _buildFailurePrompt(Theme.of(context));
     }
 
     return Scaffold(

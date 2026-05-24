@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.JdbcType;
 import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -48,6 +49,18 @@ public class Lesson {
     @Column(name = "total_word_count", nullable = false)
     @Builder.Default
     private Integer totalWordCount = 0;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "lesson_type", columnDefinition = "lesson_type_enum")
+    @Builder.Default
+    private LessonType lessonType = LessonType.REGULAR;
+
+    @Column(name = "source_lesson_ids", columnDefinition = "UUID[]")
+    private List<UUID> sourceLessonIds;
+
+    @Column(name = "composite_review_after_lesson_id")
+    private UUID compositeReviewAfterLessonId;
 
     @Column(name = "created_at", updatable = false)
     @Builder.Default

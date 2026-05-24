@@ -186,6 +186,7 @@ class AppRouter {
             allWords: List<Map<String, dynamic>>.from(e?['allWords'] ?? const []),
             categoryId: e?['categoryId']?.toString() ?? '',
             isSandbox: e?['isSandbox'] as bool? ?? false,
+            lessonIds: List<String>.from(e?['lessonIds'] ?? const []),
             priorityWordIds: List<String>.from(e?['priorityWordIds'] ?? const []),
           );
         },

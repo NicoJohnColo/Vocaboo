@@ -381,17 +381,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           _startNextItem();
         });
       } else {
-        // No reinforcement items, complete directly to summary!
-        setState(() {
-          _currentPhase = Phase.summary;
-        });
+        await _completeModuleAndAdvance();
       }
     } else {
-      // Reinforcement pass completed!
-      setState(() {
-        _currentPhase = Phase.summary;
-      });
+      await _completeModuleAndAdvance();
     }
+  }
+
+  Future<void> _completeModuleAndAdvance() async {
+    await Provider.of<LessonProvider>(context, listen: false)
+        .persistModuleScore(widget.lessonId, 3, _initialPassCorrectCount, _totalUniqueWords);
+
+    if (!mounted) return;
+    context.go(
+      '/session/${widget.sessionId}/cumulative-review',
+      extra: {
+        'lessonId': widget.lessonId,
+        'lessonIds': [widget.lessonId],
+        'categoryId': widget.categoryId,
+        'allWords': widget.allWords,
+        'isSandbox': widget.isSandbox,
+      },
+    );
   }
 
   void _checkAnswer() {
@@ -457,6 +468,99 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       _queue.add(_currentWord);
       _startNextItem();
     }
+  }
+
+  Widget _buildModule3Header(ThemeData theme) {
+    final completedCount = _isReinforcementPass ? _reinforcementCompletedCount : _initialPassCompletedCount;
+    final progress = _totalUniqueWords > 0 ? completedCount / _totalUniqueWords : 0.0;
+    final phaseLabel = _currentPhase == Phase.sentenceActivity ? 'Build' : 'Speak';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFEFF6FF),
+                ),
+                child: const Center(
+                  child: Text('✍️', style: TextStyle(fontSize: 28)),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'MODULE 3',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF0369A1), letterSpacing: 1.0),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Sentence Building',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Sequence: Build → Check → Speak',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 12,
+                    backgroundColor: const Color(0xFFE2E8F0),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF06A6FF)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Text(
+                '$phaseLabel ${_currentPhase == Phase.sentenceActivity ? '1/2' : '2/2'}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   // Pronunciation flow
@@ -913,6 +1017,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildModule3Header(theme),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
@@ -1380,6 +1485,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildModule3Header(theme),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),

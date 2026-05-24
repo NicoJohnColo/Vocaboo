@@ -1,10 +1,12 @@
 package com.vocaboo.service;
 
+import com.vocaboo.dto.request.MasteryRequest;
 import com.vocaboo.dto.response.CategoryResponse;
 import com.vocaboo.dto.response.CategoryReviewResponse;
 import com.vocaboo.dto.response.LessonWordActivityResponse;
 import com.vocaboo.dto.response.MatchingSetEntryResponse;
 import com.vocaboo.dto.response.LessonResponse;
+import com.vocaboo.dto.response.MasteryResponse;
 import com.vocaboo.dto.response.VocabularyWordResponse;
 import com.vocaboo.dto.response.ConfusableWordPairResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,7 +18,6 @@ import com.vocaboo.entity.LessonStatus;
 import com.vocaboo.entity.VocabularyCategory;
 import com.vocaboo.entity.VocabularyWord;
 import com.vocaboo.entity.ConfusableWordPair;
-import com.vocaboo.entity.VocabularyCategory;
 import com.vocaboo.repository.LearnerLessonStatusRepository;
 import com.vocaboo.repository.LearnerRepository;
 import com.vocaboo.repository.LessonRepository;
@@ -109,6 +110,9 @@ public class LessonService {
                     .totalWordCount(lesson.getTotalWordCount())
                     .status(status)
                     .masteryScore(masteryScore)
+                    .lessonType(lesson.getLessonType() != null ? lesson.getLessonType().name() : "REGULAR")
+                    .sourceLessonIds(lesson.getSourceLessonIds())
+                    .compositeReviewAfterLessonId(lesson.getCompositeReviewAfterLessonId())
                     .build());
 
             // Track completion for subsequent lessons
@@ -197,6 +201,7 @@ public class LessonService {
                 .exampleSentenceEnglish(word.getExampleSentenceEnglish())
                 .exampleSentenceCebuano(word.getExampleSentenceCebuano())
                 .audioAssetPath(word.getAudioAssetPath())
+                .imageAssetPath(word.getImageAssetPath())
                 .partOfSpeech(word.getPartOfSpeech())
                 .gradeLevel(word.getGradeLevel())
                 .wordOrder(word.getWordOrder())
@@ -214,6 +219,7 @@ public class LessonService {
                                 .exampleSentenceEnglish(word.getExampleSentenceEnglish())
                                 .exampleSentenceCebuano(word.getExampleSentenceCebuano())
                                 .audioAssetPath(word.getAudioAssetPath())
+                                .imageAssetPath(word.getImageAssetPath())
                                 .partOfSpeech(word.getPartOfSpeech())
                                 .gradeLevel(word.getGradeLevel())
                                 .wordOrder(word.getWordOrder())
@@ -351,6 +357,7 @@ public class LessonService {
                                         values.add(MatchingSetEntryResponse.builder()
                                                         .englishWord(entry.path("english_word").asText(""))
                                                         .cebuanoMeaning(entry.path("cebuano_meaning").asText(""))
+                                                        .imageAssetPath(entry.path("image_asset_path").asText(""))
                                                         .build());
                                 }
                         }
@@ -358,5 +365,77 @@ public class LessonService {
                 } catch (Exception ex) {
                         return List.of();
                 }
+        }
+
+        @Transactional
+        public MasteryResponse submitMastery(MasteryRequest request, UUID learnerId) {
+                // Server-side validation: verify the score meets the passing threshold
+                final double PASSING_THRESHOLD = 70.0;
+                
+                // Check if cumulative review has been completed
+                if (request.getCumulativeReviewScore() == null || request.getCumulativeReviewScore() < 0) {
+                        return MasteryResponse.builder()
+                                .success(false)
+                                .message("Cumulative review must be completed before category can be passed")
+                                .finalScore(0.0)
+                                .passed(false)
+                                .totalItems(request.getTotalItems())
+                                .masteredCount(request.getMasteredCount())
+                                .missedWordIds(request.getMissedWordIds())
+                                .build();
+                }
+                
+                // Recalculate final score server-side to prevent client spoofing
+                double serverFinalScore = (0.6 * request.getLessonScore()) + (0.4 * request.getCumulativeReviewScore());
+                boolean serverPassed = serverFinalScore >= PASSING_THRESHOLD;
+                
+                // If client claims pass but server calculation disagrees, reject
+                if (request.isPassed() && !serverPassed) {
+                        return MasteryResponse.builder()
+                                .success(false)
+                                .message("Score validation failed: Server calculated score does not meet passing threshold")
+                                .finalScore(serverFinalScore)
+                                .passed(false)
+                                .totalItems(request.getTotalItems())
+                                .masteredCount(request.getMasteredCount())
+                                .missedWordIds(request.getMissedWordIds())
+                                .build();
+                }
+                
+                // If server validates pass, update lesson statuses
+                if (serverPassed && request.getLessonIds() != null) {
+                        Learner learner = learnerRepository.findById(learnerId)
+                                        .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
+                        
+                        for (UUID lessonId : request.getLessonIds()) {
+                                Lesson lesson = lessonRepository.findById(lessonId)
+                                                .orElseThrow(() -> new IllegalArgumentException("Lesson not found: " + lessonId));
+                                
+                                LearnerLessonStatus status = lessonStatusRepository
+                                                .findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId)
+                                                .orElseGet(() -> LearnerLessonStatus.builder()
+                                                                .learner(learner)
+                                                                .lesson(lesson)
+                                                                .attempts(0)
+                                                                .build());
+                                
+                                status.setAttempts(status.getAttempts() + 1);
+                                status.setMasteryScore(BigDecimal.valueOf(serverFinalScore));
+                                status.setStatus(LessonStatus.COMPLETED);
+                                status.setCompletedAt(java.time.OffsetDateTime.now());
+                                status.setUpdatedAt(java.time.OffsetDateTime.now());
+                                lessonStatusRepository.save(status);
+                        }
+                }
+                
+                return MasteryResponse.builder()
+                                .success(true)
+                                .message(serverPassed ? "Mastery achieved" : "Review needed")
+                                .finalScore(serverFinalScore)
+                                .passed(serverPassed)
+                                .totalItems(request.getTotalItems())
+                                .masteredCount(request.getMasteredCount())
+                                .missedWordIds(request.getMissedWordIds())
+                                .build();
         }
 }

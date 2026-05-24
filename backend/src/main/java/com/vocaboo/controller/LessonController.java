@@ -1,9 +1,11 @@
 package com.vocaboo.controller;
 
+import com.vocaboo.dto.request.MasteryRequest;
 import com.vocaboo.dto.response.CategoryResponse;
 import com.vocaboo.dto.response.CategoryReviewResponse;
 import com.vocaboo.dto.response.LessonWordActivityResponse;
 import com.vocaboo.dto.response.LessonResponse;
+import com.vocaboo.dto.response.MasteryResponse;
 import com.vocaboo.dto.response.VocabularyWordResponse;
 import com.vocaboo.dto.response.ConfusableWordPairResponse;
 import com.vocaboo.service.LessonService;
@@ -52,5 +54,13 @@ public class LessonController {
     @GetMapping("/lessons/{id}/confusable-pairs")
     public ResponseEntity<List<ConfusableWordPairResponse>> getConfusablePairs(@PathVariable("id") UUID lessonId) {
         return ResponseEntity.ok(lessonService.getConfusablePairsForLesson(lessonId));
+    }
+
+    @PostMapping("/mastery")
+    public ResponseEntity<MasteryResponse> submitMastery(
+            @RequestBody MasteryRequest request,
+            Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        return ResponseEntity.ok(lessonService.submitMastery(request, learnerId));
     }
 }

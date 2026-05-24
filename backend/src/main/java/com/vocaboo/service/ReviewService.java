@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.RoundingMode;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -20,6 +21,7 @@ public class ReviewService {
 
     private final ReviewSessionRepository reviewSessionRepository;
     private final ReviewItemRepository reviewItemRepository;
+        private final LessonModuleScoreRepository lessonModuleScoreRepository;
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final LessonRepository lessonRepository;
         private final VocabularyCategoryRepository categoryRepository;
@@ -58,6 +60,33 @@ public class ReviewService {
                 .build();
 
         return reviewItemRepository.save(item);
+    }
+
+    @Transactional
+    public void saveModuleScore(UUID learnerId, UUID lessonId, Integer moduleNumber, Integer correctCount, Integer totalCount, Double score) {
+        Learner learner = learnerRepository.findById(learnerId)
+                .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
+
+        int safeCorrectCount = correctCount != null ? correctCount : 0;
+        int safeTotalCount = totalCount != null ? totalCount : 0;
+        double resolvedScore = score != null
+                ? score
+                : (safeTotalCount > 0 ? ((double) safeCorrectCount / safeTotalCount) * 100.0 : 0.0);
+
+        LessonModuleScore moduleScore = lessonModuleScoreRepository
+                .findByLearnerLearnerIdAndLessonLessonIdAndModuleNumber(learnerId, lessonId, moduleNumber)
+                .orElseGet(() -> LessonModuleScore.builder()
+                        .learner(learner)
+                        .lesson(lesson)
+                        .moduleNumber(moduleNumber)
+                        .build());
+
+        moduleScore.setCorrectCount(safeCorrectCount);
+        moduleScore.setTotalCount(safeTotalCount);
+        moduleScore.setScore(BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP));
+        lessonModuleScoreRepository.save(moduleScore);
     }
 
     @Transactional

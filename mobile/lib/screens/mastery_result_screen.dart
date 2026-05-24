@@ -222,7 +222,7 @@ class MasteryResultScreen extends StatelessWidget {
                   if (passed) {
                     await lessons.fetchDashboardProgress();
                     if (!context.mounted) return;
-                    context.go('/dashboard');
+                    context.go('/category/$categoryId/lessons');
                     return;
                   }
 
@@ -285,7 +285,7 @@ class MasteryResultScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => context.go('/dashboard'),
+                onPressed: () => context.go('/category/$categoryId/lessons'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF0F172A),
                   side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),

@@ -11,6 +11,7 @@ import '../services/stt_service.dart';
 import '../services/tts_service.dart';
 import '../services/streaming_stt_service.dart';
 import '../services/pronunciation_matcher.dart';
+import '../services/local_storage_service.dart';
 
 enum Phase {
   sentenceActivity,
@@ -27,6 +28,7 @@ class SentenceBuildingScreen extends StatefulWidget {
   final String sessionId;
   final String lessonId;
   final String categoryId;
+  final String? lessonTitle;
   final int moduleNumber;
   final List<Map<String, dynamic>> allWords;
   final bool isSandbox;
@@ -36,6 +38,7 @@ class SentenceBuildingScreen extends StatefulWidget {
     required this.sessionId,
     required this.lessonId,
     required this.categoryId,
+    this.lessonTitle,
     required this.allWords,
     this.moduleNumber = 3,
     this.isSandbox = false,
@@ -78,6 +81,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   int _totalPronunciationWords = 0;
   List<Map<String, dynamic>> _confusablePairs = [];
   Map<String, bool> _confusableMastery = {};
+
+  // Per-word pronunciation tracking for score screen
+  final Map<String, bool> _wordPronunciationCorrect = {}; // wordId -> isCorrect
+  final Map<String, int> _wordPronunciationAttempts = {}; // wordId -> attemptCount
 
   // Current item state
   late VocabularyWordModel _currentWord;
@@ -393,13 +400,47 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         .persistModuleScore(widget.lessonId, 3, _initialPassCorrectCount, _totalUniqueWords);
 
     if (!mounted) return;
+
+    // Ensure all words have entries in pronunciation maps (default to false/0 if not attempted)
+    for (final word in _words) {
+      _wordPronunciationCorrect.putIfAbsent(word.wordId, () => false);
+      _wordPronunciationAttempts.putIfAbsent(word.wordId, () => 0);
+    }
+
+    // Calculate overall score using the same formula as Module 3's internal scoring
+    final overallScore = _totalUniqueWords > 0 
+        ? (_initialPassCorrectCount / _totalUniqueWords) * 100 
+        : 0.0;
+
+    // Get failed sentence word IDs
+    final failedSentenceWordIds = _failedSentenceWords.map((w) => w.wordId).toSet();
+
+    // Use provided lessonTitle or fall back to formatted string
+    final displayTitle = widget.lessonTitle?.isNotEmpty == true 
+        ? widget.lessonTitle! 
+        : 'Lesson ${widget.lessonId} Complete';
+
+    // Persist full score details so the map screen can retrieve them later
+    await LocalStorageService.saveLessonScoreDetails(widget.lessonId, {
+      'wordPronunciationCorrect': _wordPronunciationCorrect,
+      'wordPronunciationAttempts': _wordPronunciationAttempts,
+      'failedSentenceWordIds': failedSentenceWordIds.toList(),
+      'overallScore': overallScore,
+    });
+
+    // Navigate to lesson score screen
     context.go(
-      '/session/${widget.sessionId}/cumulative-review',
+      '/session/${widget.sessionId}/lesson-score',
       extra: {
+        'sessionId': widget.sessionId,
         'lessonId': widget.lessonId,
-        'lessonIds': [widget.lessonId],
         'categoryId': widget.categoryId,
-        'allWords': widget.allWords,
+        'lessonTitle': displayTitle,
+        'allWords': _words.map((w) => w.toJson()).toList(),
+        'wordPronunciationCorrect': _wordPronunciationCorrect,
+        'wordPronunciationAttempts': _wordPronunciationAttempts,
+        'failedSentenceWordIds': failedSentenceWordIds,
+        'overallScore': overallScore,
         'isSandbox': widget.isSandbox,
       },
     );
@@ -873,9 +914,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     if (correct || reachedMaxAttempts) {
       _totalPronunciationWords++;
 
+      // Track pronunciation data for score screen
+      _wordPronunciationCorrect[_currentWord.wordId] = correct;
+      _wordPronunciationAttempts[_currentWord.wordId] = _pronunciationAttempt;
+
       // Sync progress fire-and-forget to database
       final provider = Provider.of<LessonProvider>(context, listen: false);
-      
+
       // Step 4 is complete status
       await provider.updateWordProgress(
         widget.sessionId,

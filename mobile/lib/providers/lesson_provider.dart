@@ -607,6 +607,40 @@ class LessonProvider with ChangeNotifier {
 
   }
 
+  /// Resets a single lesson's progress.
+  Future<bool> resetLesson(String lessonId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/lessons/$lessonId/reset'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        // Update local state to reflect reset
+        final index = _lessons.indexWhere((l) => l.lessonId == lessonId);
+        if (index >= 0) {
+          _lessons[index] = LessonModel(
+            lessonId: _lessons[index].lessonId,
+            categoryId: _lessons[index].categoryId,
+            lessonTitle: _lessons[index].lessonTitle,
+            lessonDescription: _lessons[index].lessonDescription,
+            gradeLevel: _lessons[index].gradeLevel,
+            lessonOrder: _lessons[index].lessonOrder,
+            totalWordCount: _lessons[index].totalWordCount,
+            status: 'UNLOCKED',
+            masteryScore: null,
+          );
+          notifyListeners();
+        }
+        return true;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.resetLesson error: $e');
+    }
+    return false;
+  }
+
   /// Submits mastery data to the backend for server-side validation.
   Future<Map<String, dynamic>?> submitMastery({
     required String categoryId,

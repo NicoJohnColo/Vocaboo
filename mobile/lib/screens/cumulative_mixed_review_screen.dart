@@ -409,7 +409,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     }
 
     final lessonScore = lessonScores.isEmpty ? 0.0 : lessonScores.reduce((a, b) => a + b) / lessonScores.length;
-    final cumulativeReviewScore = _reviewItems.isEmpty ? 0.0 : (_firstPassCorrectCount / _reviewItems.length) * 100.0;
+    final uniqueWordCount = _reviewItems.map((it) => (it['wordId'] ?? '').toString()).toSet().length;
+    final cumulativeReviewScore = uniqueWordCount == 0 ? 0.0 : (_firstPassCorrectCount / uniqueWordCount) * 100.0;
     _weightedScore = ScoringService.computeFinalScore(lessonScore, cumulativeReviewScore);
     bool passed = ScoringService.isPassing(_weightedScore ?? 0.0);
 
@@ -468,6 +469,17 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         missed = backendMissed.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
       }
     }
+
+    // Save cumulative review completion data for later retrieval (pass and fail)
+    await LocalStorageService.saveCumulativeReviewCompleted(
+      widget.categoryId,
+      _weightedScore ?? cumulativeReviewScore,
+      mastered,
+      total,
+      widget.sessionId,
+      missed,
+      widget.allWords,
+    );
 
     if (passed) {
       await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
@@ -549,6 +561,37 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                       style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.45),
                     ),
                     const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        final score = _failedFinalScore ?? _weightedScore;
+                        final missedIds = _reviewItems
+                            .where((it) => _results[(it['wordId'] ?? '').toString()] == false)
+                            .map((it) => (it['wordId'] ?? '').toString())
+                            .where((id) => id.isNotEmpty)
+                            .toList();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => MasteryResultScreen(
+                            sessionId: widget.sessionId,
+                            categoryId: widget.categoryId,
+                            isSandbox: widget.isSandbox,
+                            totalItems: _reviewItems.length,
+                            masteredCount: _firstPassCorrectCount,
+                            missedWordIds: missedIds,
+                            allWords: widget.allWords,
+                            masteryScore: score,
+                          ),
+                        ));
+                      },
+                      icon: const Icon(Icons.visibility_rounded, size: 18),
+                      label: const Text('View Score'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF06A6FF),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -560,7 +603,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: _startFresh,
+                            onPressed: () async {
+                              await LocalStorageService.clearCumulativeReviewCompletion(widget.categoryId);
+                              await _startFresh();
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF06A6FF),
                               foregroundColor: Colors.white,

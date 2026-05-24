@@ -61,7 +61,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   // Card learning state
   int _currentStep = 0; // 0: Flashcard Recall, 1: Pronunciation Confirmation
   bool _isFlipped = false;
-  String _pathway = 'FULL'; // 'FULL' or 'ACCELERATED'
+  final String _pathway = 'FULL'; // 'FULL' or 'ACCELERATED'
 
   // Speech evaluation state variables
   bool _isRecording = false;

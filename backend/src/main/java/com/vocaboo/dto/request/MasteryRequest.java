@@ -15,7 +15,7 @@ public class MasteryRequest {
     private UUID categoryId;
     private List<UUID> lessonIds;
     private double lessonScore;
-    private double cumulativeReviewScore;
+    private Double cumulativeReviewScore;
     private double finalScore;
     private boolean passed;
     private int totalItems;

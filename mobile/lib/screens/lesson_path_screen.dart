@@ -36,11 +36,11 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   Future<void> _loadLocalScores(LessonProvider provider) async {
     final scores = <String, double>{};
     for (final lesson in provider.lessons) {
-      if (lesson.status == 'COMPLETED') {
-        final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
-        if (localScore != null && localScore >= 0) {
-          scores[lesson.lessonId] = localScore;
-        }
+      // Load for all lessons regardless of backend status — covers cases where
+      // backend hasn't marked the lesson COMPLETED yet (e.g. animal category sync lag)
+      final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
+      if (localScore != null && localScore > 0) {
+        scores[lesson.lessonId] = localScore;
       }
     }
     if (mounted) {
@@ -279,7 +279,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                     color: Color(0xFF64748B),
                                                   ),
                                                 ),
-                                                if (lesson.status == 'COMPLETED') ...[
+                                                if (lesson.status == 'COMPLETED' || _localScores.containsKey(lesson.lessonId)) ...[
                                                   Builder(
                                                     builder: (context) {
                                                       final displayScore = _localScores[lesson.lessonId] ?? lesson.masteryScore;
@@ -292,7 +292,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                           borderRadius: BorderRadius.circular(8),
                                                         ),
                                                         child: Text(
-                                                          'Score: ${displayScore.toStringAsFixed(0)}%',
+                                                          'Score: ${displayScore.clamp(0.0, 100.0).toStringAsFixed(0)}%',
                                                           style: TextStyle(
                                                             fontSize: 10,
                                                             color: nodeColor,

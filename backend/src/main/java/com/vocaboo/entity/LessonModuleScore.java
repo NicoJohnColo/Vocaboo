@@ -38,12 +38,15 @@ public class LessonModuleScore {
     private Integer moduleNumber;
 
     @Column(name = "correct_count", nullable = false)
+    @Builder.Default
     private Integer correctCount = 0;
 
     @Column(name = "total_count", nullable = false)
+    @Builder.Default
     private Integer totalCount = 0;
 
     @Column(name = "score", precision = 5, scale = 2, nullable = false)
+    @Builder.Default
     private BigDecimal score = BigDecimal.ZERO;
 
     @Column(name = "recorded_at", updatable = false)

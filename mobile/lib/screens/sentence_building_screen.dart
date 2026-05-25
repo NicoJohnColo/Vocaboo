@@ -12,8 +12,6 @@ import '../services/tts_service.dart';
 import '../services/streaming_stt_service.dart';
 import '../services/pronunciation_matcher.dart';
 import '../services/local_storage_service.dart';
-import '../widgets/mascot_visual.dart';
-import '../widgets/mascot_bubble.dart';
 
 enum Phase {
   sentenceActivity,
@@ -61,6 +59,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   DateTime? _lastSpeechAt;
   DateTime? _recordingStartedAt;
   bool _recordingSessionActive = false;
+  bool _disposed = false;
 
   // Lesson data
   List<VocabularyWordModel> _words = [];
@@ -127,8 +126,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   @override
   void dispose() {
+    _disposed = true;
+    _recordingSessionActive = false;
     _amplitudeSubscription?.cancel();
     _silenceTimer?.cancel();
+    _ttsService.stop();
+    _sttService.dispose();
     _streamingSttService.dispose();
     _liveTranscriptNotifier.dispose();
     _recorderService.dispose();
@@ -542,17 +545,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     return Column(
       children: [
-        // Mascot Bubble like in module 2
-        MascotBubble(
-          mascotName: 'bibo',
-          speechText: _currentPhase == Phase.sentenceActivity 
-              ? 'Let\'s build sentences together!' 
-              : 'Now let\'s practice speaking!',
-        ),
-        const SizedBox(height: 16),
         // Progress indicator
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24),
+          margin: const EdgeInsets.fromLTRB(24, 12, 24, 12),
           child: Row(
             children: [
               Expanded(
@@ -580,7 +575,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   // Pronunciation flow
   Future<void> _startRecording() async {
+    if (_isRecording || _isEvaluating || _attemptResult != null || _disposed) return;
+
     if (await _recorderService.hasPermission()) {
+      if (_disposed || !mounted) return;
       _recordingSessionActive = true;
       _liveTranscriptNotifier.value = '';
       setState(() {
@@ -600,6 +598,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         builder: (context) => _buildRecordingModal(context),
       );
 
+      if (_disposed || !mounted) return;
+
       if (_attemptResult != null) {
         return;
       }
@@ -615,6 +615,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       });
 
       final path = await _recorderService.stopRecording();
+      if (_disposed || !mounted) return;
+
       if (path != null) {
         _totalPronunciationAttempts++;
         final result = await _sttService.evaluatePronunciation(
@@ -627,23 +629,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           attemptNumber: _pronunciationAttempt,
         );
 
-        if (mounted) {
-          setState(() {
-            _attemptResult = result;
-            _isEvaluating = false;
-          });
-
-          // FIXED: Don't auto-speak - only speak when user clicks the speaker button
-          // if (result.isCorrect) {
-          //   _ttsService.speak(_currentWord.englishWord);
-          // }
-        }
+        if (_disposed || !mounted) return;
+        setState(() {
+          _attemptResult = result;
+          _isEvaluating = false;
+        });
       } else {
-        if (mounted) {
-          setState(() {
-            _isEvaluating = false;
-          });
-        }
+        if (_disposed || !mounted) return;
+        setState(() {
+          _isEvaluating = false;
+        });
       }
     } else {
       if (!mounted) return;
@@ -662,22 +657,21 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _recordingStartedAt = null;
   }
 
-  void _cancelRecordingSession() {
+  Future<void> _cancelRecordingSession() async {
+    _recordingSessionActive = false;
     // Stop monitoring and listening immediately
     _stopAutoEvaluationMonitoring();
-    _streamingSttService.stopListening();
-    _recorderService.stopRecording();
+    await _streamingSttService.stopListening();
+    await _recorderService.stopRecording();
 
-    _recordingSessionActive = false;
+    if (_disposed || !mounted) return;
 
-    if (mounted) {
-      setState(() {
-        _isRecording = false;
-        _isEvaluating = false;
-        _attemptResult = null;
-        _liveTranscriptNotifier.value = '';
-      });
-    }
+    setState(() {
+      _isRecording = false;
+      _isEvaluating = false;
+      _attemptResult = null;
+      _liveTranscriptNotifier.value = '';
+    });
     
     // Exit the recording/practice modal but stay in the module
     if (Navigator.of(context).canPop()) {
@@ -723,7 +717,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _handleStreamingMatch(String transcript) async {
-    if (!_recordingSessionActive || _attemptResult != null || !_isRecording) {
+    if (!_recordingSessionActive || _attemptResult != null || !_isRecording || _disposed) {
       return;
     }
 
@@ -732,7 +726,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     await _streamingSttService.stopListening();
     await _recorderService.stopRecording();
 
-    if (!mounted) {
+    if (_disposed || !mounted) {
       return;
     }
 
@@ -753,9 +747,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
-
-    // FIXED: Don't auto-speak - only speak when user clicks the speaker button
-    // _ttsService.speak(_currentWord.englishWord);
   }
 
   void _startAutoEvaluationMonitoring() {
@@ -786,7 +777,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _finishRecordingAndEvaluate() async {
-    if (_isEvaluating || !_isRecording || _attemptResult != null) return;
+    if (_isEvaluating || !_isRecording || _attemptResult != null || _disposed) return;
+
+    // Minimum duration guard (1.5 seconds)
+    final startedAt = _recordingStartedAt;
+    if (startedAt != null) {
+      final elapsed = DateTime.now().difference(startedAt);
+      if (elapsed < const Duration(milliseconds: 1500)) {
+        return;
+      }
+    }
 
     setState(() {
       _isEvaluating = true;
@@ -795,7 +795,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _stopAutoEvaluationMonitoring();
     final path = await _recorderService.stopRecording();
 
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
 
     // Modules 2-4 use longer active-recall loops, so allow more pronunciation retries.
     _maxAttempts = _attemptLimitForModule();
@@ -819,7 +819,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       attemptNumber: _pronunciationAttempt,
     );
 
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
 
     setState(() {
       _attemptResult = result;
@@ -832,8 +832,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-      // FIXED: Don't auto-speak - only speak when user clicks the speaker button
-      // _ttsService.speak(_currentWord.englishWord);
       return;
     }
 
@@ -851,7 +849,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
 
     await Future.delayed(const Duration(milliseconds: 650));
-    if (!mounted || !_recordingSessionActive) return;
+    if (_disposed || !mounted || !_recordingSessionActive) return;
 
     setState(() {
       _pronunciationAttempt++;
@@ -1011,8 +1009,84 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     );
   }
 
+  Widget _buildCompletionBlankSentence({
+    required List<String> parts,
+    required String answer,
+  }) {
+    String blankText = '_______';
+    Color blankColor = const Color(0xFF94A3B8);
+    Color blankBgColor = const Color(0xFFF1F5F9);
+
+    if (_selectedCompletionWord != null) {
+      blankText = _selectedCompletionWord!;
+      blankColor = const Color(0xFF06A6FF);
+      blankBgColor = const Color(0xFFEFF6FF);
+    }
+
+    if (_isChecked && _selectedCompletionWord != null) {
+      final correct = _selectedCompletionWord!.toLowerCase() == answer.toLowerCase();
+      blankText = _selectedCompletionWord!;
+      blankColor = correct ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+      blankBgColor = correct ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2);
+    }
+
+    const wordStyle = TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w500,
+      color: Color(0xFF1E293B),
+      height: 1.5,
+    );
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (parts[0].isNotEmpty) Text(parts[0], style: wordStyle),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: blankBgColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: blankColor, width: 2),
+          ),
+          child: Text(
+            blankText,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: blankColor == const Color(0xFF94A3B8)
+                  ? const Color(0xFF64748B)
+                  : blankColor,
+            ),
+          ),
+        ),
+        if (parts.length > 1 && parts[1].isNotEmpty) Text(parts[1], style: wordStyle),
+      ],
+    );
+  }
+
   Widget _buildSentenceActivityBody(ThemeData theme) {
     final sentence = _activitySentence(_currentWord);
+
+    // Pre-split the sentence for the completion format so both the instruction
+    // text and the sentence display widget share the same computed state.
+    List<String> completionParts = const [];
+    if (_currentFormat == ActivityFormat.completion) {
+      final answer = _activityAnswer(_currentWord);
+      if (sentence.contains('___')) {
+        final split = sentence.split('___');
+        completionParts = [split.first, split.skip(1).join('___')];
+      } else {
+        final regex = RegExp(RegExp.escape(answer), caseSensitive: false);
+        final split = sentence.split(regex);
+        if (split.length >= 2) {
+          completionParts = [split.first, split.skip(1).join(answer)];
+        }
+      }
+    }
+    final completionHasBlank = completionParts.length >= 2;
 
     return SafeArea(
       child: Column(
@@ -1047,24 +1121,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Mascot Row with instructions
-                  Row(
-                    children: [
-                      const MascotVisual(type: MascotType.bibo, size: 60),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Text(
-                            _currentFormat == ActivityFormat.completion
-                              ? "Select the correct word to fill the blank:"
-                              : "Drag or tap the words to build the sentence:",
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                      ),
-                    ],
+                  // Instructions text
+                  Text(
+                    _currentFormat == ActivityFormat.completion
+                        ? (completionHasBlank
+                            ? 'Select the correct word to fill the blank:'
+                            : 'Select the correct word that matches the sentence:')
+                        : 'Drag or tap the words to build the sentence:',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF334155),
+                    ),
                   ),
                   const SizedBox(height: 32),
 
@@ -1179,16 +1247,21 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                         if (_currentFormat == ActivityFormat.completion)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: Text(
-                              sentence,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF1E293B),
-                                height: 1.5,
-                              ),
-                            ),
+                            child: completionHasBlank
+                                ? _buildCompletionBlankSentence(
+                                    parts: completionParts,
+                                    answer: _activityAnswer(_currentWord),
+                                  )
+                                : Text(
+                                    sentence,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF1E293B),
+                                      height: 1.5,
+                                    ),
+                                  ),
                           )
                         else
                           // Rearrangement assembled area

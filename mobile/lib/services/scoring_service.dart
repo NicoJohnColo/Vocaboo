@@ -6,7 +6,7 @@ class ScoringService {
   /// Computes a percentage score from correct count and total items.
   static double computeLessonScore(int correct, int total) {
     if (total <= 0) return 0.0;
-    return (correct / total) * 100.0;
+    return ((correct / total) * 100.0).clamp(0.0, 100.0);
   }
 
   /// Computes the combined lesson score as a simple average of two lesson scores.

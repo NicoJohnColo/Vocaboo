@@ -146,11 +146,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _practiceQueue.add(_createPracticeItem(word, format1));
 
       // Second exercise: pick a different format than the first
-      final otherFormats = ActivityFormat.values.where((f) => f != format1).toList();
-      var format2 = otherFormats[random.nextInt(otherFormats.length)];
-      if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.7) {
-        format2 = ActivityFormat.imageMatching;
-      }
+      // Exclude imageMatching from format2 if format1 already used it, so each word gets imageMatching at most once
+      final excludeFromFormat2 = {format1, if (format1 == ActivityFormat.imageMatching) ActivityFormat.imageMatching};
+      final otherFormats = ActivityFormat.values.where((f) => !excludeFromFormat2.contains(f)).toList();
+      final format2 = otherFormats[random.nextInt(otherFormats.length)];
       _practiceQueue.add(_createPracticeItem(word, format2));
     }
   }
@@ -243,11 +242,18 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     final item = _practiceQueue[_currentIndex];
 
     if (item.activityFormat == ActivityFormat.multipleChoice ||
-        item.activityFormat == ActivityFormat.fillInTheBlank ||
         item.activityFormat == ActivityFormat.imageMatching) {
       final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
       _options = [item.englishWord, ...distractors];
       _options.shuffle(Random(item.wordId.hashCode)); // consistent shuffle for this word
+    } else if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+      final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
+      // Use fitbAnswer as the correct option if available, otherwise fall back to englishWord
+      final correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+          ? item.fitbAnswer!
+          : item.englishWord;
+      _options = [correctOption, ...distractors];
+      _options.shuffle(Random(item.wordId.hashCode));
     } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       final matchingList = _resolveMatchingSet(item);
       _matchingCebuanoList = matchingList.map((entry) => (entry['cebuanoMeaning'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
@@ -335,7 +341,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         item.activityFormat == ActivityFormat.imageMatching) {
       if (_selectedOptionIndex == -1) return;
       learnerAns = _options[_selectedOptionIndex];
-      correct = (learnerAns == item.englishWord);
+      // For fill-in-the-blank use fitbAnswer when available, otherwise englishWord
+      final fitbCorrect = item.activityFormat == ActivityFormat.fillInTheBlank
+          ? ((item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty) ? item.fitbAnswer! : item.englishWord)
+          : item.englishWord;
+      correct = (learnerAns.toLowerCase() == fitbCorrect.toLowerCase());
     } else if (item.activityFormat == ActivityFormat.listeningTyping) {
       learnerAns = _typingController.text.trim();
       final correctTarget = (item.fitbAnswer ?? item.englishWord).trim();
@@ -527,7 +537,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _completeModuleAndAdvance() async {
-    final total = _words.length;
+    // Use the actual number of exercises (2 per word) as the denominator so that
+    // a student who answers every exercise correctly scores 100%, not 200%.
+    final total = _practiceQueue.length;
     final moduleScore = ScoringService.computeLessonScore(_initialPassCorrectCount, total);
     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -594,16 +606,20 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         ? (_currentIndex / _practiceQueue.length)
         : 0.0;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _showExitConfirmation();
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () {
-            context.go('/home');
-          },
+          onPressed: _showExitConfirmation,
         ),
         title: ClipRRect(
           borderRadius: BorderRadius.circular(10),
@@ -662,6 +678,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -983,12 +1000,29 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // 3. Fill in the Blank Activity Widget
   Widget _buildFillInTheBlank(PracticeItemModel item) {
-    // Generate the sentence with target english word blanked out
-    final target = item.englishWord;
-    final sentence = item.exampleSentenceEnglish;
-    final regExp = RegExp(target, caseSensitive: false);
-    
-    final parts = sentence.split(regExp);
+    // Determine the answer word and sentence to display
+    final target = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+        ? item.fitbAnswer!
+        : item.englishWord;
+    final hasFitbSentence = item.fitbSentence != null && item.fitbSentence!.trim().isNotEmpty;
+    final rawSentence = hasFitbSentence ? item.fitbSentence! : item.exampleSentenceEnglish;
+
+    // Split sentence: use explicit ___ marker first, then split on target word
+    List<String> parts;
+    if (rawSentence.contains('___')) {
+      final split = rawSentence.split('___');
+      parts = [split.first, split.skip(1).join('___')];
+    } else {
+      final regex = RegExp(RegExp.escape(target), caseSensitive: false);
+      final split = rawSentence.split(regex);
+      if (split.length >= 2) {
+        // Only blank the first occurrence
+        parts = [split.first, split.skip(1).join(target)];
+      } else {
+        // Target word not found — hide sentence to avoid revealing answer
+        parts = ['', ''];
+      }
+    }
 
     String blankText = '_______';
     Color blankColor = const Color(0xFF94A3B8);
@@ -1001,7 +1035,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     }
 
     if (_checked) {
-      final isCorrect = (_options[_selectedOptionIndex] == target);
+      final selectedOption = _options[_selectedOptionIndex];
+      final isCorrect = selectedOption.toLowerCase() == target.toLowerCase();
       if (isCorrect) {
         blankColor = const Color(0xFF22C55E);
         blankBgColor = const Color(0xFFF0FDF4);
@@ -1339,8 +1374,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // 4. Session Summary Widget (UC-2.1 Metrics and UC-2.2 Reinforcement results)
   Widget _buildSummaryScreen(ThemeData theme, String? pref) {
-    final double correctPercentage = _words.isNotEmpty
-        ? (_initialPassCorrectCount / _words.length) * 100
+    final double correctPercentage = _practiceQueue.isNotEmpty
+        ? (_initialPassCorrectCount / _practiceQueue.length) * 100
         : 0.0;
 
     final double overallMastery = _words.isNotEmpty
@@ -1424,9 +1459,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                 ),
                 child: Column(
                   children: [
-                    _buildStatRow('Total Words Practiced', '${_words.length}'),
+                    _buildStatRow('Total Words Practiced', '${_words.length} words / ${_practiceQueue.length} exercises'),
                     const Divider(height: 24),
-                    _buildStatRow('Initial Correct (First Pass)', '$_initialPassCorrectCount / ${_words.length} (${correctPercentage.toStringAsFixed(0)}%)'),
+                    _buildStatRow('Initial Correct (First Pass)', '$_initialPassCorrectCount / ${_practiceQueue.length} (${correctPercentage.toStringAsFixed(0)}%)'),
                     const Divider(height: 24),
                     _buildStatRow('Reinforced Pass Correct', '$_reinforcementPassCorrectCount'),
                     const Divider(height: 24),
@@ -1468,6 +1503,30 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showExitConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Exit Activity?'),
+        content: const Text('Leaving now will discard your current session progress.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              context.go('/home');
+            },
+            child: const Text('EXIT', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
       ),
     );
   }

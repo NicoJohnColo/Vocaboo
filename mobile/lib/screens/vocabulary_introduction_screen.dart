@@ -54,6 +54,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   DateTime? _lastSpeechAt;
   DateTime? _recordingStartedAt;
   bool _recordingSessionActive = false;
+  bool _disposed = false;
 
   List<VocabularyWordModel> _words = [];
   int _currentWordIndex = 0;
@@ -89,8 +90,12 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
   @override
   void dispose() {
+    _disposed = true;
+    _recordingSessionActive = false;
     _amplitudeSubscription?.cancel();
     _silenceTimer?.cancel();
+    _ttsService.stop();
+    _sttService.dispose();
     _streamingSttService.dispose();
     _liveTranscriptNotifier.dispose();
     _recorderService.dispose();
@@ -132,11 +137,15 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     _recordingStartedAt = null;
   }
 
-  void _cancelRecordingSession() {
+  Future<void> _cancelRecordingSession() async {
     // Treat cancel as a misattempt
     final wasActive = _recordingSessionActive;
+    _recordingSessionActive = false;
     _stopAutoEvaluationMonitoring();
-    _streamingSttService.stopListening();
+    await _streamingSttService.stopListening();
+    await _recorderService.stopRecording();
+
+    if (_disposed || !mounted) return;
 
     if (wasActive) {
       // mark this attempt as incorrect
@@ -157,7 +166,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         _attemptNumber++;
         // restart recording flow after a short delay
         Future.delayed(const Duration(milliseconds: 600), () async {
-          if (!mounted) return;
+          if (_disposed || !mounted || !_recordingSessionActive) return;
           _attemptResult = null;
           _isRecording = true;
           _recordingSessionActive = true;
@@ -171,7 +180,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     }
 
     // No more retries or not active — close modal
-    _recordingSessionActive = false;
     if (mounted) {
       setState(() {
         _isRecording = false;
@@ -222,7 +230,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   Future<void> _handleStreamingMatch(String transcript) async {
-    if (!_recordingSessionActive || _attemptResult != null || !_isRecording) {
+    if (!_recordingSessionActive || _attemptResult != null || !_isRecording || _disposed) {
       return;
     }
 
@@ -231,7 +239,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     await _streamingSttService.stopListening();
     await _recorderService.stopRecording();
 
-    if (!mounted) {
+    if (_disposed || !mounted) {
       return;
     }
 
@@ -285,7 +293,16 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   Future<void> _finishRecordingAndEvaluate() async {
-    if (_isEvaluating || !_isRecording || _attemptResult != null) return;
+    if (_isEvaluating || !_isRecording || _attemptResult != null || _disposed) return;
+
+    // Minimum duration guard (1.5 seconds)
+    final startedAt = _recordingStartedAt;
+    if (startedAt != null) {
+      final elapsed = DateTime.now().difference(startedAt);
+      if (elapsed < const Duration(milliseconds: 1500)) {
+        return;
+      }
+    }
 
     setState(() {
       _isEvaluating = true;
@@ -295,7 +312,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     await _streamingSttService.stopListening();
     final path = await _recorderService.stopRecording();
 
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
 
     if (path == null) {
       setState(() {
@@ -316,7 +333,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       attemptNumber: _attemptNumber,
     );
 
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
 
     setState(() {
       _attemptResult = _applyLocalBypassIfSpoken(result, currentWord.englishWord);
@@ -343,7 +360,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     }
 
     await Future.delayed(const Duration(milliseconds: 650));
-    if (!mounted || !_recordingSessionActive) return;
+    if (_disposed || !mounted || !_recordingSessionActive) return;
 
     setState(() {
       _attemptNumber++;
@@ -356,10 +373,11 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   Future<void> _handleMicPress() async {
-    if (_isEvaluating || _isRecording) return;
+    if (_isEvaluating || _isRecording || _disposed) return;
 
     final permission = await Permission.microphone.request();
     if (permission.isGranted) {
+      if (_disposed || !mounted) return;
       _recordingSessionActive = true;
       _liveTranscriptNotifier.value = '';
       setState(() {
@@ -380,7 +398,13 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         builder: (context) => _buildRecordingModal(context),
       );
 
+      if (_disposed || !mounted) return;
+
       if (_attemptResult != null) {
+        // If we got a result (correct or reached max attempts), auto-advance
+        if (_attemptResult!.isCorrect || _attemptNumber >= _maxAttempts) {
+          if (mounted) _nextStep();
+        }
         return;
       }
 
@@ -395,6 +419,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       });
 
       final path = await _recorderService.stopRecording();
+      if (_disposed || !mounted) return;
+
       if (path != null) {
         final currentWord = _words[_currentWordIndex];
         final result = await _sttService.evaluatePronunciation(
@@ -407,17 +433,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           attemptNumber: _attemptNumber,
         );
 
-        if (mounted) {
-          setState(() {
-            _attemptResult = result;
-            _isEvaluating = false;
-          });
-          if (result.isCorrect) {
-            _ttsService.speak(currentWord.englishWord);
-          }
+        if (_disposed || !mounted) return;
+        setState(() {
+          _attemptResult = result;
+          _isEvaluating = false;
+        });
+        if (result.isCorrect) {
+          _ttsService.speak(currentWord.englishWord);
+          _nextStep();
+        } else if (_attemptNumber >= _maxAttempts) {
+          // All attempts exhausted — continue automatically
+          _nextStep();
         }
       } else {
-        if (mounted) setState(() => _isEvaluating = false);
+        if (_disposed || !mounted) return;
+        setState(() => _isEvaluating = false);
       }
     } else {
       if (!mounted) return;
@@ -638,14 +668,20 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     final totalSteps = 2;
     final stepPercentage = (_currentStep + 1) / totalSteps;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _showExitConfirmation();
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => context.pop(),
+          onPressed: _showExitConfirmation,
         ),
         title: Text(
           LocalizationService.translate(pref, 'learning_progress', args: ['${_currentWordIndex + 1}', '${_words.length}']),
@@ -683,6 +719,31 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
             ],
           ),
         ),
+      ),
+      ),
+    );
+  }
+
+  void _showExitConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Exit Lesson?'),
+        content: const Text('Leaving now will lose your progress for this vocabulary session.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              context.pop();
+            },
+            child: const Text('EXIT', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
       ),
     );
   }

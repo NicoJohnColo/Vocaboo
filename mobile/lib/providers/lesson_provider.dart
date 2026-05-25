@@ -85,7 +85,8 @@ class LessonProvider with ChangeNotifier {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        _lessons = data.map((les) => LessonModel.fromJson(les)).toList();
+        _lessons = data.map((les) => LessonModel.fromJson(les)).toList()
+          ..sort((a, b) => a.lessonOrder.compareTo(b.lessonOrder));
       } else if (response.statusCode == 401) {
         _auth?.logout();
       } else {

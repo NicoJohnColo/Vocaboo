@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _idError;
   String? _pinError;
+  bool _obscurePin = true;
 
   @override
   void dispose() {
@@ -175,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _pinController,
-                  obscureText: true,
+                  obscureText: _obscurePin,
                   maxLength: 4,
                   style: const TextStyle(
                     color: Color(0xFF0F172A),
@@ -200,6 +201,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     errorText: _pinError,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    prefixIcon: const SizedBox(width: 48),
+                    suffixIcon: Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: IconButton(
+                        icon: Icon(
+                          _obscurePin ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                          color: const Color(0xFF64748B),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePin = !_obscurePin;
+                          });
+                        },
+                      ),
+                    ),
                   ),
                   keyboardType: TextInputType.number,
                 ),

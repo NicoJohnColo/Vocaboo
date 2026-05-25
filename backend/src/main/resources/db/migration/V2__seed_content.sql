@@ -12,10 +12,10 @@ ON CONFLICT (category_id) DO NOTHING;
 -- 5 lessons (one per category, Grade 4)
 INSERT INTO lessons (lesson_id, category_id, lesson_title, grade_level, lesson_order, total_word_count) VALUES
   ('b1000000-0000-0000-0000-000000000001','a1000000-0000-0000-0000-000000000001','Lesson 1 - School Objects',         'GRADE_4',1,5),
-  ('b1000000-0000-0000-0000-000000000002','a1000000-0000-0000-0000-000000000002','Lesson 2 - Family Members',         'GRADE_4',1,5),
-  ('b1000000-0000-0000-0000-000000000003','a1000000-0000-0000-0000-000000000003','Lesson 3 - Animals',                'GRADE_4',1,5),
-  ('b1000000-0000-0000-0000-000000000004','a1000000-0000-0000-0000-000000000004','Lesson 4 - Food and Drinks',        'GRADE_4',1,5),
-  ('b1000000-0000-0000-0000-000000000005','a1000000-0000-0000-0000-000000000005','Lesson 5 - Places in the Community','GRADE_4',1,5)
+  ('b1000000-0000-0000-0000-000000000002','a1000000-0000-0000-0000-000000000002','Lesson 1 - Family Members',         'GRADE_4',1,5),
+  ('b1000000-0000-0000-0000-000000000003','a1000000-0000-0000-0000-000000000003','Lesson 1 - Animals',                'GRADE_4',1,5),
+  ('b1000000-0000-0000-0000-000000000004','a1000000-0000-0000-0000-000000000004','Lesson 1 - Food and Drinks',        'GRADE_4',1,5),
+  ('b1000000-0000-0000-0000-000000000005','a1000000-0000-0000-0000-000000000005','Lesson 1 - Places in the Community','GRADE_4',1,5)
 ON CONFLICT (lesson_id) DO NOTHING;
 
 -- Lesson 1 words

@@ -28,15 +28,43 @@ class MascotVisual extends StatelessWidget {
   Widget _buildVisual() {
     switch (type) {
       case MascotType.bibo:
-        return _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: size);
+        return _MascotGif(
+          normalGif: 'assets/images/gifs/bibo star cute.gif',
+          sadGif: 'assets/images/gifs/bibo star crying.gif',
+          celebratingGif: 'assets/images/gifs/bibo star cute.gif',
+          size: size,
+          isCelebrating: isCelebrating,
+          isSad: isSad,
+        );
       case MascotType.toti:
-        return _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: size);
+        return _MascotGif(
+          normalGif: 'assets/images/gifs/grizzy thumbs up.gif',
+          sadGif: 'assets/images/gifs/grizzy thumbs up.gif',
+          celebratingGif: 'assets/images/gifs/grizzy bear dancing.gif',
+          size: size,
+          isCelebrating: isCelebrating,
+          isSad: isSad,
+        );
       case MascotType.sippy:
-        return _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: size);
+        return _MascotGif(
+          normalGif: 'assets/images/gifs/sippy cup says hi.gif',
+          sadGif: 'assets/images/gifs/sippy cup dissapointed.gif',
+          celebratingGif: 'assets/images/gifs/sippy cup happy.gif',
+          size: size,
+          isCelebrating: isCelebrating,
+          isSad: isSad,
+        );
       case MascotType.starry:
-        return _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: size);
+        return _MascotGif(
+          normalGif: 'assets/images/gifs/blue rabbit says hi.gif',
+          sadGif: 'assets/images/gifs/blue rabbit shocked.gif',
+          celebratingGif: 'assets/images/gifs/blue rabbit says hi.gif',
+          size: size,
+          isCelebrating: isCelebrating,
+          isSad: isSad,
+        );
       case MascotType.group:
-        return _GroupMascotWidget(size: size);
+        return _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: size);
     }
   }
 }

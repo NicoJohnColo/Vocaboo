@@ -115,7 +115,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                           ),
                         ],
                       ),
-                      child: const MascotVisual(type: MascotType.bibo, size: 80),
+                      child: const MascotVisual(type: MascotType.bibo, size: 104),
                     ),
                   ),
                   const SizedBox(height: 24),

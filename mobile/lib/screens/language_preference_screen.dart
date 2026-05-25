@@ -115,7 +115,8 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
+                    // Show "Cebuano" for the main option, not "Cebuano to English"
+                    title.replaceAll(' to English', ''),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

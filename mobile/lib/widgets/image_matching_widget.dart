@@ -37,12 +37,12 @@ class ImageMatchingWidget extends StatelessWidget {
               ),
               child: Image.asset(
                 imagePath,
-                width: 160,
-                height: 160,
+                width: 180,
+                height: 180,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stack) => SizedBox(
-                  width: 160,
-                  height: 160,
+                  width: 180,
+                  height: 180,
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),

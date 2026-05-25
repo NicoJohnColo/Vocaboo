@@ -37,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
     bool isValid = true;
 
     if (id.isEmpty) {
-      _idError = 'Please enter your Learner ID.';
+      _idError = 'Please enter your name.';
       isValid = false;
     }
 
@@ -95,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Log in using your Learner ID and PIN.',
+                  'Log in using your name and PIN.',
                   style: TextStyle(
                     fontSize: 15,
                     color: Color(0xFF64748B),
@@ -128,9 +128,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 24),
                 ],
 
-                // Learner ID Input
+                // Name Input
                 const Text(
-                  'LEARNER ID',
+                  'NAME',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
@@ -143,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _idController,
                   style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
-                    hintText: 'Enter Learner ID...',
+                    hintText: 'Enter your name...',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),

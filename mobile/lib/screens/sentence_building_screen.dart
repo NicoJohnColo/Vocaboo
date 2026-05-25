@@ -12,6 +12,8 @@ import '../services/tts_service.dart';
 import '../services/streaming_stt_service.dart';
 import '../services/pronunciation_matcher.dart';
 import '../services/local_storage_service.dart';
+import '../widgets/mascot_visual.dart';
+import '../widgets/mascot_bubble.dart';
 
 enum Phase {
   sentenceActivity,
@@ -108,7 +110,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   late int _maxAttempts;
 
   int _attemptLimitForModule() {
-    return widget.moduleNumber >= 2 ? 7 : 3;
+    return 3; // Always 3 attempts for pronunciation
   }
 
   @override
@@ -228,8 +230,22 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         _totalUniqueWords = fetchedWords.length;
         _confusablePairs = fetchedConfusables;
 
-        // Populate initial practice queue
-        _queue = List.from(fetchedWords);
+        // Build a queue where every word is tackled at least twice (Completion and Rearrangement)
+        final List<VocabularyWordModel> builtQueue = [];
+        
+        // Pass 1: Completion for all words
+        final pass1 = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
+        for (var word in pass1) {
+          builtQueue.add(word); // We'll handle format logic in _startNextItem effectively
+        }
+        
+        // Pass 2: Rearrangement for all words
+        final pass2 = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
+        for (var word in pass2) {
+          builtQueue.add(word);
+        }
+
+        _queue = builtQueue;
         
         _startNextItem();
         _isLoading = false;
@@ -292,10 +308,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     _currentWord = _queue.removeAt(0);
 
-    // Alternate format randomly or systematically
-    _currentFormat = (_words.indexOf(_currentWord) % 2 == 0)
-        ? ActivityFormat.completion
-        : ActivityFormat.rearrangement;
+    // Determine format based on whether we've already seen this word in this session
+    // We want to ensure it gets both formats if it appears twice.
+    // If it's in the first half of the original built queue (length / 2), use completion
+    // The queue construction ensured words appear twice.
+    final totalPlanned = _totalUniqueWords * 2;
+    final currentlyProcessed = totalPlanned - _queue.length - 1;
+    
+    if (currentlyProcessed < _totalUniqueWords) {
+      _currentFormat = ActivityFormat.completion;
+    } else {
+      _currentFormat = ActivityFormat.rearrangement;
+    }
 
     _resetItemState();
   }
@@ -516,70 +540,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     final progress = _totalUniqueWords > 0 ? completedCount / _totalUniqueWords : 0.0;
     final phaseLabel = _currentPhase == Phase.sentenceActivity ? 'Build' : 'Speak';
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 20, 24, 4),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFFEFF6FF),
-                ),
-                child: const Center(
-                  child: Text('✍️', style: TextStyle(fontSize: 28)),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'MODULE 3',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF0369A1), letterSpacing: 1.0),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Sentence Building',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Sequence: Build → Check → Speak',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
+    return Column(
+      children: [
+        // Mascot Bubble like in module 2
+        MascotBubble(
+          mascotName: 'bibo',
+          speechText: _currentPhase == Phase.sentenceActivity 
+              ? 'Let\'s build sentences together!' 
+              : 'Now let\'s practice speaking!',
+        ),
+        const SizedBox(height: 16),
+        // Progress indicator
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(
             children: [
               Expanded(
                 child: ClipRRect(
@@ -599,8 +573,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -659,9 +633,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
             _isEvaluating = false;
           });
 
-          if (result.isCorrect) {
-            _ttsService.speak(_currentWord.englishWord);
-          }
+          // FIXED: Don't auto-speak - only speak when user clicks the speaker button
+          // if (result.isCorrect) {
+          //   _ttsService.speak(_currentWord.englishWord);
+          // }
         }
       } else {
         if (mounted) {
@@ -688,48 +663,23 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   void _cancelRecordingSession() {
-    // Treat cancel as a misattempt and auto-retry if attempts remain
-    final wasActive = _recordingSessionActive;
+    // Stop monitoring and listening immediately
     _stopAutoEvaluationMonitoring();
     _streamingSttService.stopListening();
-
-    if (wasActive) {
-      setState(() {
-        _attemptResult = PronunciationAttemptModel(
-          attemptId: '',
-          isCorrect: false,
-          transcribedText: null,
-          phoneticTarget: null,
-          phonologicalTip: null,
-          attemptNumber: _pronunciationAttempt,
-          isInconclusive: false,
-        );
-      });
-
-      if (_pronunciationAttempt < _maxAttempts) {
-        _pronunciationAttempt++;
-        Future.delayed(const Duration(milliseconds: 600), () async {
-          if (!mounted) return;
-          _attemptResult = null;
-          _isRecording = true;
-          _recordingSessionActive = true;
-          _liveTranscriptNotifier.value = '';
-          await _recorderService.startRecording();
-          await _startStreamingRecognition(_currentWord.englishWord);
-          _startAutoEvaluationMonitoring();
-        });
-        return;
-      }
-    }
+    _recorderService.stopRecording();
 
     _recordingSessionActive = false;
+
     if (mounted) {
       setState(() {
         _isRecording = false;
         _isEvaluating = false;
+        _attemptResult = null;
         _liveTranscriptNotifier.value = '';
       });
     }
+    
+    // Exit the recording/practice modal but stay in the module
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
@@ -804,7 +754,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       Navigator.of(context).pop();
     }
 
-    _ttsService.speak(_currentWord.englishWord);
+    // FIXED: Don't auto-speak - only speak when user clicks the speaker button
+    // _ttsService.speak(_currentWord.englishWord);
   }
 
   void _startAutoEvaluationMonitoring() {
@@ -881,15 +832,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-      _ttsService.speak(_currentWord.englishWord);
+      // FIXED: Don't auto-speak - only speak when user clicks the speaker button
+      // _ttsService.speak(_currentWord.englishWord);
       return;
     }
 
     final shouldRetry = _recordingSessionActive && _pronunciationAttempt < _maxAttempts;
     if (!shouldRetry) {
-      _recordingSessionActive = false;
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+      // Only pop if the session is still active but we reached max attempts. 
+      // If _recordingSessionActive was already set to false (by cancel), don't pop again.
+      if (_recordingSessionActive) {
+        _recordingSessionActive = false;
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       }
       return;
     }
@@ -1094,20 +1050,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   // Mascot Row with instructions
                   Row(
                     children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFFEFF6FF),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '🦉',
-                            style: TextStyle(fontSize: 28),
-                          ),
-                        ),
-                      ),
+                      const MascotVisual(type: MascotType.bibo, size: 60),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(

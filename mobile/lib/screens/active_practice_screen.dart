@@ -134,38 +134,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   void _buildPracticeQueue() {
     _practiceQueue.clear();
     final random = Random();
-    final requiredFormats = [
-      ActivityFormat.multipleChoice,
-      ActivityFormat.listeningTyping,
-      ActivityFormat.fillInTheBlank,
-      ActivityFormat.imageMatching,
-      ActivityFormat.translationMatching,
-      ActivityFormat.flashcardRecall,
-    ];
-    final allFormats = ActivityFormat.values.toList();
-    final shuffledWords = List<VocabularyWordModel>.from(_words)..shuffle(random);
 
-    for (final format in requiredFormats) {
-      if (shuffledWords.isEmpty) {
-        break;
+    // Build queue sequentially per word: for each word, add two exercises back-to-back
+    // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...
+    for (var word in _words) {
+      // First exercise: pick a random format (favor imageMatching when image present)
+      var format1 = ActivityFormat.values[random.nextInt(ActivityFormat.values.length)];
+      if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.5) {
+        format1 = ActivityFormat.imageMatching;
       }
-      final word = shuffledWords[_practiceQueue.length % shuffledWords.length];
-      _practiceQueue.add(_createPracticeItem(word, format));
-    }
+      _practiceQueue.add(_createPracticeItem(word, format1));
 
-    for (final word in shuffledWords) {
-      final format = allFormats[random.nextInt(allFormats.length)];
-      _practiceQueue.add(_createPracticeItem(word, format));
+      // Second exercise: pick a different format than the first
+      final otherFormats = ActivityFormat.values.where((f) => f != format1).toList();
+      var format2 = otherFormats[random.nextInt(otherFormats.length)];
+      if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.7) {
+        format2 = ActivityFormat.imageMatching;
+      }
+      _practiceQueue.add(_createPracticeItem(word, format2));
     }
-
-    _practiceQueue.shuffle(random);
   }
 
   PracticeItemModel _createPracticeItem(VocabularyWordModel word, ActivityFormat format) {
     var resolvedFormat = format;
-    if (resolvedFormat == ActivityFormat.imageMatching && (word.imageAssetPath == null || word.imageAssetPath!.isEmpty)) {
-      resolvedFormat = ActivityFormat.multipleChoice;
-    }
+    // Keep image matching even if no image - will show placeholder
+    // if (resolvedFormat == ActivityFormat.imageMatching && (word.imageAssetPath == null || word.imageAssetPath!.isEmpty)) {
+    //   resolvedFormat = ActivityFormat.multipleChoice;
+    // }
 
     return PracticeItemModel(
       wordId: word.wordId,
@@ -258,9 +253,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _matchingCebuanoList = matchingList.map((entry) => (entry['cebuanoMeaning'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
       _matchingEnglishList = matchingList.map((entry) => (entry['englishWord'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
     }
-
-    // Passive TTS speak target English word
-    _ttsService.speak(item.englishWord);
   }
 
   Future<void> _saveCurrentState() async {
@@ -411,7 +403,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     });
 
     // Speak correct English word upon answer checking for reinforcement
-    _ttsService.speak(item.englishWord);
+    // _ttsService.speak(item.englishWord); - REMOVED AS PER USER REQUEST (Must only speak when clicked)
   }
 
   Future<void> _advanceNext() async {
@@ -706,7 +698,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Cebuano word prompt card
+        // Cebuano word prompt card with image
         Container(
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
           decoration: BoxDecoration(
@@ -721,9 +713,40 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
               ),
             ],
           ),
-          child: Row(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Display image if available
+              if (item.imageAssetPath != null && item.imageAssetPath!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Image.asset(
+                      item.imageAssetPath!,
+                      width: 140,
+                      height: 140,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stack) => SizedBox(
+                        width: 140,
+                        height: 140,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Text(
                 item.cebuanoMeaning,
                 style: const TextStyle(

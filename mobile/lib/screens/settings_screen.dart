@@ -334,7 +334,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
-                  child: const MascotVisual(type: MascotType.bibo, size: 70),
+                  child: const MascotVisual(type: MascotType.bibo, size: 86),
                 ),
               ),
               const SizedBox(height: 12),

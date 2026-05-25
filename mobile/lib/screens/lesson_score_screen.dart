@@ -346,29 +346,32 @@ class LessonScoreScreen extends StatelessWidget {
                   top: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
                 ),
               ),
-              child: ElevatedButton(
-                onPressed: () {
-                  final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
-                  String categoryName = 'Lessons';
-                  try {
-                    final category = lessonProvider.categories.firstWhere((cat) => cat.categoryId == categoryId);
-                    categoryName = category.categoryName;
-                  } catch (_) {}
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+                    String categoryName = 'Lessons';
+                    try {
+                      final category = lessonProvider.categories.firstWhere((cat) => cat.categoryId == categoryId);
+                      categoryName = category.categoryName;
+                    } catch (_) {}
 
-                  context.go(
-                    '/category/$categoryId/lessons?name=${Uri.encodeComponent(categoryName)}',
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'DONE',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    context.go(
+                      '/category/$categoryId/lessons?name=${Uri.encodeComponent(categoryName)}',
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'DONE',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                  ),
                 ),
               ),
             ),

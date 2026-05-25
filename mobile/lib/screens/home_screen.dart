@@ -132,52 +132,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Mascot Bibo decoration instead of simple initials avatar
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE0F2FE),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFBAE6FD), width: 1.5),
-                        ),
-                        child: ClipOval(
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(4.0),
-                              child: MascotVisual(
-                                type: MascotType.bibo,
-                                size: 48,
-                              ),
-                            ),
-                          ),
+                      Text(
+                        '${LocalizationService.translate(pref, 'hello')}, ${learner?.displayName ?? "Learner"}!',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${LocalizationService.translate(pref, 'hello')}, ${learner?.displayName ?? "Learner"}!',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Age: ${learner?.age ?? 9}  •  ${_formatLanguagePreference(learner?.languagePreference ?? "")}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'Age: ${learner?.age ?? 9}  •  ${_formatLanguagePreference(learner?.languagePreference ?? "")}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],

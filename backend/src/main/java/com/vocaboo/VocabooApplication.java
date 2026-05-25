@@ -10,3 +10,4 @@ public class VocabooApplication {
         SpringApplication.run(VocabooApplication.class, args); 
     }
 }
+  

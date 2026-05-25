@@ -8,6 +8,7 @@ class MascotBubble extends StatelessWidget {
   final String? ttsText;
   final bool isSad;
   final bool isCelebrating;
+  final double avatarSize;
 
   const MascotBubble({
     super.key,
@@ -16,6 +17,7 @@ class MascotBubble extends StatelessWidget {
     this.ttsText,
     this.isSad = false,
     this.isCelebrating = false,
+    this.avatarSize = 120,
   });
 
   MascotType _getMascotType() {
@@ -52,6 +54,8 @@ class MascotBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final mascotColor = _getMascotColor();
     final mascotType = _getMascotType();
+    final frameSize = avatarSize;
+    final mascotSize = avatarSize * 1.3;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
@@ -86,41 +90,13 @@ class MascotBubble extends StatelessWidget {
                         },
                       ),
                     ),
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        colors: [
-                          mascotColor.withValues(alpha: 0.3),
-                          mascotColor.withValues(alpha: 0.0),
-                        ],
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                        border: Border.all(
-                          color: mascotColor.withValues(alpha: 0.8),
-                          width: 2.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: mascotColor.withValues(alpha: 0.2),
-                            blurRadius: 10,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                    ),
+                  SizedBox(
+                    width: frameSize,
+                    height: frameSize,
                     child: Center(
                       child: MascotVisual(
                         type: mascotType,
-                        size: 40,
+                        size: mascotSize,
                         isCelebrating: isCelebrating,
                         isSad: isSad,
                       ),

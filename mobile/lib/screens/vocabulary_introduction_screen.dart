@@ -770,6 +770,29 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Show image if available
+              if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    word.imageAssetPath!,
+                    width: 180,
+                    height: 180,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 180,
+                      height: 180,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -829,6 +852,22 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   textAlign: TextAlign.center,
                 ),
               ],
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _isFlipped = false;
+                  });
+                },
+                icon: const Icon(Icons.flip_to_front_rounded),
+                label: const Text('FLIP BACK'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF64748B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
             ],
           ),
         ),

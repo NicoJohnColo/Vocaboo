@@ -95,6 +95,7 @@ class LocalizationService {
       'introduced': 'NAPAILA',
       'diagnostic_known': 'DIAGNOSTIC NAKASABTAN',
       'back_to_path': 'BALIK SA LEKSYON',
+      'back_to_dashboard': 'BALIK SA DASHBOARD',
       'practice_more': 'PRACTICE PA (MODYUL 2)',
 
       // Settings Screen
@@ -227,6 +228,7 @@ class LocalizationService {
       'introduced': 'INTRODUCED',
       'diagnostic_known': 'DIAGNOSTIC KNOWN',
       'back_to_path': 'BACK TO PATH',
+      'back_to_dashboard': 'BACK TO DASHBOARD',
       'practice_more': 'PRACTICE MORE (MODULE 2)',
 
       // Settings Screen
@@ -359,6 +361,7 @@ class LocalizationService {
       'introduced': 'INTRODUCED',
       'diagnostic_known': 'DIAGNOSTIC KNOWN',
       'back_to_path': 'BACK TO PATH',
+      'back_to_dashboard': 'BACK TO DASHBOARD',
       'practice_more': 'PRACTICE MORE (MODULE 2)',
 
       // Settings Screen

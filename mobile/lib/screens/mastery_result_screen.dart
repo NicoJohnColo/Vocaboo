@@ -60,7 +60,14 @@ class MasteryResultScreen extends StatelessWidget {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            // Try to pop Material Navigator first, then fall back to GoRouter
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/home');
+            }
+          },
         ),
         actions: const [SizedBox(width: 12)],
       ),
@@ -102,7 +109,7 @@ class MasteryResultScreen extends StatelessWidget {
                       child: Center(
                         child: MascotVisual(
                           type: passed ? MascotType.starry : MascotType.sippy,
-                          size: 88,
+                          size: 110,
                           isCelebrating: passed,
                           isSad: !passed,
                         ),
@@ -186,7 +193,13 @@ class MasteryResultScreen extends StatelessWidget {
                         title: 'Still needs review',
                         color: const Color(0xFFEF4444),
                         background: const Color(0xFFFFF1F2),
-                        items: missedWordIds ?? const [],
+                        items: (missedWordIds ?? []).map((id) {
+                          final word = allWords.firstWhere(
+                            (w) => (w['wordId'] ?? w['id'] ?? '').toString() == id,
+                            orElse: () => {'word': id},
+                          );
+                          return (word['word'] ?? word['englishWord'] ?? id).toString();
+                        }).toList(),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -194,7 +207,10 @@ class MasteryResultScreen extends StatelessWidget {
                       title: passed ? 'Words mastered' : 'Words to review',
                       color: passed ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                       background: passed ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2),
-                      items: const [],
+                      items: (passed 
+                        ? allWords.where((w) => !(missedWordIds ?? []).contains((w['wordId'] ?? w['id'] ?? '').toString()))
+                        : allWords
+                      ).map((w) => (w['word'] ?? w['englishWord'] ?? '').toString()).where((s) => s.isNotEmpty).toList(),
                       masteredMode: true,
                     ),
                   ],

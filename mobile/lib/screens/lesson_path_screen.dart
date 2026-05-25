@@ -121,7 +121,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => context.pop(),
+          onPressed: () => context.go('/home'),
         ),
         title: Text(
           widget.categoryName,
@@ -484,6 +484,11 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     // Refresh lessons from backend if reset succeeded, or reload anyway
     await provider.loadLessons(widget.categoryId);
     await _loadLocalScores(provider);
+
+    if (!mounted) return;
+
+    // Clear any cached words by reloading vocabulary fresh
+    await provider.loadVocabulary(lesson.lessonId);
 
     if (!mounted) return;
 

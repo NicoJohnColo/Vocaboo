@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
  
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
@@ -29,6 +30,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   List<dynamic> _reviewItems = [];
   bool _loading = true;
   final Map<String, bool> _results = {};
+  final Map<String, int> _attemptCounts = {};
   Map<String, dynamic>? _pendingSavedState;
   bool _showResumePrompt = false;
   bool _showFailurePrompt = false;
@@ -43,6 +45,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     'FILL_IN_THE_BLANK',
     'IMAGE_MATCHING',
     'TRANSLATION_MATCHING',
+    'MATCHING',
   ];
 
   // Working queue with activityFormat assigned
@@ -218,7 +221,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         'wordId': item['wordId'] ?? item['id'] ?? item['vocabularyId'] ?? '',
         'word': item['word'] ?? item['englishWord'] ?? '',
         'definition': item['definition'] ?? item['cebuanoMeaning'] ?? item['cebuanoDefinition'] ?? '',
+        'cebuanoMeaning': item['cebuanoMeaning'] ?? item['definition'] ?? item['cebuanoDefinition'] ?? '',
         'example': item['example'] ?? item['exampleSentenceEnglish'] ?? item['englishSentence'] ?? '',
+        'exampleCebuano': item['cebuanoTranslation'] ?? item['exampleSentenceCebuano'] ?? item['cebuanoExample'] ?? '',
         'mcDistractor1': item['mcDistractor1'],
         'mcDistractor2': item['mcDistractor2'],
         'mcDistractor3': item['mcDistractor3'],
@@ -231,16 +236,19 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     // Ensure every item has a wordId and englishWord
     list.removeWhere((it) => ((it['wordId'] ?? it['vocabularyId'] ?? '')).toString().isEmpty);
 
-    // Build queue ensuring each word appears at least once and formats stay varied.
+    // Build queue ensuring each word is tackled at least twice with different formats.
     final rnd = Random();
     _queue.clear();
-    final plannedFormats = _buildQueueFormats(list.length);
-    for (var index = 0; index < list.length; index++) {
-      final item = list[index];
-      var fmt = plannedFormats[index];
+
+    // First pass: vary across all formats
+    final firstPassFormats = _buildQueueFormats(list.length);
+    for (var i = 0; i < list.length; i++) {
+      final item = list[i];
+      var fmt = firstPassFormats[i];
+      // Ensure image matching actually uses an image if available
       final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
-      if (fmt == 'IMAGE_MATCHING' && !hasImage) {
-        fmt = 'MULTIPLE_CHOICE';
+      if (fmt == 'MULTIPLE_CHOICE' && hasImage && rnd.nextBool()) {
+        fmt = 'IMAGE_MATCHING';
       }
       if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
         fmt = 'FILL_IN_THE_BLANK';
@@ -248,22 +256,31 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _queue.add({...item, 'activityFormat': fmt});
     }
 
-    // If retry priority provided, append duplicates of those words
-    if (widget.priorityWordIds != null && widget.priorityWordIds!.isNotEmpty) {
-      final prioritySet = widget.priorityWordIds!.toSet();
-      final prioritized = list.where((it) => prioritySet.contains((it['wordId'] ?? '').toString())).toList();
-      for (final it in prioritized) {
-        var fmt = _buildQueueFormats(1).first;
-        if (fmt == 'IMAGE_MATCHING' && (it['imageAssetPath'] ?? '').toString().isEmpty) {
-          fmt = 'MULTIPLE_CHOICE';
-        }
-        if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(it).length < 2) {
-          fmt = 'FILL_IN_THE_BLANK';
-        }
-        _queue.add({...it, 'activityFormat': fmt});
+    // Second pass: focus on different formats to ensure thorough tackling
+    final secondPassFormats = _buildQueueFormats(list.length);
+    for (var i = 0; i < list.length; i++) {
+      final item = list[i];
+      var fmt = secondPassFormats[i];
+      
+      // Ensure different format from first pass if possible
+      final firstFmt = _queue[i]['activityFormat'];
+      if (fmt == firstFmt) {
+        final alternatives = _mainFormats.where((f) => f != firstFmt).toList();
+        fmt = alternatives[rnd.nextInt(alternatives.length)];
       }
+
+      final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
+      if (hasImage && rnd.nextBool()) {
+        fmt = 'IMAGE_MATCHING';
+      }
+
+      if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
+        fmt = 'FILL_IN_THE_BLANK';
+      }
+      _queue.add({...item, 'activityFormat': fmt});
     }
 
+    // Shuffle the entire combined queue
     _queue.shuffle(rnd);
 
     setState(() {
@@ -285,6 +302,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       'retryQueue': _retryQueue,
       'currentIndex': _currentIndex,
       'results': _results,
+      'attemptCounts': _attemptCounts,
       'firstPassCorrectCount': _firstPassCorrectCount,
       'weightedScore': _weightedScore,
     });
@@ -305,6 +323,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _results
         ..clear()
         ..addAll((saved['results'] as Map?)?.map((k, v) => MapEntry(k.toString(), v as bool)) ?? {});
+      _attemptCounts
+        ..clear()
+        ..addAll((saved['attemptCounts'] as Map?)?.map((k, v) => MapEntry(k.toString(), v as int)) ?? {});
       _firstPassCorrectCount = saved['firstPassCorrectCount'] as int? ?? _results.values.where((value) => value).length;
       _weightedScore = (saved['weightedScore'] as num?)?.toDouble();
       _pendingSavedState = null;
@@ -338,16 +359,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         _firstPassCorrectCount++;
       }
     }
-
-    // When incorrect on the first pass, enqueue reinforcement with a different activity format
-    if (!correct && !_retryQueue.any((item) => (item['wordId'] ?? '').toString() == wordId)) {
-      final rnd = Random();
-      final fmt = ['MULTIPLE_CHOICE', 'FILL_IN_THE_BLANK', 'MATCHING'][rnd.nextInt(3)];
-      final original = _reviewItems.firstWhere((it) => ((it['wordId'] ?? '').toString()) == wordId, orElse: () => null);
-      if (original != null) {
-        _retryQueue.add({...original, 'activityFormat': fmt});
-      }
-    }
   }
 
   void _nextItem() {
@@ -356,27 +367,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _prepareCurrentActivityState();
     });
     if (_currentIndex >= _queue.length) {
-      if (_retryQueue.isNotEmpty) {
-        setState(() {
-          _queue
-            ..clear()
-            ..addAll(_retryQueue);
-          _retryQueue.clear();
-          _currentIndex = 0;
-          _prepareCurrentActivityState();
-        });
-        LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
-          'reviewItems': _reviewItems,
-          'queue': _queue,
-          'retryQueue': _retryQueue,
-          'currentIndex': _currentIndex,
-          'results': _results,
-          'firstPassCorrectCount': _firstPassCorrectCount,
-          'weightedScore': _weightedScore,
-        });
-      } else {
-        _finishReview();
-      }
+      _finishReview();
     }
   }
 
@@ -503,6 +494,12 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       return;
     }
 
+    // Automatically speak score if it is 100%
+    final finalPercent = (_weightedScore ?? cumulativeReviewScore).round();
+    if (finalPercent == 100) {
+      TTSService.speak('Excellent! You got a perfect score of 100 percent.');
+    }
+
     if (!mounted) return;
     Navigator.of(context).pushReplacement(MaterialPageRoute(
       builder: (_) => MasteryResultScreen(
@@ -527,7 +524,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         title: const Text('Review not passed'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.of(context).maybePop(),
+          onPressed: () => context.go('/home'),
         ),
       ),
       body: SafeArea(
@@ -652,7 +649,11 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Widget _buildFlashcardRecall(Map<String, dynamic> item) {
     final word = (item['word'] ?? '').toString();
     final definition = (item['definition'] ?? '').toString();
+    final cebuanoMeaning = (item['cebuanoMeaning'] ?? '').toString();
     final example = (item['example'] ?? '').toString();
+    final wordId = (item['wordId'] ?? '').toString();
+    final currentAttempt = _attemptCounts[wordId] ?? 0;
+    final maxAttempts = 3;
 
     return Card(
       elevation: 0,
@@ -663,7 +664,16 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Flashcard recall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Flashcard recall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                Text(
+                  'Attempt $currentAttempt/$maxAttempts',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: currentAttempt >= maxAttempts ? const Color(0xFFDC2626) : const Color(0xFF0F9488)),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(18),
@@ -678,6 +688,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                   Text(word, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
                   const SizedBox(height: 10),
                   if (_flashcardFlipped) ...[
+                    if (cebuanoMeaning.isNotEmpty) ...[
+                      Text('Bisaya: $cebuanoMeaning', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0369A1), height: 1.45)),
+                      const SizedBox(height: 8),
+                    ],
                     Text(definition, style: const TextStyle(fontSize: 16, color: Color(0xFF475569), height: 1.45)),
                     const SizedBox(height: 8),
                     Text(example, style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Color(0xFF64748B))),
@@ -704,10 +718,15 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ),
             const SizedBox(height: 12),
             ElevatedButton(
-              onPressed: () {
-                _recordAnswer((item['wordId'] ?? '').toString(), true);
-                _nextItem();
-              },
+              onPressed: currentAttempt >= maxAttempts
+                  ? null
+                  : () {
+                      setState(() {
+                        _attemptCounts[wordId] = ((_attemptCounts[wordId] ?? 0) + 1);
+                      });
+                      _recordAnswer(wordId, true);
+                      _nextItem();
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10B981),
                 foregroundColor: Colors.white,
@@ -715,7 +734,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
-              child: const Text('GOT IT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+              child: Text(
+                currentAttempt >= maxAttempts ? 'No more attempts' : 'GOT IT',
+                style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8),
+              ),
             ),
           ],
         ),
@@ -726,6 +748,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Widget _buildListeningTyping(Map<String, dynamic> item) {
     final answer = (item['fitbAnswer'] ?? item['word'] ?? '').toString().trim();
     final prompt = (item['fitbSentence'] ?? item['example'] ?? '').toString().trim();
+    final cebuanoMeaning = (item['cebuanoMeaning'] ?? '').toString();
+    final wordId = (item['wordId'] ?? '').toString();
+    final currentAttempt = _attemptCounts[wordId] ?? 0;
+    final maxAttempts = 3;
 
     return Card(
       elevation: 0,
@@ -736,9 +762,46 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Listening and typing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Listening and typing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                Text(
+                  'Attempt $currentAttempt/$maxAttempts',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: currentAttempt >= maxAttempts ? const Color(0xFFDC2626) : const Color(0xFF0F9488)),
+                ),
+              ],
+            ),
             const SizedBox(height: 10),
-            Text(prompt, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF0F172A), height: 1.45)),
+            Text(
+              prompt.isEmpty ? 'Type what you hear:' : prompt.replaceAll(RegExp(RegExp.escape(answer), caseSensitive: false), '_____'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF0F172A), height: 1.45),
+            ),
+            if (cebuanoMeaning.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Bisaya Translation:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0369A1)),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      cebuanoMeaning,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: _typingController,
@@ -766,13 +829,25 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ),
             const SizedBox(height: 14),
             ElevatedButton(
-              onPressed: _typingController.text.trim().isEmpty
+              onPressed: _typingController.text.trim().isEmpty || currentAttempt >= maxAttempts
                   ? null
                   : () {
                       final learner = _typingController.text.trim();
                       final isCorrect = learner.toLowerCase() == answer.toLowerCase();
-                      _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
-                      _nextItem();
+                      setState(() {
+                        _attemptCounts[wordId] = ((_attemptCounts[wordId] ?? 0) + 1);
+                      });
+                      if (isCorrect) {
+                        _recordAnswer(wordId, true);
+                        _nextItem();
+                      } else if (_attemptCounts[wordId]! >= maxAttempts) {
+                        _recordAnswer(wordId, false);
+                        _nextItem();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Incorrect. You have ${maxAttempts - _attemptCounts[wordId]!} attempt(s) left.')),
+                        );
+                      }
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF06A6FF),
@@ -781,7 +856,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
-              child: const Text('CHECK', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+              child: Text(
+                currentAttempt >= maxAttempts ? 'No more attempts' : 'CHECK',
+                style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8),
+              ),
             ),
           ],
         ),
@@ -796,6 +874,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
     }
     final sentencePreview = _assembledWords.join(' ').trim();
+    final bisayaPrompt = (item['exampleCebuano'] ?? item['definition'] ?? '').toString();
 
     return Card(
       elevation: 0,
@@ -808,7 +887,13 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
           children: [
             const Text('Sentence reconstruction', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
             const SizedBox(height: 10),
-            Text((item['example'] ?? '').toString(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF0F172A), height: 1.45)),
+            // FIXED: Show Bisaya sentence first (meaning/context), then ask to arrange English words
+            if (bisayaPrompt.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Text(bisayaPrompt, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A), height: 1.45)),
+              ),
+            const Text('Arrange these English words:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
@@ -861,18 +946,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ),
             const SizedBox(height: 14),
             Text('Sentence preview: ${sentencePreview.isEmpty ? '...' : sentencePreview}', style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => _playAudio((item['word'] ?? '').toString()),
-              icon: const Icon(Icons.volume_up_rounded),
-              label: const Text('Hear sentence word'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF06A6FF),
-                side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-            ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _assembledWords.length < answerTokens.length
@@ -927,15 +1000,19 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
           children: [
             const Text('Image-to-word matching', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
             const SizedBox(height: 12),
-            Image.asset(
-              imagePath,
-              height: 180,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
+            Center(
+              child: Image.asset(
+                imagePath,
+                width: 180,
                 height: 180,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2E8F0))),
-                child: const Text('Image not available', style: TextStyle(color: Color(0xFF64748B))),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 180,
+                  height: 180,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2E8F0))),
+                  child: const Text('Image not available', style: TextStyle(color: Color(0xFF64748B))),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -986,7 +1063,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
 
   Widget _buildMultipleChoice(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
-    final definition = (item['definition'] ?? '').toString();
+    // FIXED: Use Cebuano meaning as prompt instead of English
+    final definition = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
     final provided = [
       item['mcDistractor1'],
       item['mcDistractor2'],
@@ -1017,13 +1095,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEFF6FF)),
-                  child: Center(child: MascotVisual(type: _mascotForFormat((item['activityFormat'] ?? '').toString()), size: 44)),
-                ),
-                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,8 +1105,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        correct,
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                        definition,
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                       ),
                     ],
                   ),
@@ -1043,18 +1114,19 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
               ],
             ),
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+            if (definition.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Text(
+                  'What is the English word for this meaning?',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF475569), height: 1.45),
+                ),
               ),
-              child: Text(
-                definition,
-                style: const TextStyle(fontSize: 15, color: Color(0xFF475569), height: 1.45),
-              ),
-            ),
             const SizedBox(height: 18),
             ...options.map((opt) => Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
@@ -1102,6 +1174,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final correct = (item['word'] ?? '').toString();
     final sentence = (item['fitbSentence'] ?? item['example'] ?? '').toString();
     final answer = (item['fitbAnswer'] ?? correct).toString();
+    final definition = (item['definition'] ?? item['cebuanoMeaning'] ?? '').toString();
+    final wordId = (item['wordId'] ?? '').toString();
+    final currentAttempt = _attemptCounts[wordId] ?? 0;
+    final maxAttempts = 3;
     final controller = TextEditingController();
 
     return Card(
@@ -1113,18 +1189,53 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Fill in the missing word',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.7),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Fill in the missing word',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.7),
+                ),
+                Text(
+                  'Attempt $currentAttempt/$maxAttempts',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: currentAttempt >= maxAttempts ? const Color(0xFFDC2626) : const Color(0xFF0F9488)),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Text(
-              sentence.isEmpty ? 'Type the word:' : sentence.replaceAll(answer, '_____'),
+              sentence.isEmpty ? 'Type the word:' : sentence.replaceAll(RegExp(RegExp.escape(answer), caseSensitive: false), '_____'),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0F172A), height: 1.45),
             ),
+            if (definition.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Bisaya Translation:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0369A1)),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      definition,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: controller,
+              enabled: currentAttempt < maxAttempts,
               decoration: InputDecoration(
                 labelText: 'Answer',
                 filled: true,
@@ -1132,35 +1243,57 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2)),
+                disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
               ),
             ),
             const SizedBox(height: 14),
             ElevatedButton(
-              onPressed: () {
-                final answer = controller.text.trim();
-                final isCorrect = answer.toLowerCase() == (item['fitbAnswer'] ?? correct).toString().toLowerCase();
-                _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
-                _nextItem();
-              },
+              onPressed: currentAttempt >= maxAttempts
+                  ? null
+                  : () {
+                      final wordId = (item['wordId'] ?? '').toString();
+                      final userAnswer = controller.text.trim();
+                      final isCorrect = userAnswer.toLowerCase() == (item['fitbAnswer'] ?? correct).toString().toLowerCase();
+                      
+                      setState(() {
+                        _attemptCounts[wordId] = ((_attemptCounts[wordId] ?? 0) + 1);
+                      });
+                      
+                      if (isCorrect) {
+                        _recordAnswer(wordId, true);
+                        _nextItem();
+                      } else if (_attemptCounts[wordId]! >= maxAttempts) {
+                        // Max attempts reached - mark as incorrect and move on
+                        _recordAnswer(wordId, false);
+                        _nextItem();
+                      } else {
+                        // Show error but allow retry
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Incorrect. You have ${maxAttempts - _attemptCounts[wordId]!} attempt(s) left.')),
+                        );
+                      }
+                    },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06A6FF),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
+                backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF06A6FF),
+                disabledBackgroundColor: const Color(0xFFCBD5E1),
               ),
-              child: const Text('Submit', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              child: Text(
+                currentAttempt >= maxAttempts ? 'No more attempts' : 'Submit',
+                style: TextStyle(
+                  color: currentAttempt >= maxAttempts ? const Color(0xFF64748B) : Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => _playAudio(correct),
-              icon: const Icon(Icons.volume_up_rounded),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () => _playAudio(definition),
+              icon: const Icon(Icons.volume_up),
               label: const Text('Hear word'),
-              style: OutlinedButton.styleFrom(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF06A6FF),
-                side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                side: const BorderSide(color: Color(0xFF06A6FF), width: 2),
               ),
             ),
           ],
@@ -1345,7 +1478,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
           title: const Text('Cumulative Review'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: () => context.go('/home'),
           ),
         ),
         body: SafeArea(
@@ -1407,7 +1540,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.go('/home'),
         ),
         actions: const [SizedBox(width: 12)],
       ),
@@ -1442,31 +1575,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                         children: [
                           Row(
                             children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFFEFFAF1), Color(0xFFD1FAE5)],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFF10B981).withValues(alpha: 0.10),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: MascotVisual(
-                                    type: _currentItem == null ? MascotType.starry : _mascotForFormat((_currentItem?['activityFormat'] ?? '').toString()),
-                                    size: 58,
-                                    isCelebrating: _currentIndex > 0 && _currentIndex == _queue.length - 1,
-                                  ),
-                                ),
+                              MascotVisual(
+                                type: _currentItem == null ? MascotType.starry : _mascotForFormat((_currentItem?['activityFormat'] ?? '').toString()),
+                                size: 100,
+                                isCelebrating: _currentIndex > 0 && _currentIndex == _queue.length - 1,
                               ),
                               const SizedBox(width: 14),
                               Expanded(

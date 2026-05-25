@@ -74,6 +74,7 @@ flutter:
     - assets/json/v3_activity_words.json
     # Image assets for lessons (placeholders). Includes all images under assets/images/.
     - assets/images/
+    - assets/images/gifs/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

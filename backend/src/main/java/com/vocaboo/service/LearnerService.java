@@ -121,7 +121,13 @@ public class LearnerService {
                 .orElseThrow(() -> new IllegalArgumentException("Learner profile not found."));
 
         if (displayName != null && !displayName.trim().isEmpty()) {
-            learner.setDisplayName(displayName.trim());
+            String newName = displayName.trim();
+            if (!newName.equalsIgnoreCase(learner.getDisplayName())) {
+                if (learnerRepository.findByDisplayNameIgnoreCase(newName).isPresent()) {
+                    throw new IllegalArgumentException("This name is already taken. Please choose another one.");
+                }
+            }
+            learner.setDisplayName(newName);
         }
 
         if (languagePreferenceStr != null && !languagePreferenceStr.trim().isEmpty()) {

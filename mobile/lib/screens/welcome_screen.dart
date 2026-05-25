@@ -40,11 +40,11 @@ class WelcomeScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const Spacer(),
-              // Group Mascot Graphic visual
+              // Single Get Started mascot image
               Center(
                 child: MascotVisual(
                   type: MascotType.group,
-                  size: 260,
+                  size: 400,
                 ),
               ),
               const Spacer(),

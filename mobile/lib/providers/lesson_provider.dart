@@ -566,6 +566,14 @@ class LessonProvider with ChangeNotifier {
       } else if (response.statusCode == 401) {
         _auth?.logout();
         throw Exception('Sandbox generation failed: unauthorized.');
+      } else if (response.statusCode == 429 || response.statusCode == 502) {
+        // Check if it's a rate limit error
+        final errorMsg = _extractErrorMessage(response.body, '');
+        if (errorMsg.contains('429') || errorMsg.toLowerCase().contains('rate limit')) {
+          debugPrint('LessonProvider.generateSandbox: Rate limit error detected');
+          throw Exception('Rate limit reached. Please wait a moment and try again.');
+        }
+        throw Exception(_extractErrorMessage(response.body, 'Sandbox generation failed.'));
       } else {
         debugPrint('LessonProvider.generateSandbox failed with status ${response.statusCode}');
         debugPrint('Response body: ${response.body}');
@@ -574,6 +582,10 @@ class LessonProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('LessonProvider.generateSandbox error: $e');
       debugPrint('Stack trace: ${StackTrace.current}');
+      // Check if the error message contains rate limit info
+      if (e.toString().contains('429') || e.toString().toLowerCase().contains('rate limit')) {
+        throw Exception('Rate limit reached. Please wait a moment and try again.');
+      }
       rethrow;
     }
   }

@@ -51,12 +51,14 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
     });
 
     Map<String, dynamic>? result;
+    String? errorMessage;
     
     try {
       result = await provider.generateSandbox(customWord: customWord);
     } catch (e) {
-      // Log error but don't fail yet - check if we got data anyway
+      // Log error and capture the error message
       debugPrint('Sandbox generation error (may have fallback): $e');
+      errorMessage = e.toString();
     }
 
     if (!mounted) return;
@@ -70,33 +72,19 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
         : <Map<String, dynamic>>[];
     
     debugPrint('After generate: session=${session != null}, words=${words.length}');
+    if (words.isNotEmpty) {
+      debugPrint('First word data: ${words[0]}');
+    }
     
-    // If backend completely failed but we have a valid word, construct minimal fallback
-    if (words.isEmpty && customWord.isNotEmpty) {
-      debugPrint('No words from backend, constructing minimal fallback for: $customWord');
-      
-      // Generate a minimal session if needed
-      if (session == null) {
-        final now = DateTime.now().millisecondsSinceEpoch;
-        session = {
-          'sessionId': 'sandbox_$now',
-          'lessonId': 'sandbox_lesson_$now',
-        };
+    // Check if backend returned data but with missing/empty cebuanoMeaning
+    if (words.isNotEmpty) {
+      for (var word in words) {
+        final cebuanoMeaning = word['cebuanoMeaning']?.toString() ?? '';
+        if (cebuanoMeaning.isEmpty) {
+          debugPrint('WARNING: Backend returned empty cebuanoMeaning for word: ${word['englishWord']}');
+          debugPrint('Full word data: $word');
+        }
       }
-      
-      // Construct minimal word data with hardcoded fallback distractors
-      words = [{
-        'wordId': 'sandbox_word_${DateTime.now().millisecondsSinceEpoch}',
-        'englishWord': customWord,
-        'cebuanoMeaning': 'Translation for $customWord',
-        'fitbSentence': 'I use a $customWord.',
-        'fitbAnswer': customWord,
-        'exampleSentenceEnglish': 'I use a $customWord.',
-        'exampleSentenceCebuano': 'Gigamit nako ang $customWord.',
-        'mcDistractor1': 'house',
-        'mcDistractor2': 'tree',
-        'mcDistractor3': 'water',
-      }];
     }
     
     setState(() {
@@ -105,7 +93,18 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
       _words = words;
       
       // Only show error if we have no data at all
-      _error = _session == null || _words.isEmpty ? 'Could not generate lesson. Please try again.' : null;
+      if (_session == null || _words.isEmpty) {
+        // Check if it's a rate limit error
+        if (errorMessage != null && 
+            (errorMessage.contains('429') || 
+             errorMessage.toLowerCase().contains('rate limit'))) {
+          _error = 'Rate limit reached. Please wait a moment and try again.';
+        } else {
+          _error = 'Could not generate lesson. Please try again.';
+        }
+      } else {
+        _error = null;
+      }
     });
 
     // If we have data, proceed to lesson (even if Gemini failed but fallback worked)

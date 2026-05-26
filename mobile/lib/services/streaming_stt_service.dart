@@ -60,11 +60,13 @@ class StreamingSttService {
         }
       },
       onSoundLevelChange: (_) {},
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 2),
-      partialResults: true,
-      cancelOnError: true,
-      localeId: localeId,
+      listenOptions: SpeechListenOptions(
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 2),
+        partialResults: true,
+        cancelOnError: true,
+        localeId: localeId,
+      ),
       // The newer speech_to_text API surfaces status/error via initialize/listen
       // return values and may not accept these named parameters. We still
       // forward status/errors through the initialize hooks and simplified

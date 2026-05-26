@@ -134,21 +134,27 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   void _buildPracticeQueue() {
     _practiceQueue.clear();
     final random = Random();
+    final allowedFormats = widget.isSandbox
+        ? const [
+            ActivityFormat.multipleChoice,
+            ActivityFormat.fillInTheBlank,
+            ActivityFormat.flashcardRecall,
+          ]
+        : ActivityFormat.values;
 
     // Build queue sequentially per word: for each word, add two exercises back-to-back
     // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...
     for (var word in _words) {
-      // First exercise: pick a random format (favor imageMatching when image present)
-      var format1 = ActivityFormat.values[random.nextInt(ActivityFormat.values.length)];
-      if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.5) {
+      // First exercise: pick a random format. Sandbox mode keeps the Gemini-generated subset only.
+      var format1 = allowedFormats[random.nextInt(allowedFormats.length)];
+      if (!widget.isSandbox && word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.5) {
         format1 = ActivityFormat.imageMatching;
       }
       _practiceQueue.add(_createPracticeItem(word, format1));
 
       // Second exercise: pick a different format than the first
-      // Exclude imageMatching from format2 if format1 already used it, so each word gets imageMatching at most once
-      final excludeFromFormat2 = {format1, if (format1 == ActivityFormat.imageMatching) ActivityFormat.imageMatching};
-      final otherFormats = ActivityFormat.values.where((f) => !excludeFromFormat2.contains(f)).toList();
+      final excludeFromFormat2 = {format1, if (!widget.isSandbox && format1 == ActivityFormat.imageMatching) ActivityFormat.imageMatching};
+      final otherFormats = allowedFormats.where((f) => !excludeFromFormat2.contains(f)).toList();
       final format2 = otherFormats[random.nextInt(otherFormats.length)];
       _practiceQueue.add(_createPracticeItem(word, format2));
     }
@@ -191,6 +197,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       targetWord.mcDistractor2,
       targetWord.mcDistractor3,
     ].whereType<String>().where((value) => value.trim().isNotEmpty).toList();
+
+    if (widget.isSandbox) {
+      return provided;
+    }
 
     if (provided.length >= 2) {
       return provided.take(2).toList();
@@ -424,7 +434,16 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       // Keep missed words in the same session and reintroduce them later.
       // This preserves the active-recall flow instead of ejecting the learner back to Module 1.
       final provider = Provider.of<LessonProvider>(context, listen: false);
-      if (wasKnown) {
+      if (widget.isSandbox) {
+        await provider.updateSandboxProgress(
+          sessionId: widget.sessionId,
+          wordId: item.wordId,
+          pathway: 'FULL',
+          stepCompleted: 0,
+          status: 'NEEDS_REVIEW',
+          moduleNumber: 2,
+        );
+      } else if (wasKnown) {
         await provider.updateWordProgress(widget.sessionId, item.wordId, 'FULL', 0, 'NEEDS_PRONUNCIATION_REVIEW');
       }
 
@@ -544,31 +563,40 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    await lessonProvider.persistModuleScore(widget.lessonId, 2, _initialPassCorrectCount, total);
-
-    final summary = SessionSummaryModel(
+    await lessonProvider.persistModuleScore(
+      widget.lessonId,
+      2,
+      _initialPassCorrectCount,
+      total,
+      isSandbox: widget.isSandbox,
       sessionId: widget.sessionId,
-      learnerId: authProvider.learner?.learnerId ?? 'anonymous',
-      lessonId: widget.lessonId,
-      totalWordsPracticed: total,
-      initialPassCorrectCount: _initialPassCorrectCount,
-      reinforcementPassCorrectCount: _reinforcementPassCorrectCount,
-      overallMasteryPercentage: moduleScore,
-      summaryGeneratedAt: DateTime.now(),
     );
 
-    await LocalStorageService.saveSessionSummary(summary);
-    await LocalStorageService.clearPracticeSessionState(widget.sessionId);
-    await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
-    await LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
-      'lessonIds': [widget.lessonId],
-      'reviewItems': [],
-      'queue': [],
-      'currentIndex': 0,
-      'results': {},
-      'retryQueue': [],
-      'weightedScore': moduleScore,
-    });
+    if (!widget.isSandbox) {
+      final summary = SessionSummaryModel(
+        sessionId: widget.sessionId,
+        learnerId: authProvider.learner?.learnerId ?? 'anonymous',
+        lessonId: widget.lessonId,
+        totalWordsPracticed: total,
+        initialPassCorrectCount: _initialPassCorrectCount,
+        reinforcementPassCorrectCount: _reinforcementPassCorrectCount,
+        overallMasteryPercentage: moduleScore,
+        summaryGeneratedAt: DateTime.now(),
+      );
+
+      await LocalStorageService.saveSessionSummary(summary);
+      await LocalStorageService.clearPracticeSessionState(widget.sessionId);
+      await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
+      await LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
+        'lessonIds': [widget.lessonId],
+        'reviewItems': [],
+        'queue': [],
+        'currentIndex': 0,
+        'results': {},
+        'retryQueue': [],
+        'weightedScore': moduleScore,
+      });
+    }
 
     if (!mounted) return;
     context.go(

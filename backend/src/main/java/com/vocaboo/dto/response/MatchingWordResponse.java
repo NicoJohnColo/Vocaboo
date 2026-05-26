@@ -14,5 +14,6 @@ import lombok.Setter;
 public class MatchingWordResponse {
     private String englishWord;
     private String cebuanoMeaning;
+    private String cebuanoTranslation;
     private String imageAssetPath;
 }

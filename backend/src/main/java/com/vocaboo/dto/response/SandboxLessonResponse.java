@@ -17,11 +17,8 @@ public class SandboxLessonResponse {
     private String englishWord;
     private String cebuanoMeaning;
     private String englishExampleSentence;
+    private String exampleSentenceCebuano;
     private String phonologicalTip;
-    private boolean isConfusable;
-    private String confusablePairWord;
-    private String confusableSentenceA;
-    private String confusableSentenceB;
     private List<String> multipleChoiceDistractors;
     private String fillInTheBlankSentence;
     private List<MatchingWordResponse> matchingSet;

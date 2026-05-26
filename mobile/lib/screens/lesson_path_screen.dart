@@ -409,6 +409,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
   Future<void> _viewLessonScore(LessonModel lesson) async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
+    final navContext = context;
 
     // Load vocabulary words for this lesson
     final words = await provider.loadVocabulary(lesson.lessonId);
@@ -452,7 +453,8 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
     final sessionId = 'review_${lesson.lessonId}_${DateTime.now().millisecondsSinceEpoch}';
 
-    context.push(
+    // ignore: use_build_context_synchronously
+    navContext.push(
       '/session/$sessionId/lesson-score',
       extra: {
         'sessionId': sessionId,
@@ -471,9 +473,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
   Future<void> _retryLesson(LessonModel lesson) async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
+    final navContext = context;
 
     // Attempt backend reset
-    final success = await provider.resetLesson(lesson.lessonId);
+    await provider.resetLesson(lesson.lessonId);
 
     // Always clear local score data for this lesson
     await LocalStorageService.saveLessonScore(lesson.lessonId, 0.0);
@@ -493,7 +496,8 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     if (!mounted) return;
 
     // Navigate to diagnostic as a fresh start
-    context.push(
+    // ignore: use_build_context_synchronously
+    navContext.push(
       '/lesson/${lesson.lessonId}/diagnostic',
       extra: {
         'categoryId': widget.categoryId,
@@ -526,12 +530,15 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                       final isCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
                       
                       if (!mounted) return;
-                      
+
+                      final navContext = context;
                       if (isCompleted) {
-                        _showCompletedReviewOptions(context, lessonIds);
+                        // ignore: use_build_context_synchronously
+                        _showCompletedReviewOptions(navContext, lessonIds);
                       } else {
                         final reviewSessionId = 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
-                        context.push(
+                        // ignore: use_build_context_synchronously
+                        navContext.push(
                           '/session/$reviewSessionId/cumulative-review',
                           extra: {
                             'categoryId': widget.categoryId,

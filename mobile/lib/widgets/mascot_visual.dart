@@ -40,7 +40,7 @@ class MascotVisual extends StatelessWidget {
         return _MascotGif(
           normalGif: 'assets/images/gifs/grizzy thumbs up.gif',
           sadGif: 'assets/images/gifs/grizzy thumbs up.gif',
-          celebratingGif: 'assets/images/gifs/grizzy bear dancing.gif',
+          celebratingGif: 'assets/images/gifs/grizzy thumbs up.gif',
           size: size,
           isCelebrating: isCelebrating,
           isSad: isSad,
@@ -158,40 +158,4 @@ class _MascotGif extends StatelessWidget {
 // class _SippyPainter extends CustomPainter { ... }
 // class _StarryPainter extends CustomPainter { ... }
 
-class _GroupMascotWidget extends StatelessWidget {
-  final double size;
-  const _GroupMascotWidget({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    final itemSize = size * 0.5;
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Starry (Top center)
-        Positioned(
-          top: 0,
-          child: _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: itemSize),
-        ),
-        // Sippy (Top Right)
-        Positioned(
-          top: size * 0.2,
-          right: 0,
-          child: _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: itemSize),
-        ),
-        // Bibo (Bottom Left)
-        Positioned(
-          bottom: 0,
-          left: 0,
-          child: _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: itemSize),
-        ),
-        // Toti (Bottom Right)
-        Positioned(
-          bottom: 0,
-          right: size * 0.15,
-          child: _MascotImage(imagePath: 'assets/images/GetStartedMascot.png', size: itemSize),
-        ),
-      ],
-    );
-  }
-}
+// _GroupMascotWidget removed — unused

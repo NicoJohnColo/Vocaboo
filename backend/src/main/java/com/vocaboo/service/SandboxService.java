@@ -7,11 +7,17 @@ import com.vocaboo.dto.response.SandboxLessonResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.http.HttpStatus;
+
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -20,29 +26,33 @@ public class SandboxService {
     private final SandboxSessionRepository sandboxSessionRepository;
     private final SandboxWordRepository sandboxWordRepository;
     private final SandboxWordProgressRepository sandboxWordProgressRepository;
+    private final SandboxModuleScoreRepository sandboxModuleScoreRepository;
     private final LearnerRepository learnerRepository;
     private final GeminiService geminiService;
 
     @Transactional
-    public SandboxSessionGenerationResult createSession(UUID learnerId, String topic, String customWord) {
+    public SandboxSessionGenerationResult createSession(UUID learnerId, String customWord) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
 
+        String normalizedWord = normalizeSandboxWord(customWord);
+        GeminiService.SandboxWordDto dto = geminiService.generateSandboxLesson(normalizedWord);
+
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini returned no sandbox lesson.");
+        }
+
         SandboxSession session = SandboxSession.builder()
                 .learner(learner)
-                .topic(topic != null && !topic.trim().isEmpty() ? topic.trim() : null)
-                .customWord(customWord != null && !customWord.trim().isEmpty() ? customWord.trim() : null)
+                .customWord(normalizedWord)
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .build();
 
         session = sandboxSessionRepository.save(session);
 
-        GeminiService.SandboxWordDto dto = geminiService.generateSandboxLesson(
-                session.getCustomWord() != null ? session.getCustomWord() : session.getTopic());
-
-        if (dto == null || dto.getEnglishWord() == null || dto.getEnglishWord().trim().isEmpty()) {
-            throw new IllegalStateException("Failed to generate vocabulary word for sandbox session.");
+        if (dto.getEnglishWord() == null || dto.getEnglishWord().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini returned an empty sandbox word.");
         }
 
         SandboxWord word = SandboxWord.builder()
@@ -51,15 +61,15 @@ public class SandboxService {
                 .cebuanoMeaning(dto.getCebuanoMeaning())
                 .exampleSentenceEnglish(dto.getExampleSentenceEnglish())
                 .exampleSentenceCebuano(dto.getExampleSentenceCebuano())
-                .phonologicalTipKey(dto.getPhonologicalTipKey())
+                .phonologicalTipKey(dto.getPhonologicalTip())
                 .wordOrder(1)
                 .createdAt(OffsetDateTime.now())
                 .build();
 
         word = sandboxWordRepository.save(word);
 
-        // Seed progress rows for modules 1 to 4
-        for (int moduleNum = 1; moduleNum <= 4; moduleNum++) {
+        // Seed progress rows for modules 1 to 3
+        for (int moduleNum = 1; moduleNum <= 3; moduleNum++) {
             SandboxWordProgress progress = SandboxWordProgress.builder()
                     .session(session)
                     .word(word)
@@ -76,29 +86,125 @@ public class SandboxService {
             .englishWord(dto.getEnglishWord())
             .cebuanoMeaning(dto.getCebuanoMeaning())
             .englishExampleSentence(dto.getExampleSentenceEnglish())
-            .phonologicalTip(dto.getPhonologicalTipKey())
-            .isConfusable(dto.getIsConfusable() != null && dto.getIsConfusable())
-            .confusablePairWord(dto.getConfusablePairWord())
-            .confusableSentenceA(dto.getConfusableSentenceA())
-            .confusableSentenceB(dto.getConfusableSentenceB())
+            .exampleSentenceCebuano(dto.getExampleSentenceCebuano())
+            .phonologicalTip(dto.getPhonologicalTip())
             .multipleChoiceDistractors(dto.getMultipleChoiceDistractors())
-            .fillInTheBlankSentence(dto.getFillInTheBlankSentence())
+            .fillInTheBlankSentence(buildFillInTheBlankSentence(dto.getExampleSentenceEnglish(), dto.getEnglishWord()))
             .matchingSet(dto.getMatchingSet() == null ? List.of() : dto.getMatchingSet().stream()
                 .map(entry -> MatchingWordResponse.builder()
-                    .englishWord(entry.get("english_word"))
-                    .cebuanoMeaning(entry.get("cebuano_meaning"))
-                    .imageAssetPath(entry.get("image_asset_path"))
+                    .englishWord(entry.getEnglishWord())
+                    .cebuanoMeaning(entry.getCebuanoMeaning())
+                    .cebuanoTranslation(entry.getCebuanoTranslation())
                     .build())
                 .toList())
-            .sentenceArrangementTokens(dto.getSentenceArrangementTokens())
-            .sentenceCompletionBlank(dto.getSentenceCompletionBlank())
-            .sentenceCompletionOptions(dto.getSentenceCompletionOptions())
+            .sentenceArrangementTokens(buildSentenceArrangementTokens(dto.getExampleSentenceEnglish()))
+            .sentenceCompletionBlank(buildFillInTheBlankSentence(dto.getExampleSentenceEnglish(), dto.getEnglishWord()))
+            .sentenceCompletionOptions(buildSentenceCompletionOptions(dto.getEnglishWord(), dto.getMultipleChoiceDistractors()))
             .build();
 
         return SandboxSessionGenerationResult.builder()
             .session(session)
             .lesson(lessonResponse)
             .build();
+    }
+
+    @Transactional
+    public SandboxModuleScore saveModuleScore(UUID sessionId, Integer moduleNumber, Integer correctCount, Integer totalCount, Double score) {
+        if (moduleNumber == null || moduleNumber < 1 || moduleNumber > 3) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox moduleNumber must be between 1 and 3.");
+        }
+
+        SandboxSession session = sandboxSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sandbox session not found."));
+
+        int safeCorrectCount = correctCount == null ? 0 : correctCount;
+        int safeTotalCount = totalCount == null ? 0 : totalCount;
+        double safeScore = score == null
+                ? (safeTotalCount > 0 ? ((double) safeCorrectCount / safeTotalCount) * 100.0 : 0.0)
+                : score;
+
+        SandboxModuleScore moduleScore = sandboxModuleScoreRepository
+                .findBySessionSessionIdAndModuleNumber(sessionId, moduleNumber)
+                .orElseGet(() -> SandboxModuleScore.builder()
+                        .session(session)
+                        .moduleNumber(moduleNumber)
+                        .build());
+
+        moduleScore.setCorrect(safeCorrectCount);
+        moduleScore.setTotal(safeTotalCount);
+        moduleScore.setScore(BigDecimal.valueOf(safeScore).setScale(2, java.math.RoundingMode.HALF_UP));
+
+        return sandboxModuleScoreRepository.save(moduleScore);
+    }
+
+    private List<String> buildSentenceArrangementTokens(String exampleSentence) {
+        String sentence = exampleSentence == null ? "" : exampleSentence.trim();
+        if (sentence.isEmpty()) {
+            return List.of();
+        }
+
+        String normalized = sentence.replaceAll("[^\\p{L}\\p{N}' ]", " ");
+        List<String> tokens = new ArrayList<>();
+        for (String token : normalized.split("\\s+")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                tokens.add(trimmed);
+            }
+        }
+        return tokens;
+    }
+
+    private String buildFillInTheBlankSentence(String exampleSentence, String englishWord) {
+        String sentence = exampleSentence == null ? "" : exampleSentence.trim();
+        String word = englishWord == null ? "" : englishWord.trim();
+        if (sentence.isEmpty() || word.isEmpty()) {
+            return sentence;
+        }
+
+        String blanked = sentence.replaceFirst("(?i)\\b" + Pattern.quote(word) + "\\b", "___");
+        return blanked.equals(sentence) ? sentence : blanked;
+    }
+
+    private List<String> buildSentenceCompletionOptions(String englishWord, List<String> distractors) {
+        List<String> options = new ArrayList<>();
+        addUniqueOption(options, englishWord);
+
+        if (distractors != null) {
+            for (String distractor : distractors) {
+                addUniqueOption(options, distractor);
+                if (options.size() >= 4) {
+                    break;
+                }
+            }
+        }
+
+        for (String fallback : List.of("book", "school", "water", "friend", "house", "color")) {
+            if (options.size() >= 4) {
+                break;
+            }
+            addUniqueOption(options, fallback);
+        }
+
+        return options;
+    }
+
+    private void addUniqueOption(List<String> options, String candidate) {
+        if (candidate == null) {
+            return;
+        }
+
+        String trimmed = candidate.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+
+        for (String existing : options) {
+            if (existing.equalsIgnoreCase(trimmed)) {
+                return;
+            }
+        }
+
+        options.add(trimmed);
     }
 
     @Transactional
@@ -128,13 +234,34 @@ public class SandboxService {
     @Transactional
     public SandboxSession completeSession(UUID sessionId, Double score) {
         SandboxSession session = sandboxSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Sandbox session not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sandbox session not found."));
+
+        if (score == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox finalScore is required.");
+        }
 
         session.setMasteryScore(score);
         session.setCompletedAt(OffsetDateTime.now());
         session.setUpdatedAt(OffsetDateTime.now());
 
         return sandboxSessionRepository.save(session);
+    }
+
+    public List<SandboxModuleScore> getModuleScores(UUID sessionId) {
+        return sandboxModuleScoreRepository.findBySessionSessionId(sessionId);
+    }
+
+    private String normalizeSandboxWord(String customWord) {
+        if (customWord == null || customWord.trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customWord is required.");
+        }
+
+        String normalized = customWord.trim();
+        if (normalized.chars().anyMatch(Character::isWhitespace) || normalized.split("\\s+").length != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox accepts exactly one English word.");
+        }
+
+        return normalized;
     }
 
     public List<SandboxSession> getHistory(UUID learnerId) {

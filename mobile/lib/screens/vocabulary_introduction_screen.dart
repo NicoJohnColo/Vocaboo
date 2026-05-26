@@ -114,7 +114,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       _isEvaluating = false;
     });
 
-    _maxAttempts = 3;
+    _maxAttempts = widget.isSandbox ? 0 : 3;
 
     // Auto-speak English word on start
     _ttsService.speak(currentWord.englishWord);
@@ -140,6 +140,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   Future<void> _cancelRecordingSession() async {
     // Treat cancel as a misattempt
     final wasActive = _recordingSessionActive;
+    final shouldAdvanceAfterCancel = wasActive && _attemptNumber >= _maxAttempts;
     _recordingSessionActive = false;
     _stopAutoEvaluationMonitoring();
     await _streamingSttService.stopListening();
@@ -189,6 +190,10 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     }
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
+    }
+
+    if (shouldAdvanceAfterCancel && mounted) {
+      _nextStep();
     }
   }
 
@@ -630,14 +635,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     }
   }
 
-  void _retryPronunciation() {
-    setState(() {
-      _attemptNumber++;
-      _attemptResult = null;
-      _isRecording = false;
-      _isEvaluating = false;
-    });
-  }
+  // retry pronunciation removed — not used in current flows
 
   PronunciationAttemptModel _applyLocalBypassIfSpoken(PronunciationAttemptModel result, String target) {
     final trans = (result.transcribedText ?? '').trim();
@@ -749,6 +747,10 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   Widget _buildStepCard(ThemeData theme, VocabularyWordModel word) {
+    if (widget.isSandbox) {
+      return _buildSandboxIntroCard(theme, word);
+    }
+
     switch (_currentStep) {
       case 0:
         return _buildFormAndMeaningCard(theme, word);
@@ -1041,7 +1043,123 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     return "/$lower/";
   }
 
+  String _getPhonologicalTip(String? tipKey) {
+    if (tipKey == 'f_sound') {
+      return "Tip: Cebuano has no /f/ sound. Touch your upper teeth to your lower lip and blow air out: 'fff' (like Fish).";
+    } else if (tipKey == 'v_sound') {
+      return "Tip: Cebuano has no /v/ sound. Place your upper teeth on your lower lip and buzz like a bee: 'vvv' (like Very).";
+    } else if (tipKey == 'th_sound') {
+      return "Tip: Cebuano has no /θ/ sound. Put the tip of your tongue between your front teeth and blow gently (like Brother).";
+    }
+    return "Tip: Listen closely and copy the correct pronunciation.";
+  }
+
+  Widget _buildSandboxIntroCard(ThemeData theme, VocabularyWordModel word) {
+    return Card(
+      key: const ValueKey('sandbox_intro'),
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Sandbox Word Preview',
+                style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                word.englishWord,
+                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: _speakWord,
+                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B)),
+                label: const Text('Listen'),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                LocalizationService.translate(_pref, 'cebuano_meaning'),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                word.cebuanoMeaning,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              Text(
+                LocalizationService.translate(_pref, 'english_example'),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                word.exampleSentenceEnglish,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              IconButton(
+                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B)),
+                onPressed: _speakSentence,
+              ),
+              if (word.exampleSentenceCebuano != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  word.exampleSentenceCebuano!,
+                  style: const TextStyle(fontSize: 14, color: Color(0xFF475569), fontStyle: FontStyle.italic),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              if (word.phonologicalTipKey != null) ...[
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Text(
+                    widget.isSandbox ? (word.phonologicalTipKey ?? '') : _getPhonologicalTip(word.phonologicalTipKey),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomButton(ThemeData theme) {
+    if (widget.isSandbox) {
+      return ElevatedButton(
+        onPressed: _completeSandboxIntro,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF06A6FF),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 6,
+        ),
+        child: const Text(
+          'CONTINUE TO MODULE 2',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+        ),
+      );
+    }
+
     String buttonText = 'FLIP CARD';
     if (_currentStep == 0 && _isFlipped) buttonText = 'GOT IT';
     if (_currentStep == 1) buttonText = 'CONFIRM & CONTINUE';
@@ -1069,6 +1187,43 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         buttonText,
         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
       ),
+    );
+  }
+
+  Future<void> _completeSandboxIntro() async {
+    if (_words.isEmpty) return;
+    final currentWord = _words[_currentWordIndex];
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+
+    await provider.updateSandboxProgress(
+      sessionId: widget.sessionId,
+      wordId: currentWord.wordId,
+      pathway: 'FULL',
+      stepCompleted: 4,
+      status: 'MASTERED',
+      moduleNumber: widget.moduleNumber,
+    );
+
+    await provider.persistModuleScore(
+      widget.lessonId,
+      widget.moduleNumber,
+      1,
+      1,
+      isSandbox: true,
+      sessionId: widget.sessionId,
+    );
+
+    if (!mounted) return;
+    context.go(
+      '/session/${widget.sessionId}/practice',
+      extra: {
+        'lessonId': widget.lessonId,
+        'categoryId': widget.categoryId,
+        'knownWordIds': widget.knownWordIds,
+        'unknownWordIds': widget.unknownWordIds,
+        'allWords': widget.allWords,
+        'isSandbox': widget.isSandbox,
+      },
     );
   }
 }

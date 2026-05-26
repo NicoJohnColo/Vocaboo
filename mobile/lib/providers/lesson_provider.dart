@@ -309,6 +309,11 @@ class LessonProvider with ChangeNotifier {
                   'word': w['englishWord'] ?? w['word'] ?? '',
                   'definition': w['cebuanoMeaning'] ?? w['cebuanoDefinition'] ?? w['definition'] ?? '',
                   'example': w['exampleSentence'] ?? w['englishSentence'] ?? '',
+                  'exampleSentenceEn': w['exampleSentenceEn'] ?? w['exampleSentence'] ?? w['englishSentence'] ?? '',
+                  'exampleSentenceBiosatya': w['exampleSentenceBiosatya'] ?? w['cebuanoSentence'] ?? '',
+                  'sentenceArrangementTokens': w['sentenceArrangementTokens'] ?? w['arrangementTokens'] ?? [],
+                  'sentenceCompletionSentence': w['sentenceCompletionSentence'] ?? '',
+                  'sentenceCompletionAnswer': w['sentenceCompletionAnswer'] ?? '',
                 })
             .toList();
 
@@ -509,9 +514,6 @@ class LessonProvider with ChangeNotifier {
       }
     } catch (e) {
       debugPrint('LessonProvider.persistModuleScore backend sync error: $e');
-      if (isSandbox) {
-        rethrow;
-      }
     }
 
     if (!isSandbox) {
@@ -530,15 +532,48 @@ class LessonProvider with ChangeNotifier {
         }),
       );
       if (response.statusCode == 200) {
-        return json.decode(response.body) as Map<String, dynamic>;
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        
+        // Ensure distractors exist - add fallback if missing
+        if (data['words'] != null && data['words'] is List) {
+          final words = data['words'] as List;
+          for (var word in words) {
+            if (word is Map) {
+              final distractors = [
+                word['mcDistractor1'],
+                word['mcDistractor2'],
+                word['mcDistractor3'],
+              ].whereType<String>().where((d) => d.trim().isNotEmpty).toList();
+              
+              // If less than 3 distractors, add fallback words
+              if (distractors.length < 3) {
+                final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog', 'sun', 'moon', 'star'];
+                final targetWord = (word['englishWord'] ?? '').toString().toLowerCase();
+                final needed = 3 - distractors.length;
+                final available = fallbacks.where((f) => f.toLowerCase() != targetWord).toList()..shuffle();
+                
+                for (int i = 0; i < needed && i < available.length; i++) {
+                  final key = 'mcDistractor${distractors.length + i + 1}';
+                  word[key] = available[i];
+                }
+                debugPrint('Added ${needed} fallback distractors for word: $targetWord');
+              }
+            }
+          }
+        }
+        
+        return data;
       } else if (response.statusCode == 401) {
         _auth?.logout();
         throw Exception('Sandbox generation failed: unauthorized.');
       } else {
+        debugPrint('LessonProvider.generateSandbox failed with status ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
         throw Exception(_extractErrorMessage(response.body, 'Sandbox generation failed.'));
       }
     } catch (e) {
       debugPrint('LessonProvider.generateSandbox error: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       rethrow;
     }
   }

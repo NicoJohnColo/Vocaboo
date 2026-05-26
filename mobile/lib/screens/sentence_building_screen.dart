@@ -306,6 +306,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   void _startNextItem() {
     if (_queue.isEmpty) {
       // End of current queue pass!
+      debugPrint('Module 3 complete, navigating to results...');
       _handleQueueEmpty();
       return;
     }
@@ -325,7 +326,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       _currentFormat = ActivityFormat.rearrangement;
     }
 
-    _resetItemState();
+    setState(() {
+      _resetItemState();
+    });
   }
 
   void _resetItemState() {
@@ -355,15 +358,21 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     if (provided.length >= 3) {
       _completionOptions = [correct, ...provided.take(3)];
     } else {
+      // Generate distractors from other words in session
       final others = _words
           .where((word) => word.wordId != _currentWord.wordId)
           .map((word) => word.englishWord)
           .toList();
-      if (others.length < 2) {
-        others.addAll(['apple', 'house', 'water', 'friend', 'school']);
+      
+      // Add fallback distractors if we don't have enough
+      final fallbackDistractors = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big'];
+      if (others.length < 3) {
+        others.addAll(fallbackDistractors);
       }
+      
       others.shuffle();
-      _completionOptions = [correct, ...others.take(2)];
+      // Always take 3 distractors to ensure 4 total options (1 correct + 3 distractors)
+      _completionOptions = [correct, ...others.take(3)];
     }
     _completionOptions.shuffle();
   }
@@ -380,7 +389,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
   }
 
-  void _handleQueueEmpty() async {
+  Future<void> _handleQueueEmpty() async {
+    debugPrint('Queue empty! isReinforcementPass: $_isReinforcementPass, failedWords: ${_failedSentenceWords.length}');
     // 1. If we finished the initial pass
     if (!_isReinforcementPass) {
       // Check if we have confusable pairs to distinction first
@@ -411,6 +421,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
       // Transition to reinforcement pass if we failed any words
       if (_failedSentenceWords.isNotEmpty) {
+        debugPrint('Starting reinforcement pass with ${_failedSentenceWords.length} failed words');
         setState(() {
           _isReinforcementPass = true;
           _queue = List.from(_failedSentenceWords);
@@ -418,9 +429,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           _startNextItem();
         });
       } else {
+        debugPrint('No failed words, completing module...');
         await _completeModuleAndAdvance();
       }
     } else {
+      debugPrint('Reinforcement pass complete, completing module...');
       await _completeModuleAndAdvance();
     }
   }
@@ -428,29 +441,38 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   Future<void> _completeModuleAndAdvance() async {
     final navContext = context;
 
-    await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
-      widget.lessonId,
-      3,
-      _initialPassCorrectCount,
-      _totalUniqueWords,
-      isSandbox: widget.isSandbox,
-      sessionId: widget.sessionId,
-    );
+    try {
+      await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
+        widget.lessonId,
+        3,
+        _initialPassCorrectCount,
+        _totalUniqueWords,
+        isSandbox: widget.isSandbox,
+        sessionId: widget.sessionId,
+      );
+    } catch (e) {
+      debugPrint('Module 3 score sync failed, continuing anyway: $e');
+    }
 
     if (!mounted) return;
 
-    // Calculate overall score using the same formula as Module 3's internal scoring
+    // Calculate overall score using completed word count (not activity count)
+    // Each word has 2 activities (completion + rearrangement), so use completedCount instead of correctCount
     final overallScore = _totalUniqueWords > 0 
-        ? (_initialPassCorrectCount / _totalUniqueWords) * 100 
+        ? (_initialPassCompletedCount / _totalUniqueWords) * 100 
         : 0.0;
+    
+    debugPrint('Module 3 score: completedCount=$_initialPassCompletedCount, totalWords=$_totalUniqueWords, score=$overallScore%');
 
     // Get failed sentence word IDs
     final failedSentenceWordIds = _failedSentenceWords.map((w) => w.wordId).toSet();
 
     // Use provided lessonTitle or fall back to formatted string
-    final displayTitle = widget.lessonTitle?.isNotEmpty == true 
-        ? widget.lessonTitle! 
-        : 'Lesson ${widget.lessonId} Complete';
+    final displayTitle = widget.isSandbox
+        ? 'Sandbox Lesson Complete'
+        : (widget.lessonTitle?.isNotEmpty == true 
+            ? widget.lessonTitle! 
+            : 'Lesson Complete');
 
     if (!widget.isSandbox) {
       // Persist full score details so the map screen can retrieve them later
@@ -463,6 +485,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
 
     // Navigate to lesson score screen
+    debugPrint('Navigating to next screen...');
     // ignore: use_build_context_synchronously
     navContext.go(
       '/session/${widget.sessionId}/lesson-score',
@@ -517,9 +540,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _handleContinueFromSentence() async {
+    debugPrint('Continue button tapped in Module 3');
     if (_isCorrect) {
       final provider = Provider.of<LessonProvider>(context, listen: false);
       if (widget.isSandbox) {
+        // Sandbox mode: skip pronunciation phase entirely
         await provider.updateSandboxProgress(
           sessionId: widget.sessionId,
           wordId: _currentWord.wordId,
@@ -535,9 +560,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           _initialPassCompletedCount++;
         }
 
+        debugPrint('Calling _startNextItem, queue length: ${_queue.length}');
         _startNextItem();
       } else {
-        // Advance to Pronunciation Mode for the current word!
+        // Non-sandbox: Advance to Pronunciation Mode for the current word
         // Notify backend that Module 3 (pronunciation) has started for this word.
         provider.updateWordProgress(
           widget.sessionId,
@@ -568,7 +594,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   Widget _buildModule3Header(ThemeData theme) {
     final completedCount = _isReinforcementPass ? _reinforcementCompletedCount : _initialPassCompletedCount;
     final progress = _totalUniqueWords > 0 ? completedCount / _totalUniqueWords : 0.0;
-    final phaseLabel = _currentPhase == Phase.sentenceActivity ? 'Build' : 'Speak';
+    final phaseLabel = widget.isSandbox ? 'Build' : (_currentPhase == Phase.sentenceActivity ? 'Build' : 'Speak');
 
     return Column(
       children: [
@@ -590,7 +616,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               ),
               const SizedBox(width: 14),
               Text(
-                '$phaseLabel ${_currentPhase == Phase.sentenceActivity ? '1/2' : '2/2'}',
+                widget.isSandbox ? phaseLabel : '$phaseLabel ${_currentPhase == Phase.sentenceActivity ? '1/2' : '2/2'}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
               ),
             ],

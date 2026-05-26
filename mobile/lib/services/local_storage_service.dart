@@ -9,6 +9,7 @@ enum ActivityFormat {
   listeningTyping,
   translationMatching,
   flashcardRecall,
+  rearrangement,
 }
 
 enum ReinforcementStatus {

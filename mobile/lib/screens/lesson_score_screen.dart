@@ -32,11 +32,20 @@ class LessonScoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final masteredCount = allWords.where((word) =>
-      (wordPronunciationCorrect[word.wordId] ?? false) &&
-      !failedSentenceWordIds.contains(word.wordId)
-    ).length;
-    final scoreInt = overallScore.round();
+    // Clamp score to 0-100% to prevent display issues
+    final clampedScore = overallScore.clamp(0.0, 100.0);
+    
+    // For sandbox mode, mastered = not in failedSentenceWordIds (no pronunciation check)
+    final masteredCount = isSandbox
+        ? allWords.where((word) => !failedSentenceWordIds.contains(word.wordId)).length
+        : allWords.where((word) =>
+            (wordPronunciationCorrect[word.wordId] ?? false) &&
+            !failedSentenceWordIds.contains(word.wordId)
+          ).length;
+    
+    final scoreInt = clampedScore.round();
+    
+    debugPrint('LessonScoreScreen: rawScore=$overallScore, clampedScore=$clampedScore, scoreInt=$scoreInt, masteredCount=$masteredCount/${allWords.length}');
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -350,6 +359,13 @@ class LessonScoreScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
+                    // Sandbox mode: navigate to home, not category lessons
+                    if (isSandbox || categoryId.isEmpty) {
+                      debugPrint('Done button: navigating to home (sandbox or empty categoryId)');
+                      context.go('/home');
+                      return;
+                    }
+                    
                     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
                     String categoryName = 'Lessons';
                     try {
@@ -357,6 +373,7 @@ class LessonScoreScreen extends StatelessWidget {
                       categoryName = category.categoryName;
                     } catch (_) {}
 
+                    debugPrint('Done button: navigating to /category/$categoryId/lessons');
                     context.go(
                       '/category/$categoryId/lessons?name=${Uri.encodeComponent(categoryName)}',
                     );

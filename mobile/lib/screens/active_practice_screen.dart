@@ -75,6 +75,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   // Flashcard Recall State
   bool _flashcardFlipped = false;
 
+  // Rearrangement State
+  List<String> _scrambledTokens = [];
+  List<String> _assembledTokens = [];
+
   // Reinforcement Mode Variables
   bool _isReinforcementMode = false;
   List<ReinforcementQueueItem> _reinforcementQueue = [];
@@ -139,6 +143,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             ActivityFormat.multipleChoice,
             ActivityFormat.fillInTheBlank,
             ActivityFormat.flashcardRecall,
+            ActivityFormat.rearrangement,
           ]
         : ActivityFormat.values;
 
@@ -192,14 +197,71 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   List<String> _resolveDistractors(VocabularyWordModel targetWord) {
+    // Helper function to check if a string is a sentence (not a single word)
+    bool isSentence(String value) {
+      final wordCount = value.trim().split(RegExp(r'\s+')).length;
+      return wordCount > 3 || value.contains('__') || value.contains('.');
+    }
+    
     final provided = [
       targetWord.mcDistractor1,
       targetWord.mcDistractor2,
       targetWord.mcDistractor3,
-    ].whereType<String>().where((value) => value.trim().isNotEmpty).toList();
+    ].whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .where((value) {
+          // Filter out sentences - only allow single words or very short phrases (max 2-3 words)
+          final isSent = isSentence(value);
+          if (isSent) {
+            debugPrint('WARNING: Filtering out sentence distractor from mcDistractor: "$value"');
+          }
+          return !isSent;
+        })
+        .toList();
 
     if (widget.isSandbox) {
-      return provided;
+      // Sandbox must always have exactly 3 distractors (individual words, not sentences)
+      if (provided.length >= 3) {
+        return provided.take(3).toList();
+      }
+      
+      // Generate fallback distractors - use other words from session or common words
+      final fallbackDistractors = <String>[];
+      
+      // First, try to use other words from the session - FILTER OUT SENTENCES
+      final otherWords = _words
+          .where((w) => w.wordId != targetWord.wordId)
+          .map((w) => w.englishWord)
+          .where((w) => w.trim().isNotEmpty)
+          .where((w) {
+            final isSent = isSentence(w);
+            if (isSent) {
+              debugPrint('WARNING: Filtering out sentence from otherWords: "$w"');
+            }
+            return !isSent;
+          })
+          .toList();
+      
+      if (otherWords.isNotEmpty) {
+        otherWords.shuffle();
+        fallbackDistractors.addAll(otherWords);
+      }
+      
+      // Add common English words as additional fallbacks
+      final commonWords = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog', 'sun', 'moon', 'star', 'hand', 'eye', 'ear', 'nose', 'foot'];
+      final targetLower = targetWord.englishWord.toLowerCase();
+      final availableCommon = commonWords.where((w) => w.toLowerCase() != targetLower).toList()..shuffle();
+      fallbackDistractors.addAll(availableCommon);
+      
+      // Combine provided + fallbacks and take exactly 3
+      final allDistractors = [...provided, ...fallbackDistractors];
+      final uniqueDistractors = allDistractors.toSet().toList();
+      
+      if (uniqueDistractors.length < 3) {
+        debugPrint('WARNING: Could not generate 3 distractors for ${targetWord.englishWord}, only got ${uniqueDistractors.length}');
+      }
+      
+      return uniqueDistractors.take(3).toList();
     }
 
     if (provided.length >= 2) {
@@ -254,20 +316,91 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     if (item.activityFormat == ActivityFormat.multipleChoice ||
         item.activityFormat == ActivityFormat.imageMatching) {
       final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
-      _options = [item.englishWord, ...distractors];
+      
+      // Ensure correct answer is a single word, not a sentence
+      var correctAnswer = item.englishWord;
+      if (correctAnswer.split(RegExp(r'\s+')).length > 2 || correctAnswer.contains('__') || correctAnswer.contains('.')) {
+        // Backend sent a sentence - extract first word as fallback
+        correctAnswer = correctAnswer.split(RegExp(r'\s+'))[0].replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+        debugPrint('WARNING: Correct answer was sentence, using first word: $correctAnswer');
+      }
+      
+      debugPrint('MC: correctAnswer="$correctAnswer", distractors=$distractors');
+      _options = [correctAnswer, ...distractors];
+      
+      // FINAL FILTER: Remove any sentences that slipped through
+      _options = _options.where((opt) {
+        final wordCount = opt.trim().split(RegExp(r'\s+')).length;
+        final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
+        if (isSentence) {
+          debugPrint('FINAL FILTER: Removing sentence from options: "$opt"');
+        }
+        return !isSentence;
+      }).toList();
+      
+      // Ensure we have 4 options - pad with fallbacks if needed
+      if (_options.length < 4) {
+        final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
+        final needed = 4 - _options.length;
+        final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
+        _options.addAll(available.take(needed));
+        debugPrint('Padded options with ${needed} fallbacks');
+      }
+      
       _options.shuffle(Random(item.wordId.hashCode)); // consistent shuffle for this word
+      debugPrint('MC options before render: $_options');
     } else if (item.activityFormat == ActivityFormat.fillInTheBlank) {
       final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
+      
       // Use fitbAnswer as the correct option if available, otherwise fall back to englishWord
-      final correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+      var correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
           ? item.fitbAnswer!
           : item.englishWord;
+      
+      // Ensure correct answer is a single word, not a sentence
+      if (correctOption.split(RegExp(r'\s+')).length > 2 || correctOption.contains('__') || correctOption.contains('.')) {
+        // Backend sent a sentence - use the target vocabulary word instead
+        correctOption = item.englishWord;
+        debugPrint('FITB: backend sent sentence, using target word as correct answer: $correctOption');
+      }
+      
+      debugPrint('FITB: correctAnswer="$correctOption", distractors=$distractors');
       _options = [correctOption, ...distractors];
+      
+      // FINAL FILTER: Remove any sentences that slipped through
+      _options = _options.where((opt) {
+        final wordCount = opt.trim().split(RegExp(r'\s+')).length;
+        final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
+        if (isSentence) {
+          debugPrint('FINAL FILTER: Removing sentence from FITB options: "$opt"');
+        }
+        return !isSentence;
+      }).toList();
+      
+      // Ensure we have 4 options - pad with fallbacks if needed
+      if (_options.length < 4) {
+        final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
+        final needed = 4 - _options.length;
+        final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
+        _options.addAll(available.take(needed));
+        debugPrint('Padded FITB options with ${needed} fallbacks');
+      }
+      
       _options.shuffle(Random(item.wordId.hashCode));
+      debugPrint('FITB options before render: $_options');
     } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       final matchingList = _resolveMatchingSet(item);
       _matchingCebuanoList = matchingList.map((entry) => (entry['cebuanoMeaning'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
       _matchingEnglishList = matchingList.map((entry) => (entry['englishWord'] ?? '').toString()).where((value) => value.isNotEmpty).toList()..shuffle();
+    } else if (item.activityFormat == ActivityFormat.rearrangement) {
+      final tokens = item.sentenceArrangementTokens ?? [];
+      if (tokens.isNotEmpty) {
+        _scrambledTokens = List<String>.from(tokens)..shuffle(Random(item.wordId.hashCode));
+      } else {
+        final sentence = item.exampleSentenceEnglish.trim();
+        _scrambledTokens = sentence.split(RegExp(r'\s+')).toList()..shuffle(Random(item.wordId.hashCode));
+      }
+      _assembledTokens = [];
     }
   }
 
@@ -297,6 +430,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         return 'Listen carefully, type what you hear, then check your answer.';
       case ActivityFormat.flashcardRecall:
         return 'Think first, then flip to reveal the answer and confirm you know it.';
+      case ActivityFormat.rearrangement:
+        return 'Arrange the words to form the correct sentence.';
     }
   }
 
@@ -351,10 +486,24 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         item.activityFormat == ActivityFormat.imageMatching) {
       if (_selectedOptionIndex == -1) return;
       learnerAns = _options[_selectedOptionIndex];
-      // For fill-in-the-blank use fitbAnswer when available, otherwise englishWord
-      final fitbCorrect = item.activityFormat == ActivityFormat.fillInTheBlank
-          ? ((item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty) ? item.fitbAnswer! : item.englishWord)
-          : item.englishWord;
+      
+      // For fill-in-the-blank, use the same logic as option building
+      String fitbCorrect = item.englishWord;
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        fitbCorrect = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+            ? item.fitbAnswer!
+            : item.englishWord;
+        
+        // If backend sent a sentence, use target word instead (same logic as option building)
+        if (fitbCorrect.split(RegExp(r'\s+')).length > 2 || 
+            fitbCorrect.contains('__') || 
+            fitbCorrect.contains('.')) {
+          fitbCorrect = item.englishWord;
+          debugPrint('FITB check: backend sent sentence, using target word for comparison: $fitbCorrect');
+        }
+      }
+      
+      debugPrint('FITB check: selected="$learnerAns", comparing against="$fitbCorrect"');
       correct = (learnerAns.toLowerCase() == fitbCorrect.toLowerCase());
     } else if (item.activityFormat == ActivityFormat.listeningTyping) {
       learnerAns = _typingController.text.trim();
@@ -394,6 +543,13 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       correct = _flashcardFlipped;
       learnerAns = 'Flashcard flipped';
       correctAns = 'Flashcard confirmed';
+    } else if (item.activityFormat == ActivityFormat.rearrangement) {
+      final targetTokens = item.sentenceArrangementTokens ?? item.exampleSentenceEnglish.split(RegExp(r'\s+'));
+      final targetSentence = targetTokens.join(' ').toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '').trim();
+      final assembledSentence = _assembledTokens.join(' ').toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '').trim();
+      correct = assembledSentence == targetSentence;
+      learnerAns = _assembledTokens.join(' ');
+      correctAns = targetTokens.join(' ');
     }
 
     // Save practice result log
@@ -427,6 +583,15 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _advanceNext() async {
+    debugPrint('Continue button tapped in Module 2, currentIndex: $_currentIndex, queueLength: ${_practiceQueue.length}');
+    
+    // Bounds check to prevent RangeError
+    if (_currentIndex >= _practiceQueue.length) {
+      debugPrint('Index out of bounds, transitioning to next phase');
+      await _transitionToReinforcementOrComplete();
+      return;
+    }
+    
     final item = _practiceQueue[_currentIndex];
     final wasKnown = widget.knownWordIds.contains(item.wordId);
 
@@ -447,30 +612,35 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         await provider.updateWordProgress(widget.sessionId, item.wordId, 'FULL', 0, 'NEEDS_PRONUNCIATION_REVIEW');
       }
 
-      final currentFormat = item.activityFormat;
-      final alternateFormat = ActivityFormat.values.firstWhere((f) => f != currentFormat);
+      // Sandbox mode: don't add to reinforcement queue
+      if (!widget.isSandbox) {
+        final currentFormat = item.activityFormat;
+        final alternateFormat = ActivityFormat.values.firstWhere((f) => f != currentFormat);
 
-      // Add multiple duplicates to increase reinforcement density
-      for (var i = 0; i < _reinforcementDuplicates; i++) {
-        _reinforcementQueue.add(
-          ReinforcementQueueItem(
-            wordId: item.wordId,
-            assignedFormat: alternateFormat,
-            status: ReinforcementStatus.pending,
-            createdAt: DateTime.now(),
-          ),
-        );
-      }
-      await LocalStorageService.saveReinforcementQueue(widget.sessionId, _reinforcementQueue);
+        // Add multiple duplicates to increase reinforcement density
+        for (var i = 0; i < _reinforcementDuplicates; i++) {
+          _reinforcementQueue.add(
+            ReinforcementQueueItem(
+              wordId: item.wordId,
+              assignedFormat: alternateFormat,
+              status: ReinforcementStatus.pending,
+              createdAt: DateTime.now(),
+            ),
+          );
+        }
+        await LocalStorageService.saveReinforcementQueue(widget.sessionId, _reinforcementQueue);
 
-      if (wasKnown && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('"${item.englishWord}" will be reviewed again in this session.'),
-            backgroundColor: const Color(0xFFF59E0B),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        if (wasKnown && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('"${item.englishWord}" will be reviewed again in this session.'),
+              backgroundColor: const Color(0xFFF59E0B),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        debugPrint('Sandbox mode: wrong answer recorded but not added to reinforcement queue');
       }
     } else {
       // Correct answer!
@@ -503,6 +673,13 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _transitionToReinforcementOrComplete() async {
+    // Sandbox mode: skip reinforcement phase entirely
+    if (widget.isSandbox) {
+      debugPrint('Sandbox mode: skipping reinforcement phase, completing module');
+      await _completeModuleAndAdvance();
+      return;
+    }
+    
     // Filter pending items from reinforcement queue
     final pendingReinforcements = _reinforcementQueue
         .where((item) => item.status == ReinforcementStatus.pending)
@@ -563,14 +740,18 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    await lessonProvider.persistModuleScore(
-      widget.lessonId,
-      2,
-      _initialPassCorrectCount,
-      total,
-      isSandbox: widget.isSandbox,
-      sessionId: widget.sessionId,
-    );
+    try {
+      await lessonProvider.persistModuleScore(
+        widget.lessonId,
+        2,
+        _initialPassCorrectCount,
+        total,
+        isSandbox: widget.isSandbox,
+        sessionId: widget.sessionId,
+      );
+    } catch (e) {
+      debugPrint('Module 2 score sync failed, continuing anyway: $e');
+    }
 
     if (!widget.isSandbox) {
       final summary = SessionSummaryModel(
@@ -599,6 +780,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     }
 
     if (!mounted) return;
+    debugPrint('Navigating to Module 3...');
     context.go(
       '/session/${widget.sessionId}/sentence-building',
       extra: {
@@ -725,6 +907,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         return _buildListeningTyping(item);
       case ActivityFormat.flashcardRecall:
         return _buildFlashcardRecall(item);
+      case ActivityFormat.rearrangement:
+        return _buildRearrangement(item);
     }
   }
 
@@ -1064,7 +1248,16 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
     if (_checked) {
       final selectedOption = _options[_selectedOptionIndex];
-      final isCorrect = selectedOption.toLowerCase() == target.toLowerCase();
+      
+      // Use the same sentence-detection logic as answer checking
+      String targetForColor = target;
+      if (targetForColor.split(RegExp(r'\s+')).length > 2 || 
+          targetForColor.contains('__') || 
+          targetForColor.contains('.')) {
+        targetForColor = item.englishWord;
+      }
+      
+      final isCorrect = selectedOption.toLowerCase() == targetForColor.toLowerCase();
       if (isCorrect) {
         blankColor = const Color(0xFF22C55E);
         blankBgColor = const Color(0xFFF0FDF4);
@@ -1220,6 +1413,104 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     );
   }
 
+  Widget _buildRearrangement(PracticeItemModel item) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Assembled Sentence',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: 60),
+                child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _assembledTokens.isEmpty
+                      ? [const Text('Tap words below to build the sentence', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14))]
+                      : _assembledTokens.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final token = entry.value;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _assembledTokens.removeAt(idx);
+                                _scrambledTokens.add(token);
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3B82F6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                token,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Available Words',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _scrambledTokens.map((token) {
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  _scrambledTokens.remove(token);
+                  _assembledTokens.add(token);
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                ),
+                child: Text(
+                  token,
+                  style: const TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w600),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildListeningTyping(PracticeItemModel item) {
     final prompt = (item.fitbSentence ?? item.exampleSentenceEnglish).trim();
     final answer = (item.fitbAnswer ?? item.englishWord).trim();
@@ -1296,6 +1587,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       isActionEnabled = _typingController.text.trim().isNotEmpty;
     } else if (item.activityFormat == ActivityFormat.flashcardRecall) {
       isActionEnabled = _flashcardFlipped;
+    } else if (item.activityFormat == ActivityFormat.rearrangement) {
+      isActionEnabled = _assembledTokens.isNotEmpty;
     }
 
     if (!_showFeedback) {

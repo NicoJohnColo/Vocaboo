@@ -1204,16 +1204,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       moduleNumber: widget.moduleNumber,
     );
 
-    await provider.persistModuleScore(
-      widget.lessonId,
-      widget.moduleNumber,
-      1,
-      1,
-      isSandbox: true,
-      sessionId: widget.sessionId,
-    );
+    try {
+      await provider.persistModuleScore(
+        widget.lessonId,
+        widget.moduleNumber,
+        1,
+        1,
+        isSandbox: true,
+        sessionId: widget.sessionId,
+      );
+    } catch (e) {
+      debugPrint('Module 1 score sync failed, continuing anyway: $e');
+    }
 
     if (!mounted) return;
+    debugPrint('Navigating to Module 2...');
     context.go(
       '/session/${widget.sessionId}/practice',
       extra: {

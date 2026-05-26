@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../models/learner_model.dart';
+import 'package:mobile/config/app_config.dart';
 
 class AuthProvider with ChangeNotifier {
   final _storage = const FlutterSecureStorage();
   
-  // Update this to point to your backend API. Use 10.0.2.2 for Android Emulator to host computer localhost.
-  static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  static const String baseUrl = AppConfig.baseUrl;
 
   String? _token;
   LearnerModel? _learner;

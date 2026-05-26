@@ -9,6 +9,7 @@ import '../models/vocabulary_word_model.dart';
 import '../models/diagnostic_result_model.dart';
 import '../services/scoring_service.dart';
 import '../services/local_storage_service.dart';
+import 'package:mobile/config/app_config.dart';
 
 const double lessonWeight = ScoringService.lessonWeight;
 const double reviewWeight = ScoringService.reviewWeight;
@@ -16,7 +17,7 @@ const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
   final AuthProvider? _auth;
-  static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  static const String baseUrl = AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
   List<LessonModel> _lessons = [];

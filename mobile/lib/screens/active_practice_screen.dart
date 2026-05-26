@@ -138,30 +138,37 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   void _buildPracticeQueue() {
     _practiceQueue.clear();
     final random = Random();
-    final allowedFormats = widget.isSandbox
-        ? const [
-            ActivityFormat.multipleChoice,
-            ActivityFormat.fillInTheBlank,
-            ActivityFormat.flashcardRecall,
-            ActivityFormat.rearrangement,
-          ]
-        : ActivityFormat.values;
-
-    // Build queue sequentially per word: for each word, add two exercises back-to-back
-    // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...
-    for (var word in _words) {
-      // First exercise: pick a random format. Sandbox mode keeps the Gemini-generated subset only.
-      var format1 = allowedFormats[random.nextInt(allowedFormats.length)];
-      if (!widget.isSandbox && word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.5) {
-        format1 = ActivityFormat.imageMatching;
+    
+    if (widget.isSandbox) {
+      // Sandbox mode: fixed sequence of activities
+      // 1. Flashcard recall
+      // 2. Multiple choice
+      // 3. Fill in the blank
+      for (var word in _words) {
+        _practiceQueue.add(_createPracticeItem(word, ActivityFormat.flashcardRecall));
+        _practiceQueue.add(_createPracticeItem(word, ActivityFormat.multipleChoice));
+        _practiceQueue.add(_createPracticeItem(word, ActivityFormat.fillInTheBlank));
       }
-      _practiceQueue.add(_createPracticeItem(word, format1));
+    } else {
+      // Non-sandbox mode: random selection from all formats
+      final allowedFormats = ActivityFormat.values;
+      
+      // Build queue sequentially per word: for each word, add two exercises back-to-back
+      // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...
+      for (var word in _words) {
+        // First exercise: pick a random format
+        var format1 = allowedFormats[random.nextInt(allowedFormats.length)];
+        if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() > 0.5) {
+          format1 = ActivityFormat.imageMatching;
+        }
+        _practiceQueue.add(_createPracticeItem(word, format1));
 
-      // Second exercise: pick a different format than the first
-      final excludeFromFormat2 = {format1, if (!widget.isSandbox && format1 == ActivityFormat.imageMatching) ActivityFormat.imageMatching};
-      final otherFormats = allowedFormats.where((f) => !excludeFromFormat2.contains(f)).toList();
-      final format2 = otherFormats[random.nextInt(otherFormats.length)];
-      _practiceQueue.add(_createPracticeItem(word, format2));
+        // Second exercise: pick a different format than the first
+        final excludeFromFormat2 = {format1, if (format1 == ActivityFormat.imageMatching) ActivityFormat.imageMatching};
+        final otherFormats = allowedFormats.where((f) => !excludeFromFormat2.contains(f)).toList();
+        final format2 = otherFormats[random.nextInt(otherFormats.length)];
+        _practiceQueue.add(_createPracticeItem(word, format2));
+      }
     }
   }
 

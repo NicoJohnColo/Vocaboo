@@ -210,7 +210,12 @@ class LessonScoreScreen extends StatelessWidget {
                       final failedSentence = failedSentenceWordIds.contains(word.wordId);
                       final attempts = wordPronunciationAttempts[word.wordId] ?? 0;
                       final correct = wordPronunciationCorrect[word.wordId] ?? false;
-                      final mastered = correct && !failedSentence;
+                      
+                      // In sandbox mode, mastered = not failed sentence (no pronunciation check)
+                      // In normal mode, mastered = correct pronunciation AND not failed sentence
+                      final mastered = isSandbox 
+                          ? !failedSentence 
+                          : (correct && !failedSentence);
 
                       final statusLabel = mastered ? 'Mastered' : 'Needs Review';
                       final statusColor = mastered ? const Color(0xFF10B981) : const Color(0xFFEF4444);
@@ -263,24 +268,25 @@ class LessonScoreScreen extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                // Status Badge
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: statusBgColor,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: statusColor, width: 1.5),
-                                  ),
-                                  child: Text(
-                                    statusLabel,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: statusColor,
-                                      letterSpacing: 0.5,
+                                // Status Badge - only show in non-sandbox mode
+                                if (!isSandbox)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: statusBgColor,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: statusColor, width: 1.5),
+                                    ),
+                                    child: Text(
+                                      statusLabel,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: statusColor,
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
                                   ),
-                                ),
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -313,25 +319,28 @@ class LessonScoreScreen extends StatelessWidget {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.mic_rounded,
-                                        size: 16,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Pronunciation Attempts: $attempts',
-                                        style: const TextStyle(
-                                          fontSize: 13,
+                                  // Only show pronunciation attempts in non-sandbox mode
+                                  if (!isSandbox) ...[
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.mic_rounded,
+                                          size: 16,
                                           color: Color(0xFF64748B),
-                                          fontWeight: FontWeight.w600,
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Pronunciation Attempts: $attempts',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Color(0xFF64748B),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

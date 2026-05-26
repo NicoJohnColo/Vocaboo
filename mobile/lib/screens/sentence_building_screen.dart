@@ -152,8 +152,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       // Prefer words passed via navigation (fast path)
       if (widget.allWords.isNotEmpty) {
         fetchedWords = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
+      } else if (widget.isSandbox) {
+        // Sandbox: fetch the sandbox session words only; do NOT fall back to local assets or other endpoints.
+        try {
+          final mixed = await lessonProvider.getCumulativeMixedReview(widget.sessionId, isSandbox: true);
+          if (mixed.isNotEmpty) {
+            fetchedWords = mixed.map((m) => VocabularyWordModel.fromJson({
+                  'wordId': m['wordId'] ?? m['word'] ?? '',
+                  'lessonId': widget.lessonId,
+                  'englishWord': m['word'] ?? m['englishWord'] ?? '',
+                  'cebuanoMeaning': m['definition'] ?? m['cebuanoMeaning'] ?? '',
+                  'exampleSentenceEnglish': m['example'] ?? m['exampleSentenceEnglish'] ?? '',
+                })).toList();
+          }
+        } catch (e) {
+          setState(() {
+            _error = 'Failed to load sandbox lesson: ${e.toString()}';
+            _isLoading = false;
+          });
+          return;
+        }
       } else {
-        // Primary backend fetch
+        // Primary backend fetch for non-sandbox
         fetchedWords = await lessonProvider.loadVocabulary(widget.lessonId);
 
         // Fallback 1: try lesson activity endpoint which sometimes contains word-like items
@@ -168,47 +188,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   'exampleSentenceEnglish': m['example'] ?? m['exampleSentenceEnglish'] ?? '',
                 })).toList();
           }
-        }
-
-        // Fallback 2: try cumulative mixed review (sandbox/session endpoints)
-        if (fetchedWords.isEmpty) {
-          final mixed = await lessonProvider.getCumulativeMixedReview(widget.sessionId);
-          if (mixed.isNotEmpty) {
-            fetchedWords = mixed.map((m) => VocabularyWordModel.fromJson({
-                  'wordId': m['wordId'] ?? m['word'] ?? '',
-                  'lessonId': widget.lessonId,
-                  'englishWord': m['word'] ?? m['englishWord'] ?? '',
-                  'cebuanoMeaning': m['definition'] ?? m['cebuanoMeaning'] ?? '',
-                  'exampleSentenceEnglish': m['example'] ?? m['exampleSentenceEnglish'] ?? '',
-                })).toList();
-          }
-        }
-
-        // Final fallback: small local sample so UI remains usable for debugging/dev
-        if (fetchedWords.isEmpty) {
-          fetchedWords = [
-            VocabularyWordModel.fromJson({
-              'wordId': 'sample_1',
-              'lessonId': widget.lessonId,
-              'englishWord': 'notebook',
-              'cebuanoMeaning': 'kuwaderno',
-              'exampleSentenceEnglish': 'I put my notebook inside my bag.',
-            }),
-            VocabularyWordModel.fromJson({
-              'wordId': 'sample_2',
-              'lessonId': widget.lessonId,
-              'englishWord': 'pen',
-              'cebuanoMeaning': 'bolpen',
-              'exampleSentenceEnglish': 'Please pass me the pen.',
-            }),
-            VocabularyWordModel.fromJson({
-              'wordId': 'sample_3',
-              'lessonId': widget.lessonId,
-              'englishWord': 'book',
-              'cebuanoMeaning': 'libro',
-              'exampleSentenceEnglish': 'She opened the book to read.',
-            }),
-          ];
         }
       }
 
@@ -291,15 +270,37 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   List<String> _activityArrangementTokens(VocabularyWordModel word) {
     if (word.sentenceArrangementTokens != null && word.sentenceArrangementTokens!.isNotEmpty) {
-      return List<String>.from(word.sentenceArrangementTokens!);
+      final provided = word.sentenceArrangementTokens!
+          .map((token) => token.trim())
+          .where((token) => token.isNotEmpty)
+          .toList();
+      final sentence = word.exampleSentenceEnglish.trim().isEmpty ? word.englishWord : word.exampleSentenceEnglish;
+      final normalizedProvided = _normalizeSentenceText(provided.join(' '));
+      final normalizedSentence = _normalizeSentenceText(sentence);
+      if (provided.length >= 2 && normalizedProvided == normalizedSentence) {
+        return provided;
+      }
     }
 
     final sentence = word.exampleSentenceEnglish.trim().isEmpty ? word.englishWord : word.exampleSentenceEnglish;
+    return _tokensFromSentence(sentence);
+  }
+
+  List<String> _tokensFromSentence(String sentence) {
     return sentence
-        .replaceAll(RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~(?)]'), '')
-        .split(' ')
-        .where((w) => w.trim().isNotEmpty)
+        .replaceAll(RegExp(r"[^\p{L}\p{N}' ]", unicode: true), ' ')
+        .split(RegExp(r'\s+'))
+        .map((token) => token.trim())
+        .where((token) => token.isNotEmpty)
         .toList();
+  }
+
+  String _normalizeSentenceText(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r"[^\p{L}\p{N}' ]", unicode: true), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   void _startNextItem() {
@@ -389,7 +390,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         });
 
         // Navigate to the confusable intervention screen and await result
-        final result = await context.push<Map<String, bool>>(
+        final navContext = context;
+        // ignore: use_build_context_synchronously
+        final result = await navContext.push<Map<String, bool>>(
           '/session/${widget.sessionId}/confusable-distinction',
           extra: {
             'lessonId': widget.lessonId,
@@ -423,16 +426,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _completeModuleAndAdvance() async {
-    await Provider.of<LessonProvider>(context, listen: false)
-        .persistModuleScore(widget.lessonId, 3, _initialPassCorrectCount, _totalUniqueWords);
+    final navContext = context;
+
+    await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
+      widget.lessonId,
+      3,
+      _initialPassCorrectCount,
+      _totalUniqueWords,
+      isSandbox: widget.isSandbox,
+      sessionId: widget.sessionId,
+    );
 
     if (!mounted) return;
-
-    // Ensure all words have entries in pronunciation maps (default to false/0 if not attempted)
-    for (final word in _words) {
-      _wordPronunciationCorrect.putIfAbsent(word.wordId, () => false);
-      _wordPronunciationAttempts.putIfAbsent(word.wordId, () => 0);
-    }
 
     // Calculate overall score using the same formula as Module 3's internal scoring
     final overallScore = _totalUniqueWords > 0 
@@ -447,16 +452,19 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         ? widget.lessonTitle! 
         : 'Lesson ${widget.lessonId} Complete';
 
-    // Persist full score details so the map screen can retrieve them later
-    await LocalStorageService.saveLessonScoreDetails(widget.lessonId, {
-      'wordPronunciationCorrect': _wordPronunciationCorrect,
-      'wordPronunciationAttempts': _wordPronunciationAttempts,
-      'failedSentenceWordIds': failedSentenceWordIds.toList(),
-      'overallScore': overallScore,
-    });
+    if (!widget.isSandbox) {
+      // Persist full score details so the map screen can retrieve them later
+      await LocalStorageService.saveLessonScoreDetails(widget.lessonId, {
+        'wordPronunciationCorrect': _wordPronunciationCorrect,
+        'wordPronunciationAttempts': _wordPronunciationAttempts,
+        'failedSentenceWordIds': failedSentenceWordIds.toList(),
+        'overallScore': overallScore,
+      });
+    }
 
     // Navigate to lesson score screen
-    context.go(
+    // ignore: use_build_context_synchronously
+    navContext.go(
       '/session/${widget.sessionId}/lesson-score',
       extra: {
         'sessionId': widget.sessionId,
@@ -508,23 +516,42 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     });
   }
 
-  void _handleContinueFromSentence() {
+  Future<void> _handleContinueFromSentence() async {
     if (_isCorrect) {
-      // Advance to Pronunciation Mode for the current word!
-      // Notify backend that Module 3 (pronunciation) has started for this word.
       final provider = Provider.of<LessonProvider>(context, listen: false);
-      provider.updateWordProgress(
-        widget.sessionId,
-        _currentWord.wordId,
-        'FULL',
-        0,
-        'PRONUNCIATION_PENDING',
-        moduleNumber: widget.moduleNumber,
-      );
+      if (widget.isSandbox) {
+        await provider.updateSandboxProgress(
+          sessionId: widget.sessionId,
+          wordId: _currentWord.wordId,
+          pathway: 'FULL',
+          stepCompleted: 4,
+          status: 'MASTERED',
+          moduleNumber: widget.moduleNumber,
+        );
 
-      setState(() {
-        _currentPhase = Phase.pronunciationFeedback;
-      });
+        if (_isReinforcementPass) {
+          _reinforcementCompletedCount++;
+        } else {
+          _initialPassCompletedCount++;
+        }
+
+        _startNextItem();
+      } else {
+        // Advance to Pronunciation Mode for the current word!
+        // Notify backend that Module 3 (pronunciation) has started for this word.
+        provider.updateWordProgress(
+          widget.sessionId,
+          _currentWord.wordId,
+          'FULL',
+          0,
+          'PRONUNCIATION_PENDING',
+          moduleNumber: widget.moduleNumber,
+        );
+
+        setState(() {
+          _currentPhase = Phase.pronunciationFeedback;
+        });
+      }
     } else {
       // Swap format and go to next item in the queue (or place it back at the end)
       _currentFormat = (_currentFormat == ActivityFormat.completion)
@@ -658,6 +685,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _cancelRecordingSession() async {
+    final wasActiveAttempt = _recordingSessionActive && _isRecording && _attemptResult == null;
+    final shouldMarkFailure = wasActiveAttempt && _pronunciationAttempt >= _maxAttempts;
+
     _recordingSessionActive = false;
     // Stop monitoring and listening immediately
     _stopAutoEvaluationMonitoring();
@@ -669,8 +699,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     setState(() {
       _isRecording = false;
       _isEvaluating = false;
-      _attemptResult = null;
       _liveTranscriptNotifier.value = '';
+
+      if (wasActiveAttempt) {
+        _totalPronunciationAttempts++;
+
+        if (shouldMarkFailure) {
+          _attemptResult = PronunciationAttemptModel(
+            attemptId: '',
+            isCorrect: false,
+            transcribedText: null,
+            phoneticTarget: null,
+            phonologicalTip: null,
+            attemptNumber: _pronunciationAttempt,
+            isInconclusive: true,
+          );
+        } else {
+          _pronunciationAttempt = _pronunciationAttempt < _maxAttempts ? _pronunciationAttempt + 1 : _maxAttempts;
+          _attemptResult = null;
+        }
+      } else {
+        _attemptResult = null;
+      }
     });
     
     // Exit the recording/practice modal but stay in the module
@@ -1507,7 +1557,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                       elevation: 0,
                     ),
                     child: Text(
-                      _isCorrect ? "CONTINUE TO PRONUNCIATION" : "CONTINUE",
+                      widget.isSandbox ? "CONTINUE" : (_isCorrect ? "CONTINUE TO PRONUNCIATION" : "CONTINUE"),
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
                     ),
                   )
@@ -1665,7 +1715,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Text(
-                              _getPhonologicalTip(_currentWord.phonologicalTipKey),
+                              widget.isSandbox && _currentWord.phonologicalTipKey != null
+                                  ? _currentWord.phonologicalTipKey!
+                                  : _getPhonologicalTip(_currentWord.phonologicalTipKey),
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: Color(0xFF1D4ED8),
@@ -1709,7 +1761,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Text(
-                                _getPhonologicalTip(_currentWord.phonologicalTipKey),
+                                widget.isSandbox && _currentWord.phonologicalTipKey != null
+                                    ? _currentWord.phonologicalTipKey!
+                                    : _getPhonologicalTip(_currentWord.phonologicalTipKey),
                                 style: const TextStyle(
                                   fontSize: 13,
                                   color: Color(0xFFB91C1C),

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -15,7 +14,6 @@ class SandboxModeScreen extends StatefulWidget {
 }
 
 class _SandboxModeScreenState extends State<SandboxModeScreen> {
-  final TextEditingController _topicController = TextEditingController();
   final TextEditingController _customWordController = TextEditingController();
 
   bool _loading = false;
@@ -25,13 +23,27 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
 
   @override
   void dispose() {
-    _topicController.dispose();
     _customWordController.dispose();
     super.dispose();
   }
 
   Future<void> _generate() async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
+    final customWord = _customWordController.text.trim();
+
+    if (customWord.isEmpty) {
+      setState(() {
+        _error = 'Enter one English word.';
+      });
+      return;
+    }
+
+    if (customWord.split(RegExp(r'\s+')).length != 1) {
+      setState(() {
+        _error = 'Sandbox accepts exactly one English word.';
+      });
+      return;
+    }
 
     setState(() {
       _loading = true;
@@ -39,62 +51,49 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
     });
 
     try {
-      final lookup = await InternetAddress.lookup('example.com');
-      if (lookup.isEmpty || lookup.first.rawAddress.isEmpty) {
-        throw const SocketException('No internet');
-      }
-    } on SocketException {
+      final result = await provider.generateSandbox(customWord: customWord);
+
       if (!mounted) return;
+
       setState(() {
         _loading = false;
-        _error = 'Sandbox Mode requires an internet connection.';
+        final sessionValue = result?['session'];
+        final wordsValue = result?['words'];
+        _session = sessionValue is Map ? Map<String, dynamic>.from(sessionValue) : null;
+        _words = wordsValue is List
+            ? wordsValue.whereType<Map>().map((word) => Map<String, dynamic>.from(word)).toList()
+            : <Map<String, dynamic>>[];
+        _error = _session == null || _words.isEmpty ? 'Sandbox generation failed.' : null;
       });
-      return;
-    }
 
-    final result = await provider.generateSandbox(
-      topic: _topicController.text.trim().isEmpty ? null : _topicController.text.trim(),
-      customWord: _customWordController.text.trim().isEmpty ? null : _customWordController.text.trim(),
-    );
+      if (_session != null && _words.isNotEmpty) {
+        final sessionId = _session!['sessionId']?.toString() ?? '';
+        final lessonId = _session!['lessonId']?.toString() ?? sessionId;
 
-    if (!mounted) return;
-
-    setState(() {
-      _loading = false;
-      final sessionValue = result?['session'];
-      final wordsValue = result?['words'];
-      _session = sessionValue is Map ? Map<String, dynamic>.from(sessionValue) : null;
-      _words = wordsValue is List
-          ? wordsValue.whereType<Map>().map((word) => Map<String, dynamic>.from(word)).toList()
-          : <Map<String, dynamic>>[];
-      _error = _session == null || _words.isEmpty
-          ? 'Sandbox generation failed. Try another topic or custom word.'
-          : null;
-    });
-
-    // If we successfully generated a sandbox session with words, immediately
-    // launch the Module 1 introduction flow reusing the existing lesson screens.
-    if (_session != null && _words.isNotEmpty) {
-      final sessionId = _session!['sessionId']?.toString() ?? '';
-      final lessonId = _session!['lessonId']?.toString() ?? sessionId;
-
-      // Push the VocabularyIntroductionScreen directly so the existing
-      // module flow (Modules 1..4) can reuse the provided `allWords` payload.
-      if (sessionId.isNotEmpty) {
-        if (!mounted) return;
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (ctx) => VocabularyIntroductionScreen(
-            sessionId: sessionId,
-            lessonId: lessonId,
-            categoryId: '',
-            knownWordIds: <String>[],
-            unknownWordIds: <String>[],
-            allWords: _words,
-            moduleNumber: 1,
-            isSandbox: true,
-          ),
-        ));
+        if (sessionId.isNotEmpty) {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (ctx) => VocabularyIntroductionScreen(
+              sessionId: sessionId,
+              lessonId: lessonId,
+              categoryId: '',
+              knownWordIds: <String>[],
+              unknownWordIds: <String>[],
+              allWords: _words,
+              moduleNumber: 1,
+              isSandbox: true,
+            ),
+          ));
+        }
       }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _loading = false;
+        _error = message.contains('Gemini API key is not configured')
+            ? 'Sandbox generation needs a Gemini API key configured on the backend.'
+            : message;
+      });
     }
   }
 
@@ -132,24 +131,16 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Build a sandbox practice set by topic or custom word.',
+                'Enter one English word to generate a live sandbox lesson.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15, color: Color(0xFF475569), fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 20),
               TextField(
-                controller: _topicController,
-                decoration: const InputDecoration(
-                  labelText: 'Topic',
-                  hintText: 'food, animals, places, colors',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
                 controller: _customWordController,
                 decoration: const InputDecoration(
-                  labelText: 'Custom word',
-                  hintText: 'Optional seed word',
+                  labelText: 'English word',
+                  hintText: 'book',
                 ),
               ),
               const SizedBox(height: 16),
@@ -199,7 +190,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _session!['topic']?.toString() ?? _session!['customWord']?.toString() ?? 'Sandbox practice',
+                        _session!['customWord']?.toString() ?? 'Sandbox practice',
                         style: const TextStyle(color: Color(0xFF64748B)),
                       ),
                       const SizedBox(height: 16),
@@ -211,7 +202,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
-                        child: const Text('Hear first word'),
+                        child: const Text('Hear generated word'),
                       ),
                     ],
                   ),

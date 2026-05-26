@@ -402,7 +402,28 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final lessonScore = lessonScores.isEmpty ? 0.0 : lessonScores.reduce((a, b) => a + b) / lessonScores.length;
     final uniqueWordCount = _reviewItems.map((it) => (it['wordId'] ?? '').toString()).toSet().length;
     final cumulativeReviewScore = uniqueWordCount == 0 ? 0.0 : (_firstPassCorrectCount / uniqueWordCount) * 100.0;
-    _weightedScore = ScoringService.computeFinalScore(lessonScore, cumulativeReviewScore);
+    if (widget.isSandbox) {
+      final sandboxModuleScores = await lessons.fetchSandboxModuleScores(widget.sessionId);
+      double module1 = 0.0;
+      double module2 = 0.0;
+      double module3 = 0.0;
+
+      for (final score in sandboxModuleScores) {
+        final moduleNumber = (score['moduleNumber'] as num?)?.toInt();
+        final moduleScore = (score['score'] as num?)?.toDouble() ?? 0.0;
+        if (moduleNumber == 1) {
+          module1 = moduleScore;
+        } else if (moduleNumber == 2) {
+          module2 = moduleScore;
+        } else if (moduleNumber == 3) {
+          module3 = moduleScore;
+        }
+      }
+
+      _weightedScore = (module1 * 0.30) + (module2 * 0.30) + (module3 * 0.40);
+    } else {
+      _weightedScore = ScoringService.computeFinalScore(lessonScore, cumulativeReviewScore);
+    }
     bool passed = ScoringService.isPassing(_weightedScore ?? 0.0);
 
     // Call backend mastery endpoint for server-side validation
@@ -435,7 +456,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
 
     final result = passed
       ? widget.isSandbox
-        ? await lessons.completeSandbox(widget.sessionId)
+        ? await lessons.completeSandbox(widget.sessionId, finalScore: _weightedScore ?? 0.0)
         : await lessons.completeCategoryReview(
           sessionId: widget.sessionId,
           categoryId: widget.categoryId,
@@ -461,28 +482,30 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       }
     }
 
-    // Save cumulative review completion data for later retrieval (pass and fail)
-    await LocalStorageService.saveCumulativeReviewCompleted(
-      widget.categoryId,
-      _weightedScore ?? cumulativeReviewScore,
-      mastered,
-      total,
-      widget.sessionId,
-      missed,
-      widget.allWords,
-    );
+    if (!widget.isSandbox) {
+      // Save cumulative review completion data for later retrieval (pass and fail)
+      await LocalStorageService.saveCumulativeReviewCompleted(
+        widget.categoryId,
+        _weightedScore ?? cumulativeReviewScore,
+        mastered,
+        total,
+        widget.sessionId,
+        missed,
+        widget.allWords,
+      );
 
-    if (passed) {
-      await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
-      await LocalStorageService.clearReviewCompletionState(widget.sessionId);
-    } else {
-      await LocalStorageService.saveReviewCompletionState(widget.sessionId, {
-        'lessonScore': lessonScore,
-        'cumulativeReviewScore': cumulativeReviewScore,
-        'finalScore': _weightedScore,
-        'passed': false,
-        'retryQueue': _retryQueue,
-      });
+      if (passed) {
+        await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
+        await LocalStorageService.clearReviewCompletionState(widget.sessionId);
+      } else {
+        await LocalStorageService.saveReviewCompletionState(widget.sessionId, {
+          'lessonScore': lessonScore,
+          'cumulativeReviewScore': cumulativeReviewScore,
+          'finalScore': _weightedScore,
+          'passed': false,
+          'retryQueue': _retryQueue,
+        });
+      }
     }
 
     if (!passed) {

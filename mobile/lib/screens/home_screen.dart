@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
-import '../widgets/mascot_visual.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

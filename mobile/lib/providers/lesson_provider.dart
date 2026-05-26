@@ -289,7 +289,7 @@ class LessonProvider with ChangeNotifier {
   ///
   /// The current backend does not expose a dedicated list endpoint for this
   /// screen, so the app falls back to an empty list instead of failing.
-  Future<List<Map<String, dynamic>>> getCumulativeMixedReview(String sessionId) async {
+  Future<List<Map<String, dynamic>>> getCumulativeMixedReview(String sessionId, {bool isSandbox = false}) async {
     try {
       // Try backend sandbox session endpoint which returns session info including words
       final response = await http.get(
@@ -314,10 +314,19 @@ class LessonProvider with ChangeNotifier {
         return items;
       }
     } catch (e) {
-      // ignore network errors and fall through to local empty list
+      if (isSandbox) {
+        debugPrint('LessonProvider.getCumulativeMixedReview sandbox error: $e');
+        rethrow;
+      }
+      // ignore network errors and fall through to local empty list for non-sandbox
     }
 
-    // Fallback: try local V3 asset to assemble mixed review items
+    if (isSandbox) {
+      // For sandbox requests we must not fall back to local assets — fail loudly.
+      throw Exception('Failed to fetch sandbox session or it contained no words.');
+    }
+
+    // Fallback: try local V3 asset to assemble mixed review items (only for non-sandbox)
     try {
       final jsonStr = await rootBundle.loadString('assets/json/v3_activity_words.json');
       final List<dynamic> data = json.decode(jsonStr);
@@ -338,7 +347,7 @@ class LessonProvider with ChangeNotifier {
       // ignore
     }
 
-    // Final fallback: return empty list
+    // Final fallback: return empty list for non-sandbox
     return [];
   }
 
@@ -451,46 +460,71 @@ class LessonProvider with ChangeNotifier {
     return finalScore >= passingThreshold;
   }
 
-  Future<void> persistModuleScore(String lessonId, int moduleNumber, int correctCount, int totalCount) async {
+  Future<void> persistModuleScore(
+    String lessonId,
+    int moduleNumber,
+    int correctCount,
+    int totalCount, {
+    bool isSandbox = false,
+    String? sessionId,
+  }) async {
     final score = ScoringService.computeLessonScore(correctCount, totalCount);
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/progress/module-score'),
-        headers: _headers,
-        body: json.encode({
-          'lessonId': lessonId,
-          'moduleNumber': moduleNumber,
-          'correctCount': correctCount,
-          'totalCount': totalCount,
-          'score': score,
-        }),
-      );
+      if (isSandbox) {
+        final sandboxSessionId = sessionId ?? lessonId;
+        final response = await http.post(
+          Uri.parse('$baseUrl/sandbox/sessions/$sandboxSessionId/module-score'),
+          headers: _headers,
+          body: json.encode({
+            'moduleNumber': moduleNumber,
+            'correctCount': correctCount,
+            'totalCount': totalCount,
+            'score': score,
+          }),
+        );
 
-      if (response.statusCode == 401) {
-        _auth?.logout();
+        if (response.statusCode == 401) {
+          _auth?.logout();
+          throw Exception('Failed to persist sandbox module score: unauthorized.');
+        } else if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception(_extractErrorMessage(response.body, 'Failed to persist sandbox module score.'));
+        }
+      } else {
+        final response = await http.post(
+          Uri.parse('$baseUrl/progress/module-score'),
+          headers: _headers,
+          body: json.encode({
+            'lessonId': lessonId,
+            'moduleNumber': moduleNumber,
+            'correctCount': correctCount,
+            'totalCount': totalCount,
+            'score': score,
+          }),
+        );
+
+        if (response.statusCode == 401) {
+          _auth?.logout();
+        }
       }
     } catch (e) {
       debugPrint('LessonProvider.persistModuleScore backend sync error: $e');
+      if (isSandbox) {
+        rethrow;
+      }
     }
 
-    await LocalStorageService.saveModuleScore(lessonId, moduleNumber, correctCount, totalCount);
-    await LocalStorageService.saveLessonScore(lessonId, score);
+    if (!isSandbox) {
+      await LocalStorageService.saveModuleScore(lessonId, moduleNumber, correctCount, totalCount);
+      await LocalStorageService.saveLessonScore(lessonId, score);
+    }
   }
 
-  /// Placeholder sandbox prompt generator.
-  /// In a full implementation this would call the backend to generate a prompt based on a seed word.
-  Future<String?> getSandboxPrompt() async {
-    // TODO: Replace with actual API call to fetch a sandbox prompt.
-    return 'Sample sandbox prompt generated for practice.';
-  }
-
-  Future<Map<String, dynamic>?> generateSandbox({String? topic, String? customWord}) async {
+  Future<Map<String, dynamic>?> generateSandbox({required String customWord}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/sandbox/generate'),
         headers: _headers,
         body: json.encode({
-          'topic': topic,
           'customWord': customWord,
         }),
       );
@@ -498,11 +532,14 @@ class LessonProvider with ChangeNotifier {
         return json.decode(response.body) as Map<String, dynamic>;
       } else if (response.statusCode == 401) {
         _auth?.logout();
+        throw Exception('Sandbox generation failed: unauthorized.');
+      } else {
+        throw Exception(_extractErrorMessage(response.body, 'Sandbox generation failed.'));
       }
     } catch (e) {
-      // Handle network errors silently
+      debugPrint('LessonProvider.generateSandbox error: $e');
+      rethrow;
     }
-    return null;
   }
 
   /// Updates sandbox progress for a word.
@@ -526,31 +563,73 @@ class LessonProvider with ChangeNotifier {
           'moduleNumber': moduleNumber,
         }),
       );
-    // Catch any errors silently; can log if needed
     } catch (e) {
       debugPrint('LessonProvider.updateSandboxProgress error: $e');
+      rethrow;
     }
 
   }
 
   /// Completes sandbox session and returns result.
-  Future<Map<String, dynamic>?> completeSandbox(String sessionId) async {
+  Future<Map<String, dynamic>?> completeSandbox(String sessionId, {required double finalScore}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/sandbox/sessions/$sessionId/complete'),
         headers: _headers,
+        body: json.encode({'score': finalScore}),
       );
       if (response.statusCode == 200) {
         return json.decode(response.body) as Map<String, dynamic>;
       } else if (response.statusCode == 401) {
         _auth?.logout();
+        throw Exception('Sandbox completion failed: unauthorized.');
+      } else {
+        throw Exception(_extractErrorMessage(response.body, 'Sandbox completion failed.'));
       }
-    // Catch any errors silently; can log if needed
     } catch (e) {
       debugPrint('LessonProvider.completeSandbox error: $e');
+      rethrow;
     }
+  }
 
-    return null;
+  Future<List<Map<String, dynamic>>> fetchSandboxModuleScores(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/sandbox/sessions/$sessionId/module-scores'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is List) {
+          return decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+        }
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+        throw Exception('Failed to fetch sandbox module scores: unauthorized.');
+      } else {
+        throw Exception(_extractErrorMessage(response.body, 'Failed to fetch sandbox module scores.'));
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchSandboxModuleScores error: $e');
+      rethrow;
+    }
+    return [];
+  }
+
+  String _extractErrorMessage(String body, String fallbackMessage) {
+    try {
+      final decoded = json.decode(body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message']?.toString().trim();
+        if (message != null && message.isNotEmpty) {
+          return message;
+        }
+      }
+    } catch (_) {
+      // ignore parse failure and fall back below
+    }
+    return fallbackMessage;
   }
 
   /// Fetches dashboard progress summary.

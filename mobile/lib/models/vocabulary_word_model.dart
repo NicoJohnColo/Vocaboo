@@ -54,13 +54,14 @@ class VocabularyWordModel {
   });
 
   factory VocabularyWordModel.fromJson(Map<String, dynamic> json) {
+    final sentenceCompletionOptions = _readStringList(json, 'sentenceCompletionOptions');
     return VocabularyWordModel(
       wordId: json['wordId'] ?? '',
       lessonId: json['lessonId'] ?? '',
       englishWord: json['englishWord'] ?? '',
       cebuanoMeaning: json['cebuanoMeaning'] ?? '',
-      exampleSentenceEnglish: json['exampleSentenceEnglish'] ?? '',
-      exampleSentenceCebuano: json['exampleSentenceCebuano'],
+      exampleSentenceEnglish: _readString(json, 'exampleSentenceEnglish', 'englishExampleSentence', 'example'),
+      exampleSentenceCebuano: _readString(json, 'exampleSentenceCebuano', 'cebuanoExampleSentence', 'cebuanoExample'),
       audioAssetPath: json['audioAssetPath'],
       imageAssetPath: json['imageAssetPath'],
       partOfSpeech: json['partOfSpeech'],
@@ -71,20 +72,53 @@ class VocabularyWordModel {
       mcDistractor1: json['mcDistractor1'],
       mcDistractor2: json['mcDistractor2'],
       mcDistractor3: json['mcDistractor3'],
-      fitbSentence: json['fitbSentence'],
-      fitbAnswer: json['fitbAnswer'],
+      fitbSentence: _readString(json, 'fitbSentence', 'fillInTheBlankSentence'),
+      fitbAnswer: _readString(json, 'fitbAnswer', 'sentenceCompletionAnswer', 'sentenceCompletionBlank'),
       matchingSet: (json['matchingSet'] as List<dynamic>?)
           ?.whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList(),
       sentenceArrangementTokens: (json['sentenceArrangementTokens'] as List<dynamic>?)?.map((item) => item.toString()).toList(),
-      sentenceCompletionSentence: json['sentenceCompletionSentence'],
-      sentenceCompletionAnswer: json['sentenceCompletionAnswer'],
-      sentenceCompletionOption1: json['sentenceCompletionOption1'],
-      sentenceCompletionOption2: json['sentenceCompletionOption2'],
-      sentenceCompletionOption3: json['sentenceCompletionOption3'],
+      sentenceCompletionSentence: _readString(json, 'sentenceCompletionSentence', 'sentenceCompletionBlank', 'fillInTheBlankSentence'),
+      sentenceCompletionAnswer: _readString(json, 'sentenceCompletionAnswer', 'fitbAnswer', 'englishWord'),
+      sentenceCompletionOption1: _readSentenceCompletionOption(json, sentenceCompletionOptions, 0),
+      sentenceCompletionOption2: _readSentenceCompletionOption(json, sentenceCompletionOptions, 1),
+      sentenceCompletionOption3: _readSentenceCompletionOption(json, sentenceCompletionOptions, 2),
       // imageAssetPath already set above from json
     );
+  }
+
+  static String _readString(Map<String, dynamic> json, String primaryKey, String secondaryKey, [String? tertiaryKey]) {
+    for (final key in [primaryKey, secondaryKey, if (tertiaryKey != null) tertiaryKey]) {
+      final value = json[key];
+      if (value != null) {
+        final text = value.toString().trim();
+        if (text.isNotEmpty) {
+          return text;
+        }
+      }
+    }
+    return '';
+  }
+
+  static List<String> _readStringList(Map<String, dynamic> json, String key) {
+    final value = json[key];
+    if (value is List) {
+      return value.map((item) => item.toString().trim()).where((item) => item.isNotEmpty).toList();
+    }
+    return const [];
+  }
+
+  static String? _readSentenceCompletionOption(Map<String, dynamic> json, List<String> options, int index) {
+    if (options.length > index) {
+      final value = options[index].trim();
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+    final legacyKey = 'sentenceCompletionOption${index + 1}';
+    final fallback = json[legacyKey]?.toString().trim() ?? '';
+    return fallback.isEmpty ? null : fallback;
   }
 
   Map<String, dynamic> toJson() {

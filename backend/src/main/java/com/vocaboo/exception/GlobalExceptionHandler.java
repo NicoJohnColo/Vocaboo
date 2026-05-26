@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,6 +55,19 @@ public class GlobalExceptionHandler {
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleResponseStatus(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        HttpStatus resolvedStatus = status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status;
+        ApiErrorResponse errorResponse = ApiErrorResponse.builder()
+                .status(resolvedStatus.value())
+                .message(ex.getReason() == null || ex.getReason().isBlank() ? resolvedStatus.getReasonPhrase() : ex.getReason())
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        return new ResponseEntity<>(errorResponse, resolvedStatus);
     }
 
     @ExceptionHandler(Exception.class)

@@ -89,7 +89,7 @@ class VocabularyWordModel {
   }
 
   static String _readString(Map<String, dynamic> json, String primaryKey, String secondaryKey, [String? tertiaryKey]) {
-    for (final key in [primaryKey, secondaryKey, if (tertiaryKey != null) tertiaryKey]) {
+    for (final key in [primaryKey, secondaryKey, tertiaryKey].whereType<String>()) {
       final value = json[key];
       if (value != null) {
         final text = value.toString().trim();

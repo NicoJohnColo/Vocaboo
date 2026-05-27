@@ -17,7 +17,7 @@ const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
   final AuthProvider? _auth;
-  static const String baseUrl = AppConfig.baseUrl;
+  static final String baseUrl = AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
   List<LessonModel> _lessons = [];
@@ -468,7 +468,7 @@ class LessonProvider with ChangeNotifier {
 
   Future<void> persistModuleScore(
     String lessonId,
-    int moduleNumber,
+    int? moduleNumber,
     int correctCount,
     int totalCount, {
     bool isSandbox = false,
@@ -476,49 +476,61 @@ class LessonProvider with ChangeNotifier {
   }) async {
     final score = ScoringService.computeLessonScore(correctCount, totalCount);
     try {
-      if (isSandbox) {
-        final sandboxSessionId = sessionId ?? lessonId;
-        final response = await http.post(
-          Uri.parse('$baseUrl/sandbox/sessions/$sandboxSessionId/module-score'),
-          headers: _headers,
-          body: json.encode({
-            'moduleNumber': moduleNumber,
-            'correctCount': correctCount,
-            'totalCount': totalCount,
-            'score': score,
-          }),
-        );
-
-        if (response.statusCode == 401) {
-          _auth?.logout();
-          throw Exception('Failed to persist sandbox module score: unauthorized.');
-        } else if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw Exception(_extractErrorMessage(response.body, 'Failed to persist sandbox module score.'));
-        }
-      } else {
-        final response = await http.post(
-          Uri.parse('$baseUrl/progress/module-score'),
-          headers: _headers,
-          body: json.encode({
-            'lessonId': lessonId,
-            'moduleNumber': moduleNumber,
-            'correctCount': correctCount,
-            'totalCount': totalCount,
-            'score': score,
-          }),
-        );
-
-        if (response.statusCode == 401) {
-          _auth?.logout();
+      Future<http.Response> doPost() {
+        if (isSandbox) {
+          final sandboxSessionId = sessionId ?? lessonId;
+          return http.post(
+            Uri.parse('$baseUrl/sandbox/sessions/$sandboxSessionId/module-score'),
+            headers: _headers,
+            body: json.encode({
+              'moduleNumber': moduleNumber,
+              'correctCount': correctCount,
+              'totalCount': totalCount,
+              'score': score,
+            }),
+          );
+        } else {
+          return http.post(
+            Uri.parse('$baseUrl/progress/module-score'),
+            headers: _headers,
+            body: json.encode({
+              'lessonId': lessonId,
+              'moduleNumber': moduleNumber,
+              'correctCount': correctCount,
+              'totalCount': totalCount,
+              'score': score,
+            }),
+          );
         }
       }
+
+      http.Response response = await doPost();
+      // Retry once on server error (5xx)
+      if (response.statusCode >= 500 && response.statusCode < 600) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        response = await doPost();
+      }
+
+      if (response.statusCode == 401) {
+        _auth?.logout();
+        if (isSandbox) throw Exception('Failed to persist sandbox module score: unauthorized.');
+      } else if (response.statusCode < 200 || response.statusCode >= 300) {
+        final msg = _extractErrorMessage(response.body, 'Failed to persist module score');
+        debugPrint('LessonProvider.persistModuleScore backend sync error: $msg (status=${response.statusCode})');
+      }
     } catch (e) {
-      debugPrint('LessonProvider.persistModuleScore backend sync error: $e');
+      debugPrint('LessonProvider.persistModuleScore backend sync error: ${e.runtimeType}: ${e.toString()}');
     }
 
-    if (!isSandbox) {
-      await LocalStorageService.saveModuleScore(lessonId, moduleNumber, correctCount, totalCount);
+    // Persist locally for both sandbox and normal lessons. For sandbox flows
+    // moduleNumber may be null — treat as unified module 1 for local storage.
+    final localModuleNumber = moduleNumber ?? 1;
+    try {
+      await LocalStorageService.saveModuleScore(lessonId, localModuleNumber, correctCount, totalCount);
       await LocalStorageService.saveLessonScore(lessonId, score);
+    } catch (_) {
+      // Don't let local storage failures block the app; just log silently.
+      debugPrint('LessonProvider.persistModuleScore: failed to save locally');
     }
   }
 
@@ -556,7 +568,7 @@ class LessonProvider with ChangeNotifier {
                   final key = 'mcDistractor${distractors.length + i + 1}';
                   word[key] = available[i];
                 }
-                debugPrint('Added ${needed} fallback distractors for word: $targetWord');
+                debugPrint('Added $needed fallback distractors for word: $targetWord');
               }
             }
           }

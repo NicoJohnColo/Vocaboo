@@ -139,9 +139,9 @@ class RoundOneCompletedScreen extends StatelessWidget {
                     Expanded(
                       child: Column(
                         children: [
-                          Text(
-                            LocalizationService.translate(pref, 'diagnostic_known'),
-                            style: const TextStyle(
+                          const Text(
+                            'MASTERED',
+                            style: TextStyle(
                               fontSize: 12,
                               color: Color(0xFF64748B),
                               fontWeight: FontWeight.bold,
@@ -150,7 +150,7 @@ class RoundOneCompletedScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '$knownCount',
+                            '$knownCount / ${allWords.length}',
                             style: const TextStyle(
                               fontSize: 32,
                               fontWeight: FontWeight.bold,
@@ -163,6 +163,47 @@ class RoundOneCompletedScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              if (unknownWordIds.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1F2),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.35), width: 1.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Still needs review',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFFEF4444)),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: unknownWordIds.map((id) {
+                          final word = allWords.firstWhere(
+                            (w) => (w['wordId'] ?? w['id'] ?? '').toString() == id,
+                            orElse: () => {'word': id},
+                          );
+                          final text = (word['word'] ?? word['englishWord'] ?? id).toString();
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                            ),
+                            child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFEF4444))),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const Spacer(),
 
               // Primary back action (Black)

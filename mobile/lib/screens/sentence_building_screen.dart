@@ -68,10 +68,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   // Queues and Progression State
   List<VocabularyWordModel> _queue = [];
+  final Set<String> _seenWordIds = {};
   final List<VocabularyWordModel> _failedSentenceWords = [];
   bool _isReinforcementPass = false;
   Phase _currentPhase = Phase.sentenceActivity;
   int _totalUniqueWords = 0;
+  int _phaseWordCount = 0;
   int _initialPassCompletedCount = 0;
   int _reinforcementCompletedCount = 0;
 
@@ -79,7 +81,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   int _initialPassCorrectCount = 0;
   int _reinforcementPassCorrectCount = 0;
   int _totalPronunciationAttempts = 0;
-  int _totalPronunciationWords = 0;
+  final int _totalPronunciationWords = 0;
   List<Map<String, dynamic>> _confusablePairs = [];
   Map<String, bool> _confusableMastery = {};
 
@@ -210,21 +212,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       setState(() {
         _words = fetchedWords;
         _totalUniqueWords = fetchedWords.length;
+        _phaseWordCount = _totalUniqueWords;
         _confusablePairs = fetchedConfusables;
 
-        // Build a queue where every word is tackled at least twice (Completion and Rearrangement)
+        // Build a queue that is sequential per-word: for each word add Completion then Rearrangement
         final List<VocabularyWordModel> builtQueue = [];
-        
-        // Pass 1: Completion for all words
-        final pass1 = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
-        for (var word in pass1) {
-          builtQueue.add(word); // We'll handle format logic in _startNextItem effectively
-        }
-        
-        // Pass 2: Rearrangement for all words
-        final pass2 = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
-        for (var word in pass2) {
-          builtQueue.add(word);
+        final shuffled = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
+        for (var word in shuffled) {
+          builtQueue.add(word); // completion for this word
+          builtQueue.add(word); // rearrangement for this word
         }
 
         _queue = builtQueue;
@@ -313,17 +309,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     _currentWord = _queue.removeAt(0);
 
-    // Determine format based on whether we've already seen this word in this session
-    // We want to ensure it gets both formats if it appears twice.
-    // If it's in the first half of the original built queue (length / 2), use completion
-    // The queue construction ensured words appear twice.
-    final totalPlanned = _totalUniqueWords * 2;
-    final currentlyProcessed = totalPlanned - _queue.length - 1;
-    
-    if (currentlyProcessed < _totalUniqueWords) {
-      _currentFormat = ActivityFormat.completion;
-    } else {
+    final wordId = _currentWord.wordId ?? '';
+    if (wordId.isNotEmpty && _seenWordIds.contains(wordId)) {
       _currentFormat = ActivityFormat.rearrangement;
+    } else {
+      _currentFormat = ActivityFormat.completion;
+      if (wordId.isNotEmpty) _seenWordIds.add(wordId);
     }
 
     setState(() {
@@ -422,9 +413,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       // Transition to reinforcement pass if we failed any words
       if (_failedSentenceWords.isNotEmpty) {
         debugPrint('Starting reinforcement pass with ${_failedSentenceWords.length} failed words');
+        final reinforcementWords = _failedSentenceWords.length;
         setState(() {
           _isReinforcementPass = true;
           _queue = List.from(_failedSentenceWords);
+          _phaseWordCount = reinforcementWords;
           _failedSentenceWords.clear();
           _startNextItem();
         });
@@ -444,7 +437,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     try {
       await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
         widget.lessonId,
-        3,
+        widget.isSandbox ? null : 3,
         _initialPassCorrectCount,
         _totalUniqueWords,
         isSandbox: widget.isSandbox,
@@ -509,15 +502,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       if (_selectedCompletionWord == null) return;
       _isCorrect = _selectedCompletionWord!.toLowerCase() == _activityAnswer(_currentWord).toLowerCase();
     } else {
-      // Check rearrangement
-      final sentenceClean = _activityArrangementTokens(_currentWord).join(' ')
-          .replaceAll(RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~(?)]'), '')
-          .toLowerCase()
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-
-      final assembledSentence = _assembledWords.join(' ').toLowerCase().trim();
-      _isCorrect = assembledSentence == sentenceClean;
+      final expected = _activityArrangementTokens(_currentWord).join(' ').toLowerCase().trim();
+      final learner = _assembledWords.join(' ').toLowerCase().trim();
+      _isCorrect = learner == expected;
     }
 
     // Keep statistics
@@ -592,9 +579,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Widget _buildModule3Header(ThemeData theme) {
-    final completedCount = _isReinforcementPass ? _reinforcementCompletedCount : _initialPassCompletedCount;
-    final progress = _totalUniqueWords > 0 ? completedCount / _totalUniqueWords : 0.0;
-    final phaseLabel = widget.isSandbox ? 'Build' : (_currentPhase == Phase.sentenceActivity ? 'Build' : 'Speak');
+    final totalWords = _words.length;
+    final remainingWordIds = _queue.map((word) => word.wordId).toSet();
+    final completedWordsCount = _words.map((word) => word.wordId).toSet().difference(remainingWordIds).length;
+    final progress = totalWords > 0 ? (completedWordsCount / totalWords) : 0.0;
 
     return Column(
       children: [
@@ -606,17 +594,24 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 12,
-                    backgroundColor: const Color(0xFFE2E8F0),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF06A6FF)),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: progress),
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.linear,
+                    builder: (context, value, _) {
+                      return LinearProgressIndicator(
+                        value: value,
+                        minHeight: 12,
+                        backgroundColor: const Color(0xFFE2E8F0),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                      );
+                    },
                   ),
                 ),
               ),
               const SizedBox(width: 14),
               Text(
-                widget.isSandbox ? phaseLabel : '$phaseLabel ${_currentPhase == Phase.sentenceActivity ? '1/2' : '2/2'}',
+                '$completedWordsCount/$totalWords',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
               ),
             ],
@@ -937,41 +932,34 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _startAutoEvaluationMonitoring();
   }
 
+  void _skipPronunciation() async {
+    _advancePronunciationPhase();
+  }
+
+  void _advancePronunciationPhase() async {
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+    await provider.updateWordProgress(
+      widget.sessionId,
+      _currentWord.wordId,
+      'FULL',
+      4,
+      'INTRODUCED',
+      moduleNumber: widget.moduleNumber,
+    );
+
+    _initialPassCompletedCount++;
+    setState(() {
+      _currentPhase = Phase.sentenceActivity;
+    });
+    _startNextItem();
+  }
+
   void _handleContinueFromPronunciation() async {
     final correct = _attemptResult?.isCorrect ?? false;
     final reachedMaxAttempts = _pronunciationAttempt >= _maxAttempts;
 
     if (correct || reachedMaxAttempts) {
-      _totalPronunciationWords++;
-
-      // Track pronunciation data for score screen
-      _wordPronunciationCorrect[_currentWord.wordId] = correct;
-      _wordPronunciationAttempts[_currentWord.wordId] = _pronunciationAttempt;
-
-      // Sync progress fire-and-forget to database
-      final provider = Provider.of<LessonProvider>(context, listen: false);
-
-      // Step 4 is complete status
-      await provider.updateWordProgress(
-        widget.sessionId,
-        _currentWord.wordId,
-        'FULL',
-        4,
-        correct ? 'MASTERED' : 'NEEDS_PRONUNCIATION_REVIEW',
-        moduleNumber: widget.moduleNumber,
-      );
-
-      // Increment stats
-      if (!_isReinforcementPass) {
-        _initialPassCompletedCount++;
-      } else {
-        _reinforcementCompletedCount++;
-      }
-
-      setState(() {
-        _currentPhase = Phase.sentenceActivity;
-      });
-      _startNextItem();
+      _advancePronunciationPhase();
     } else {
       // Try again (increment attempts)
       setState(() {
@@ -1036,6 +1024,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       return _buildSummaryScreen();
     }
 
+    final totalWords = _words.length;
+    final remainingWordIds = _queue.map((word) => word.wordId).toSet();
+    final completedWordsCount = _words.map((word) => word.wordId).toSet().difference(remainingWordIds).length;
+    final progressVal = totalWords > 0 ? (completedWordsCount / totalWords) : 0.0;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -1053,13 +1046,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           ),
           title: ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: _totalUniqueWords > 0
-                  ? ((_isReinforcementPass ? _reinforcementCompletedCount : _initialPassCompletedCount) / _totalUniqueWords)
-                  : 0,
-              backgroundColor: const Color(0xFFE2E8F0),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
-              minHeight: 10,
+            child: SizedBox(
+              height: 10,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.0, end: progressVal),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.linear,
+                builder: (context, value, _) {
+                  return LinearProgressIndicator(
+                    value: value,
+                    backgroundColor: const Color(0xFFE2E8F0),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                  );
+                },
+              ),
             ),
           ),
           actions: [
@@ -1067,7 +1067,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Center(
                 child: Text(
-                  '${_isReinforcementPass ? _reinforcementCompletedCount : _initialPassCompletedCount}/$_totalUniqueWords',
+                  '$completedWordsCount/$totalWords',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF64748B),
@@ -1629,9 +1629,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    "Module 3 Speech Feedback",
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.8),
+                  Text(
+                    widget.isSandbox ? "Speech Feedback" : "Module 3 Speech Feedback",
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.8),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
@@ -1683,7 +1683,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   const SizedBox(height: 32),
 
                   const Text(
-                    "Speak the highlighted word only:",
+                    "Give it a try — say the sentence aloud. Tap skip if you would rather move on.",
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14, color: Color(0xFF475569), fontWeight: FontWeight.w600),
                   ),
@@ -1774,8 +1774,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           else ...[
                             Text(
                               _pronunciationAttempt >= 3
-                                  ? 'Max attempts reached. Let\'s move to the next word!'
-                                  : 'Incorrect. Let\'s try again!',
+                                  ? 'Incorrect. No attempts left. Moving on.'
+                                  : 'Incorrect. Try again.',
                               style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.bold, fontSize: 15),
                               textAlign: TextAlign.center,
                             ),
@@ -1808,40 +1808,50 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
                   // Mic indicator / button
                   if (_attemptResult == null && !_isEvaluating)
-                    Center(
-                      child: Column(
-                        children: [
-                          GestureDetector(
-                            onTap: _startRecording,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _skipPronunciation,
                             child: Container(
-                              width: 100,
-                              height: 100,
+                              padding: const EdgeInsets.symmetric(vertical: 20),
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFFEFF6FF),
-                                border: Border.all(color: const Color(0xFF06A6FF), width: 3),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFF06A6FF).withValues(alpha: 0.15),
-                                    blurRadius: 16,
-                                    spreadRadius: 2,
-                                  )
-                                ],
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
                               ),
-                              child: const Icon(
-                                Icons.mic_rounded,
-                                size: 48,
-                                color: Color(0xFF06A6FF),
+                              child: Column(
+                                children: const [
+                                  Icon(Icons.skip_next_rounded, size: 36, color: Color(0xFF64748B)),
+                                  SizedBox(height: 8),
+                                  Text("SKIP", style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          Text(
-                            "Tap to speak (Attempt $_pronunciationAttempt of 3)",
-                            style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _startRecording,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFF06A6FF), width: 2),
+                              ),
+                              child: Column(
+                                children: const [
+                                  Icon(Icons.mic_rounded, size: 36, color: Color(0xFF06A6FF)),
+                                  SizedBox(height: 8),
+                                  Text("SPEAK", style: TextStyle(fontSize: 14, color: Color(0xFF06A6FF), fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                                ],
+                              ),
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
 
                   if (_isEvaluating)
@@ -2014,9 +2024,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF1E293B)),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Module 3 Completed',
-          style: TextStyle(
+        title: Text(
+          widget.isSandbox ? 'Completed' : 'Module 3 Completed',
+          style: const TextStyle(
             fontFamily: 'Outfit',
             fontSize: 24,
             fontWeight: FontWeight.w900,

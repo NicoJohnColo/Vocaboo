@@ -2,6 +2,7 @@ package com.vocaboo.controller;
 
 import com.vocaboo.dto.response.SandboxLessonResponse;
 import com.vocaboo.entity.SandboxModuleScore;
+import com.vocaboo.dto.response.SandboxModuleScoreResponse;
 import com.vocaboo.entity.SandboxSession;
 import com.vocaboo.entity.SandboxWordProgress;
 import com.vocaboo.repository.SandboxWordRepository;
@@ -49,7 +50,6 @@ public class SandboxController {
 
     @Data
     public static class SandboxModuleScoreRequest {
-        @NotNull
         private Integer moduleNumber;
         private Integer correctCount;
         private Integer totalCount;
@@ -65,66 +65,107 @@ public class SandboxController {
     @Data
     @Builder
     public static class SandboxSessionResponse {
-        private SandboxSession session;
+        private com.vocaboo.dto.response.SandboxSessionDto session;
         private List<SandboxLessonResponse> words;
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<SandboxSessionResponse> generateSession(@Valid @RequestBody SandboxGenerateRequest request, Principal principal) {
+        public ResponseEntity<SandboxSessionResponse> generateSession(@Valid @RequestBody SandboxGenerateRequest request, Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
         SandboxSessionGenerationResult generated = sandboxService.createSession(learnerId, request.getCustomWord());
+        com.vocaboo.entity.SandboxSession s = generated.getSession();
+        com.vocaboo.dto.response.SandboxSessionDto dto = com.vocaboo.dto.response.SandboxSessionDto.builder()
+            .sessionId(s.getSessionId())
+            .customWord(s.getCustomWord())
+            .masteryScore(s.getMasteryScore())
+            .createdAt(s.getCreatedAt())
+            .completedAt(s.getCompletedAt())
+            .build();
 
         return ResponseEntity.ok(SandboxSessionResponse.builder()
-                .session(generated.getSession())
-                .words(List.of(generated.getLesson()))
-                .build());
+            .session(dto)
+            .words(List.of(generated.getLesson()))
+            .build());
     }
 
     @PostMapping("/sessions/{sessionId}/progress")
-    public ResponseEntity<SandboxWordProgress> updateProgress(
-            @PathVariable UUID sessionId,
-            @RequestBody SandboxProgressRequest request) {
-        SandboxWordProgress progress = sandboxService.updateProgress(
+            public ResponseEntity<com.vocaboo.dto.response.SandboxWordProgressDto> updateProgress(
+                @PathVariable UUID sessionId,
+                @RequestBody SandboxProgressRequest request) {
+            com.vocaboo.dto.response.SandboxWordProgressDto dto = sandboxService.updateProgress(
                 sessionId,
                 request.getWordId(),
                 request.getModuleNumber(),
                 request.getStepCompleted(),
                 request.getStatus()
-        );
-        return ResponseEntity.ok(progress);
-    }
+            );
+            return ResponseEntity.ok(dto);
+            }
 
     @PostMapping("/sessions/{sessionId}/module-score")
-    public ResponseEntity<SandboxModuleScore> saveModuleScore(
+        public ResponseEntity<SandboxModuleScoreResponse> saveModuleScore(
             @PathVariable UUID sessionId,
             @Valid @RequestBody SandboxModuleScoreRequest request) {
         SandboxModuleScore score = sandboxService.saveModuleScore(
-                sessionId,
-                request.getModuleNumber(),
-                request.getCorrectCount(),
-                request.getTotalCount(),
-                request.getScore()
+            sessionId,
+            request.getModuleNumber(),
+            request.getCorrectCount(),
+            request.getTotalCount(),
+            request.getScore()
         );
-        return ResponseEntity.ok(score);
-    }
+        SandboxModuleScoreResponse resp = SandboxModuleScoreResponse.builder()
+            .scoreId(score.getScoreId())
+            .moduleNumber(score.getModuleNumber())
+            .correct(score.getCorrect())
+            .total(score.getTotal())
+            .score(score.getScore())
+            .recordedAt(score.getRecordedAt())
+            .updatedAt(score.getUpdatedAt())
+            .build();
+        return ResponseEntity.ok(resp);
+        }
 
     @PostMapping("/sessions/{sessionId}/complete")
-    public ResponseEntity<SandboxSession> completeSession(
+    public ResponseEntity<com.vocaboo.dto.response.SandboxSessionDto> completeSession(
             @PathVariable UUID sessionId,
             @Valid @RequestBody SandboxCompletionRequest request) {
-        SandboxSession session = sandboxService.completeSession(sessionId, request.getScore());
-        return ResponseEntity.ok(session);
+        com.vocaboo.entity.SandboxSession session = sandboxService.completeSession(sessionId, request.getScore());
+        com.vocaboo.dto.response.SandboxSessionDto dto = com.vocaboo.dto.response.SandboxSessionDto.builder()
+                .sessionId(session.getSessionId())
+                .customWord(session.getCustomWord())
+                .masteryScore(session.getMasteryScore())
+                .createdAt(session.getCreatedAt())
+                .completedAt(session.getCompletedAt())
+                .build();
+        return ResponseEntity.ok(dto);
     }
 
     @GetMapping("/sessions/{sessionId}/module-scores")
-    public ResponseEntity<List<SandboxModuleScore>> getModuleScores(@PathVariable UUID sessionId) {
-        return ResponseEntity.ok(sandboxService.getModuleScores(sessionId));
+    public ResponseEntity<List<SandboxModuleScoreResponse>> getModuleScores(@PathVariable UUID sessionId) {
+        List<SandboxModuleScore> scores = sandboxService.getModuleScores(sessionId);
+        List<SandboxModuleScoreResponse> resp = scores.stream().map(score -> SandboxModuleScoreResponse.builder()
+                .scoreId(score.getScoreId())
+                .moduleNumber(score.getModuleNumber())
+                .correct(score.getCorrect())
+                .total(score.getTotal())
+                .score(score.getScore())
+                .recordedAt(score.getRecordedAt())
+                .updatedAt(score.getUpdatedAt())
+                .build()).toList();
+        return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/history")
-    public ResponseEntity<List<SandboxSession>> getHistory(Principal principal) {
+    public ResponseEntity<List<com.vocaboo.dto.response.SandboxSessionDto>> getHistory(Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
-        List<SandboxSession> history = sandboxService.getHistory(learnerId);
-        return ResponseEntity.ok(history);
+        List<com.vocaboo.entity.SandboxSession> history = sandboxService.getHistory(learnerId);
+        List<com.vocaboo.dto.response.SandboxSessionDto> dto = history.stream().map(s -> com.vocaboo.dto.response.SandboxSessionDto.builder()
+                .sessionId(s.getSessionId())
+                .customWord(s.getCustomWord())
+                .masteryScore(s.getMasteryScore())
+                .createdAt(s.getCreatedAt())
+                .completedAt(s.getCompletedAt())
+                .build()).toList();
+        return ResponseEntity.ok(dto);
     }
 }

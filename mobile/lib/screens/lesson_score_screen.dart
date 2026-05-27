@@ -13,8 +13,10 @@ class LessonScoreScreen extends StatelessWidget {
   final Map<String, bool> wordPronunciationCorrect; // wordId -> isCorrect
   final Map<String, int> wordPronunciationAttempts; // wordId -> attemptCount
   final Set<String> failedSentenceWordIds; // words that failed sentence activity
-  final double overallScore; // percentage 0-100
+  final double overallScore; // kept for compatibility, not displayed
   final bool isSandbox;
+  final int? masteredCount;           // new: from sentence_building_screen
+  final List<String>? needsReviewWords; // new: list of word strings needing review
 
   const LessonScoreScreen({
     super.key,
@@ -28,24 +30,27 @@ class LessonScoreScreen extends StatelessWidget {
     required this.failedSentenceWordIds,
     required this.overallScore,
     this.isSandbox = false,
+    this.masteredCount,
+    this.needsReviewWords,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Clamp score to 0-100% to prevent display issues
-    final clampedScore = overallScore.clamp(0.0, 100.0);
-    
-    // For sandbox mode, mastered = not in failedSentenceWordIds (no pronunciation check)
-    final masteredCount = isSandbox
-        ? allWords.where((word) => !failedSentenceWordIds.contains(word.wordId)).length
-        : allWords.where((word) =>
-            (wordPronunciationCorrect[word.wordId] ?? false) &&
-            !failedSentenceWordIds.contains(word.wordId)
-          ).length;
-    
-    final scoreInt = clampedScore.round();
-    
-    debugPrint('LessonScoreScreen: rawScore=$overallScore, clampedScore=$clampedScore, scoreInt=$scoreInt, masteredCount=$masteredCount/${allWords.length}');
+    // Derive mastered count: prefer passed value, otherwise compute locally
+    // Pronunciation correctness is fully excluded from mastery logic
+    final effectiveMastered = masteredCount ??
+        allWords.where((w) => !failedSentenceWordIds.contains(w.wordId)).length;
+
+    final effectiveNeedsReview = needsReviewWords ??
+        allWords
+          .where((w) => failedSentenceWordIds.contains(w.wordId))
+          .map((w) => w.englishWord)
+          .toList();
+
+    final totalWords = allWords.length;
+    final allMastered = effectiveMastered >= totalWords;
+
+    debugPrint('LessonScoreScreen: mastered=$effectiveMastered/$totalWords needsReview=$effectiveNeedsReview');
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -73,30 +78,32 @@ class LessonScoreScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Trophy Icon
+                    // Icon
                     Center(
                       child: Container(
                         width: 132,
                         height: 132,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFFEFF6FF),
+                          color: allMastered ? const Color(0xFFECFDF5) : const Color(0xFFEFF6FF),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF06A6FF).withValues(alpha: 0.12),
+                              color: (allMastered ? const Color(0xFF10B981) : const Color(0xFF06A6FF)).withValues(alpha: 0.12),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Text('🏆', style: TextStyle(fontSize: 72)),
+                        child: Center(
+                          child: Text(
+                            allMastered ? '🌟' : '📘',
+                            style: const TextStyle(fontSize: 72),
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 24),
 
-                    // Lesson Title
                     Text(
                       lessonTitle,
                       textAlign: TextAlign.center,
@@ -109,11 +116,12 @@ class LessonScoreScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
 
-                    // Subtitle
-                    const Text(
-                      'You have completed all modules for this lesson.',
+                    Text(
+                      allMastered
+                          ? 'Great work! You have mastered all words in this lesson.'
+                          : 'You have completed all modules. Keep practising the words below.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 15,
                         color: Color(0xFF64748B),
                         height: 1.5,
@@ -121,9 +129,9 @@ class LessonScoreScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 28),
 
-                    // Overall Score Card
+                    // Mastery Count Card — no percentage
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(24),
@@ -136,66 +144,101 @@ class LessonScoreScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      child: Column(
                         children: [
-                          Column(
-                            children: [
-                              const Text(
-                                'Overall Score',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                '$scoreInt%',
-                                style: const TextStyle(
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF06A6FF),
-                                ),
-                              ),
-                            ],
+                          Text(
+                            'Words Mastered',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey[600],
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                          Container(
-                            width: 1.5,
-                            height: 70,
-                            color: const Color(0xFFE2E8F0),
-                          ),
-                          Column(
-                            children: [
-                              const Text(
-                                'Words Mastered',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
+                          const SizedBox(height: 10),
+                          RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '$effectiveMastered',
+                                  style: TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.w900,
+                                    color: allMastered ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                '$masteredCount / ${allWords.length}',
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF10B981),
+                                TextSpan(
+                                  text: ' / $totalWords',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF94A3B8),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 20),
 
-                    // Per-Word Performance List
+                    // Words Needing Review
+                    if (effectiveNeedsReview.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF1F2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFFECACA), width: 1.5),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: const [
+                                Icon(Icons.refresh_rounded, color: Color(0xFFEF4444), size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Still Needs Practice',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFFEF4444),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: effectiveNeedsReview.map((word) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                                ),
+                                child: Text(
+                                  word,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFEF4444),
+                                  ),
+                                ),
+                              )).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Per-Word Breakdown
                     const Text(
-                      'Per-Word Performance',
+                      'Word Breakdown',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -210,20 +253,16 @@ class LessonScoreScreen extends StatelessWidget {
                       final failedSentence = failedSentenceWordIds.contains(word.wordId);
                       final attempts = wordPronunciationAttempts[word.wordId] ?? 0;
                       final correct = wordPronunciationCorrect[word.wordId] ?? false;
-                      
-                      // In sandbox mode, mastered = not failed sentence (no pronunciation check)
-                      // In normal mode, mastered = correct pronunciation AND not failed sentence
-                      final mastered = isSandbox 
-                          ? !failedSentence 
-                          : (correct && !failedSentence);
+
+                      final mastered = !failedSentence;
 
                       final statusLabel = mastered ? 'Mastered' : 'Needs Review';
                       final statusColor = mastered ? const Color(0xFF10B981) : const Color(0xFFEF4444);
                       final statusBgColor = mastered ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2);
 
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
@@ -236,114 +275,74 @@ class LessonScoreScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           children: [
-                            // Word Header
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        word.englishWord,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        word.cebuanoMeaning,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Color(0xFF64748B),
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // Status Badge - only show in non-sandbox mode
-                                if (!isSandbox)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: statusBgColor,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: statusColor, width: 1.5),
-                                    ),
-                                    child: Text(
-                                      statusLabel,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: statusColor,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-
-                            // Performance Details
                             Container(
-                              padding: const EdgeInsets.all(12),
+                              width: 36,
+                              height: 36,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(12),
+                                color: statusBgColor,
+                                shape: BoxShape.circle,
                               ),
+                              child: Icon(
+                                mastered ? Icons.check_rounded : Icons.refresh_rounded,
+                                color: statusColor,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.check_circle_outline_rounded,
-                                        size: 16,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Sentence Activity: ${failedSentence ? 'Review' : 'Correct'}',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: failedSentence ? const Color(0xFFEF4444) : const Color(0xFF10B981),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
+                                  Text(
+                                    word.englishWord,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
                                   ),
-                                  // Only show pronunciation attempts in non-sandbox mode
-                                  if (!isSandbox) ...[
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.mic_rounded,
-                                          size: 16,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Pronunciation Attempts: $attempts',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Color(0xFF64748B),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    word.cebuanoMeaning,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                  if (!isSandbox && attempts > 0) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Pronunciation: $attempts attempt${attempts == 1 ? '' : 's'}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF94A3B8),
+                                      ),
                                     ),
                                   ],
                                 ],
                               ),
                             ),
+                            if (!isSandbox)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: statusBgColor,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: statusColor, width: 1),
+                                ),
+                                child: Text(
+                                  statusLabel,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: statusColor,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       );
@@ -368,13 +367,12 @@ class LessonScoreScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    // Sandbox mode: navigate to home, not category lessons
                     if (isSandbox || categoryId.isEmpty) {
                       debugPrint('Done button: navigating to home (sandbox or empty categoryId)');
                       context.go('/home');
                       return;
                     }
-                    
+
                     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
                     String categoryName = 'Lessons';
                     try {

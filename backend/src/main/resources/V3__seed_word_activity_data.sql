@@ -40,7 +40,8 @@ INSERT INTO word_activity_data (
 ('c1000000-0000-0000-0000-000000000002','Bag','Pencil','Ruler','She wrote her lessons in her ___.','Notebook','[{"english_word":"Notebook","cebuano_meaning":"Kuwaderno"},{"english_word":"Pencil","cebuano_meaning":"Lapis"},{"english_word":"Eraser","cebuano_meaning":"Pamhid"},{"english_word":"Ruler","cebuano_meaning":"Ruler"}]','["My","notebook","is","inside","my","bag."]','He forgot to bring his ___ so he had no paper to write on.','Notebook','Bag','Pencil','Eraser'),
 ('c1000000-0000-0000-0000-000000000003','Pencil','Chalk','Crayon','She used an ___ to fix her mistake on the paper.','Eraser','[{"english_word":"Eraser","cebuano_meaning":"Pamhid"},{"english_word":"Pencil","cebuano_meaning":"Lapis"},{"english_word":"Ruler","cebuano_meaning":"Ruler"},{"english_word":"Bag","cebuano_meaning":"Bag"}]','["The","eraser","removed","the","mistake."]','He rubbed the ___ on the paper to remove the wrong answer.','Eraser','Pencil','Ruler','Notebook'),
 ('c1000000-0000-0000-0000-000000000004','Notebook','Ruler','Eraser','She put all her books inside her ___.','Bag','[{"english_word":"Bag","cebuano_meaning":"Bag"},{"english_word":"Notebook","cebuano_meaning":"Kuwaderno"},{"english_word":"Pencil","cebuano_meaning":"Lapis"},{"english_word":"Eraser","cebuano_meaning":"Pamhid"}]','["Her","bag","is","color","blue."]','He carried his ___ on his back when he walked to school.','Bag','Notebook','Eraser','Ruler'),
-('c1000000-0000-0000-0000-000000000005','Pencil','Eraser','Bag','She used a ___ to draw a straight line.','Ruler','[{"english_word":"Ruler","cebuano_meaning":"Ruler"},{"english_word":"Pencil","cebuano_meaning":"Lapis"},{"english_word":"Eraser","cebuano_meaning":"Pamhid"},{"english_word":"Notebook","cebuano_meaning":"Kuwaderno"}]','["The","ruler","is","used","to","measure","lines."]','The teacher asked him to use a ___ to measure the rectangle.','Ruler','Pencil','Eraser','Chalk')
+('c1000000-0000-0000-0000-000000000005','Pencil','Eraser','Bag','She used a ___ to draw a straight line.','Ruler','[{"english_word":"Ruler","cebuano_meaning":"Ruler"},{"english_word":"Pencil","cebuano_meaning":"Lapis"},{"english_word":"Eraser","cebuano_meaning":"Pamhid"},{"english_word":"Notebook","cebuano_meaning":"Kuwaderno"}]','["The","ruler","is","used","to","measure","lines."]','The teacher asked him to use a ___ to measure the rectangle.','Ruler','Pencil','Eraser','Chalk'),
+('c9000000-0000-0000-0000-000000000001','Pencil','Eraser','Bag','The ___ governed the kingdom with wisdom.','Ruler','[{"english_word":"Ruler","cebuano_meaning":"Magmamando"},{"english_word":"King","cebuano_meaning":"Hari"},{"english_word":"Teacher","cebuano_meaning":"Magtutudlo"},{"english_word":"President","cebuano_meaning":"Presidente"}]','["The","ruler","governed","the","kingdom","with","wisdom."]','The ruler led the village fairly.','Ruler','Notebook','Bag','Eraser')
 ON CONFLICT (word_id) DO NOTHING;
 
 -- ============================================================
@@ -253,7 +254,7 @@ CREATE TABLE IF NOT EXISTS word_activity_data (
 );
 
 -- ============================================================
--- LESSON 1 — SCHOOL OBJECTS (Words: Pencil, Notebook, Eraser, Bag, Ruler)
+-- LESSON 1 — SCHOOL OBJECTS (Words: Pencil, Notebook, Eraser, Bag, Ruler, Ruler)
 -- ============================================================
 
 INSERT INTO word_activity_data (
@@ -454,6 +455,15 @@ INSERT INTO word_activity_data (
  '["Rice","is","our","staple","food."]',
  'They eat ___ with grilled fish for lunch every day.', 'Rice',
  'Bread', 'Milk', 'Soup'),
+
+,-- Ruler (governor)
+('c1000000-0000-0000-0000-000000000006',
+ 'Pencil', 'Eraser', 'Bag',
+ 'The ___ governed the kingdom with wisdom.', 'Ruler',
+ '[{"english_word":"Ruler","cebuano_meaning":"Magmamando"},{"english_word":"King","cebuano_meaning":"Hari"},{"english_word":"Teacher","cebuano_meaning":"Magtutudlo"},{"english_word":"President","cebuano_meaning":"Presidente"}]',
+ '[[''The'',''ruler'',''governed'',''the'',''kingdom'',''with'',''wisdom.'']]',
+ 'The ruler led the village fairly.', 'Ruler',
+ 'Pencil', 'Notebook', 'Bag')
 
 -- Water
 ('c4000000-0000-0000-0000-000000000002',

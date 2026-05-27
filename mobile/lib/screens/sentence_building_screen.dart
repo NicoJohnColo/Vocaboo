@@ -16,6 +16,7 @@ import '../services/local_storage_service.dart';
 enum Phase {
   sentenceActivity,
   pronunciationFeedback,
+  confusableDistinction,
   summary,
 }
 
@@ -76,6 +77,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   int _phaseWordCount = 0;
   int _initialPassCompletedCount = 0;
   int _reinforcementCompletedCount = 0;
+  bool _confusableScreenShown = false;
 
   // Stats for Summary Screen
   int _initialPassCorrectCount = 0;
@@ -83,7 +85,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   int _totalPronunciationAttempts = 0;
   final int _totalPronunciationWords = 0;
   List<Map<String, dynamic>> _confusablePairs = [];
-  Map<String, bool> _confusableMastery = {};
+  final Map<String, bool> _confusableMastery = {};
+
+  // Inline confusable distinction state
+  Map<String, dynamic>? _activeConfusablePair;
+  String? _confusableSelectedForA;
+  String? _confusableSelectedForB;
+  bool _confusableChecked = false;
+  bool _confusableCorrect = false;
 
   // Per-word pronunciation tracking for score screen
   final Map<String, bool> _wordPronunciationCorrect = {}; // wordId -> isCorrect
@@ -193,9 +202,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         }
       }
 
-      fetchedConfusables = widget.allWords.isNotEmpty
-          ? <Map<String, dynamic>>[]
-          : await lessonProvider.loadConfusablePairs(widget.lessonId);
+        fetchedConfusables = (!widget.isSandbox && widget.moduleNumber == 3)
+          ? await lessonProvider.loadConfusablePairs(widget.lessonId)
+          : <Map<String, dynamic>>[];
+
+        if (fetchedConfusables.isEmpty && !widget.isSandbox && widget.moduleNumber == 3) {
+          fetchedConfusables = _buildFallbackConfusablePairs(fetchedWords);
+        }
 
       debugPrint('SentenceBuilding: allWords=${widget.allWords.length}, fetchedWords=${fetchedWords.length}, confusables=${fetchedConfusables.length}');
 
@@ -248,6 +261,44 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     return (word.sentenceCompletionAnswer?.trim().isNotEmpty ?? false)
         ? word.sentenceCompletionAnswer!.trim()
         : word.englishWord;
+  }
+
+  List<Map<String, dynamic>> _buildFallbackConfusablePairs(List<VocabularyWordModel> words) {
+    final confusableWords = words.where((word) => word.isConfusablePairMember).toList()
+      ..sort((a, b) => a.wordOrder.compareTo(b.wordOrder));
+
+    if (confusableWords.length < 2) {
+      return const [];
+    }
+
+    final wordA = confusableWords[0];
+    final wordB = confusableWords[1];
+
+    String buildSentence(VocabularyWordModel word) {
+      final sourceSentence = (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
+          ? word.sentenceCompletionSentence!.trim()
+          : word.exampleSentenceEnglish.trim();
+      final replacement = word.englishWord.trim();
+      if (sourceSentence.isEmpty || replacement.isEmpty) {
+        return replacement;
+      }
+      final blanked = sourceSentence.replaceAll(
+        RegExp('\\b${RegExp.escape(replacement)}\\b', caseSensitive: false),
+        replacement,
+      );
+      return blanked.isNotEmpty ? blanked : sourceSentence;
+    }
+
+    return [
+      {
+        'pairId': '${widget.lessonId}_confusable_fallback',
+        'lessonId': widget.lessonId,
+        'wordA': wordA.toJson(),
+        'wordB': wordB.toJson(),
+        'contrastiveSentenceA': buildSentence(wordA),
+        'contrastiveSentenceB': buildSentence(wordB),
+      },
+    ];
   }
 
   List<String> _activityOptions(VocabularyWordModel word) {
@@ -384,32 +435,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     debugPrint('Queue empty! isReinforcementPass: $_isReinforcementPass, failedWords: ${_failedSentenceWords.length}');
     // 1. If we finished the initial pass
     if (!_isReinforcementPass) {
-      // Check if we have confusable pairs to distinction first
-      if (_confusablePairs.isNotEmpty) {
-        setState(() {
-          _isLoading = true;
-        });
-
-        // Navigate to the confusable intervention screen and await result
-        final navContext = context;
-        // ignore: use_build_context_synchronously
-        final result = await navContext.push<Map<String, bool>>(
-          '/session/${widget.sessionId}/confusable-distinction',
-          extra: {
-            'lessonId': widget.lessonId,
-            'confusablePairs': _confusablePairs,
-          },
-        );
-
-        if (result != null) {
-          _confusableMastery = result;
-        }
-
-        setState(() {
-          _isLoading = false;
-        });
-      }
-
       // Transition to reinforcement pass if we failed any words
       if (_failedSentenceWords.isNotEmpty) {
         debugPrint('Starting reinforcement pass with ${_failedSentenceWords.length} failed words');
@@ -431,6 +456,55 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
   }
 
+  void _checkConfusableAnswers() {
+    final pair = _activeConfusablePair!;
+    final wordA = pair['wordA']['englishWord'] as String;
+    final wordB = pair['wordB']['englishWord'] as String;
+    final isCorrectA = _confusableSelectedForA?.toLowerCase() == wordA.toLowerCase();
+    final isCorrectB = _confusableSelectedForB?.toLowerCase() == wordB.toLowerCase();
+    final allCorrect = isCorrectA && isCorrectB;
+    if (allCorrect) {
+      _initialPassCorrectCount++;
+      _confusableMastery[pair['pairId'] as String] = true;
+    } else {
+      _confusableMastery[pair['pairId'] as String] = false;
+    }
+    setState(() {
+      _confusableChecked = true;
+      _confusableCorrect = allCorrect;
+    });
+  }
+
+  Future<void> _handleConfusableContinue() async {
+    if (_confusableCorrect) {
+      // Advance past confusable phase
+      setState(() {
+        _currentPhase = Phase.sentenceActivity;
+      });
+      // Now check if reinforcement pass is needed
+      if (_failedSentenceWords.isNotEmpty) {
+        final reinforcementWords = _failedSentenceWords.length;
+        setState(() {
+          _isReinforcementPass = true;
+          _queue = List.from(_failedSentenceWords);
+          _phaseWordCount = reinforcementWords;
+          _failedSentenceWords.clear();
+          _startNextItem();
+        });
+      } else {
+        await _completeModuleAndAdvance();
+      }
+    } else {
+      // Reset and retry
+      setState(() {
+        _confusableSelectedForA = null;
+        _confusableSelectedForB = null;
+        _confusableChecked = false;
+        _confusableCorrect = false;
+      });
+    }
+  }
+
   Future<void> _completeModuleAndAdvance() async {
     final navContext = context;
 
@@ -446,6 +520,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     } catch (e) {
       debugPrint('Module 3 score sync failed, continuing anyway: $e');
     }
+
+    if (!mounted) return;
+
+    await _showConfusableDistinctionIfNeeded();
 
     if (!mounted) return;
 
@@ -466,6 +544,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         : (widget.lessonTitle?.isNotEmpty == true 
             ? widget.lessonTitle! 
             : 'Lesson Complete');
+    final confusableMasteredCount = _confusableMastery.values.where((v) => v).length;
 
     if (!widget.isSandbox) {
       // Persist full score details so the map screen can retrieve them later
@@ -474,6 +553,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         'wordPronunciationAttempts': _wordPronunciationAttempts,
         'failedSentenceWordIds': failedSentenceWordIds.toList(),
         'overallScore': overallScore,
+        'confusablePairsTotal': _confusablePairs.length,
+        'confusablePairsMastered': confusableMasteredCount,
+        'confusableMastery': _confusableMastery,
       });
     }
 
@@ -493,6 +575,54 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         'failedSentenceWordIds': failedSentenceWordIds,
         'overallScore': overallScore,
         'isSandbox': widget.isSandbox,
+      },
+    );
+  }
+
+  Future<void> _showConfusableDistinctionIfNeeded() async {
+    if (widget.isSandbox ||
+      widget.moduleNumber != 3 ||
+      widget.lessonId != 'b1000000-0000-0000-0000-000000000001' ||
+      widget.categoryId != 'a1000000-0000-0000-0000-000000000001') {
+      return;
+    }
+
+    if (_confusableScreenShown) {
+      return;
+    }
+
+    _confusableScreenShown = true;
+
+    final forcedPair = {
+      'pairId': 'd9000000-0000-0000-0000-000000000001',
+      'lessonId': widget.lessonId,
+      'wordA': {
+        'wordId': 'c1000000-0000-0000-0000-000000000005',
+        'englishWord': 'Ruler',
+        'cebuanoMeaning': 'Ruler',
+        'exampleSentenceEnglish': 'She used a ruler to draw a straight line.',
+        'exampleSentenceCebuano': 'Gigamit niya ang ruler sa pagdrowing og tul-id nga linya.',
+        'sentenceCompletionSentence': 'She used a ___ to draw a straight line.',
+        'sentenceCompletionAnswer': 'Ruler',
+      },
+      'wordB': {
+        'wordId': 'c9000000-0000-0000-0000-000000000001',
+        'englishWord': 'ruler',
+        'cebuanoMeaning': 'Magmamando',
+        'exampleSentenceEnglish': 'The ruler governed the kingdom with wisdom.',
+        'exampleSentenceCebuano': 'Ang magmamando nagdumala sa gingharian nga may kaalam.',
+        'sentenceCompletionSentence': 'The ___ governed the kingdom with wisdom.',
+        'sentenceCompletionAnswer': 'ruler',
+      },
+      'contrastiveSentenceA': 'She used a ruler to draw a straight line.',
+      'contrastiveSentenceB': 'The ruler governed the kingdom with wisdom.',
+    };
+
+    await context.push(
+      '/session/${widget.sessionId}/confusable-distinction',
+      extra: {
+        'lessonId': widget.lessonId,
+        'confusablePairs': [forcedPair],
       },
     );
   }
@@ -1078,9 +1208,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
             ),
           ],
         ),
-        body: _currentPhase == Phase.sentenceActivity
-            ? _buildSentenceActivityBody(theme)
-            : _buildPronunciationBody(theme),
+        body: _currentPhase == Phase.confusableDistinction
+            ? _buildConfusableBody(theme)
+            : _currentPhase == Phase.sentenceActivity
+                ? _buildSentenceActivityBody(theme)
+                : _buildPronunciationBody(theme),
       ),
     );
   }
@@ -1143,7 +1275,343 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     );
   }
 
+  Widget _buildConfusableBody(ThemeData theme) {
+    final pair = _activeConfusablePair!;
+    final wordA = pair['wordA'] as Map<String, dynamic>;
+    final wordB = pair['wordB'] as Map<String, dynamic>;
+    final wordAEnglish = wordA['englishWord'] as String;
+    final wordACebuano = wordA['cebuanoMeaning'] as String;
+    final wordBEnglish = wordB['englishWord'] as String;
+    final wordBCebuano = wordB['cebuanoMeaning'] as String;
+    final sentenceA = pair['contrastiveSentenceA'] as String;
+    final sentenceB = pair['contrastiveSentenceB'] as String;
+    final sentenceAFrame = sentenceA.replaceAll(RegExp('(?i)\\b${RegExp.escape(wordAEnglish)}\\b'), '________');
+    final sentenceBFrame = sentenceB.replaceAll(RegExp('(?i)\\b${RegExp.escape(wordBEnglish)}\\b'), '________');
+    final isCorrectA = _confusableSelectedForA?.toLowerCase() == wordAEnglish.toLowerCase();
+    final isCorrectB = _confusableSelectedForB?.toLowerCase() == wordBEnglish.toLowerCase();
+
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Phase badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'CONFUSABLE WORDS CHALLENGE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFF59E0B),
+                        letterSpacing: 0.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'These words look similar but mean different things. Fill in the blanks correctly.',
+                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Side-by-side word cards
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F9FF),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF0284C7), width: 1.5),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(wordAEnglish,
+                                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0369A1))),
+                              const SizedBox(height: 6),
+                              Text('Cebuano: $wordACebuano',
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF0284C7), fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center),
+                              const SizedBox(height: 10),
+                              ElevatedButton.icon(
+                                onPressed: () => _ttsService.speak(wordAEnglish),
+                                icon: const Icon(Icons.volume_up_rounded, size: 15),
+                                label: const Text('Listen'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0284C7),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF7ED),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFD97706), width: 1.5),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(wordBEnglish,
+                                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFFB45309))),
+                              const SizedBox(height: 6),
+                              Text('Cebuano: $wordBCebuano',
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center),
+                              const SizedBox(height: 10),
+                              ElevatedButton.icon(
+                                onPressed: () => _ttsService.speak(wordBEnglish),
+                                icon: const Icon(Icons.volume_up_rounded, size: 15),
+                                label: const Text('Listen'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFD97706),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Blank sentence A
+                  _buildConfusableBlankCard(
+                    sentenceFrame: sentenceAFrame,
+                    wordAEnglish: wordAEnglish,
+                    wordBEnglish: wordBEnglish,
+                    selectedWord: _confusableSelectedForA,
+                    isChecked: _confusableChecked,
+                    isCorrect: isCorrectA,
+                    correctSentence: sentenceA,
+                    onSelectA: () {
+                      if (!_confusableChecked) setState(() => _confusableSelectedForA = wordAEnglish);
+                    },
+                    onSelectB: () {
+                      if (!_confusableChecked) setState(() => _confusableSelectedForA = wordBEnglish);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Blank sentence B
+                  _buildConfusableBlankCard(
+                    sentenceFrame: sentenceBFrame,
+                    wordAEnglish: wordAEnglish,
+                    wordBEnglish: wordBEnglish,
+                    selectedWord: _confusableSelectedForB,
+                    isChecked: _confusableChecked,
+                    isCorrect: isCorrectB,
+                    correctSentence: sentenceB,
+                    onSelectA: () {
+                      if (!_confusableChecked) setState(() => _confusableSelectedForB = wordAEnglish);
+                    },
+                    onSelectB: () {
+                      if (!_confusableChecked) setState(() => _confusableSelectedForB = wordBEnglish);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Footer button
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+            ),
+            child: _confusableChecked
+                ? Column(
+                    children: [
+                      if (!_confusableCorrect)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
+                          ),
+                          child: const Text(
+                            'Not quite! Review the meanings above and try again.',
+                            style: TextStyle(color: Color(0xFFEF4444), fontSize: 13, fontWeight: FontWeight.w600),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ElevatedButton(
+                        onPressed: _handleConfusableContinue,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _confusableCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          _confusableCorrect ? 'CONTINUE' : 'TRY AGAIN',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
+                    ],
+                  )
+                : ElevatedButton(
+                    onPressed: (_confusableSelectedForA != null && _confusableSelectedForB != null)
+                        ? _checkConfusableAnswers
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFBBF24),
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      disabledForegroundColor: const Color(0xFF94A3B8),
+                      minimumSize: const Size(double.infinity, 56),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'CHECK ANSWERS',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfusableBlankCard({
+    required String sentenceFrame,
+    required String wordAEnglish,
+    required String wordBEnglish,
+    required String? selectedWord,
+    required bool isChecked,
+    required bool isCorrect,
+    required String correctSentence,
+    required VoidCallback onSelectA,
+    required VoidCallback onSelectB,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isChecked
+            ? (isCorrect ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2))
+            : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isChecked
+              ? (isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444))
+              : const Color(0xFFE2E8F0),
+          width: isChecked ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            sentenceFrame,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onSelectA,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: selectedWord == wordAEnglish ? const Color(0xFFEFF6FF) : Colors.white,
+                    side: BorderSide(
+                      color: selectedWord == wordAEnglish ? const Color(0xFF06A6FF) : const Color(0xFFCBD5E1),
+                      width: selectedWord == wordAEnglish ? 2 : 1.5,
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    wordAEnglish,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: selectedWord == wordAEnglish ? const Color(0xFF06A6FF) : const Color(0xFF475569),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onSelectB,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: selectedWord == wordBEnglish ? const Color(0xFFEFF6FF) : Colors.white,
+                    side: BorderSide(
+                      color: selectedWord == wordBEnglish ? const Color(0xFF06A6FF) : const Color(0xFFCBD5E1),
+                      width: selectedWord == wordBEnglish ? 2 : 1.5,
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    wordBEnglish,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: selectedWord == wordBEnglish ? const Color(0xFF06A6FF) : const Color(0xFF475569),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (isChecked && !isCorrect)
+            Padding(
+              padding: const EdgeInsets.only(top: 10.0),
+              child: Text(
+                'Correct: "$correctSentence"',
+                style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          if (isChecked && isCorrect)
+            const Padding(
+              padding: EdgeInsets.only(top: 8.0),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 16),
+                  SizedBox(width: 6),
+                  Text('Correct!', style: TextStyle(color: Color(0xFF22C55E), fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSentenceActivityBody(ThemeData theme) {
+
     final sentence = _activitySentence(_currentWord);
 
     // Pre-split the sentence for the completion format so both the instruction

@@ -30,22 +30,27 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   List<dynamic> _reviewItems = [];
   bool _loading = true;
   final Map<String, bool> _results = {};
-  final Map<String, int> _attemptCounts = {};
+  final Map<String, int> _attemptCounts = {}; // kept for compat
+  final Map<String, int> _wordWrongAttempts = {}; // unified penalty tracker
+  final Map<String, bool> _itemResults = {}; // key: wordId_activityFormat -> correctness
+  final Set<String> _attemptedWordIds = <String>{};
   Map<String, dynamic>? _pendingSavedState;
   bool _showResumePrompt = false;
   bool _showFailurePrompt = false;
   final List<Map<String, dynamic>> _retryQueue = [];
   int _firstPassCorrectCount = 0;
   double? _failedFinalScore;
-  static const List<String> _mainFormats = [
-    'FLASHCARD_RECALL',
-    'MULTIPLE_CHOICE',
-    'LISTENING_TYPING',
-    'SENTENCE_RECONSTRUCTION',
-    'FILL_IN_THE_BLANK',
+  double _maxProgress = 0.0;
+  double? _progressOverride;
+  List<String> _allWordIds = []; // ordered list of 10 word IDs
+  bool _inReinforcementPass = false;
+  List<Map<String, dynamic>> _wordBreakdown = [];
+
+  // Fixed activity order per word
+  static const List<String> _fixedActivityOrder = [
     'IMAGE_MATCHING',
-    'TRANSLATION_MATCHING',
-    'MATCHING',
+    'FILL_IN_THE_BLANK',
+    'SENTENCE_RECONSTRUCTION',
   ];
 
   // Working queue with activityFormat assigned
@@ -60,6 +65,21 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   final List<String> _assembledWords = [];
 
   Map<String, dynamic>? get _currentItem => _currentIndex < _queue.length ? _queue[_currentIndex] : null;
+
+  List<Map<String, dynamic>> get _normalizedReviewItems =>
+      _reviewItems.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+
+  String _itemKeyFor(Map<String, dynamic>? item) {
+    if (item == null) return '';
+    final wid = (item['wordId'] ?? '').toString();
+    final fmt = (item['activityFormat'] ?? '').toString();
+    return '${wid}_$fmt';
+  }
+
+  int _maxAttemptsForFormat(String fmt) {
+    // Revised rule: all cumulative activities use 2 attempts maximum.
+    return 2;
+  }
 
   MascotType _mascotForFormat(String fmt) {
     switch (fmt) {
@@ -123,17 +143,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   }
 
   List<String> _buildQueueFormats(int count) {
-    final rnd = Random();
-    final planned = <String>[];
-    for (var index = 0; index < count; index++) {
-      var choice = _mainFormats[rnd.nextInt(_mainFormats.length)];
-      if (planned.length >= 2 && planned[planned.length - 1] == choice && planned[planned.length - 2] == choice) {
-        final alternatives = _mainFormats.where((fmt) => fmt != choice).toList();
-        choice = alternatives[rnd.nextInt(alternatives.length)];
-      }
-      planned.add(choice);
-    }
-    return planned;
+    // Kept for backward compat; new code uses _fixedActivityOrder per word
+    return List<String>.generate(count, (index) => _fixedActivityOrder[index % _fixedActivityOrder.length]);
   }
 
   List<String> _buildMatchingOptions(Map<String, dynamic> item) {
@@ -190,7 +201,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Future<void> _fetchReviewItems() async {
     final savedState = await LocalStorageService.getCumulativeReviewState(widget.sessionId);
     if (savedState != null) {
-      // Prompt user to resume or start fresh instead of auto-restoring
       setState(() {
         _pendingSavedState = Map<String, dynamic>.from(savedState);
         _showResumePrompt = true;
@@ -201,21 +211,44 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
 
     if (!mounted) return;
     final lessons = Provider.of<LessonProvider>(context, listen: false);
-    final lessonIds = await _resolveLessonIds(lessons);
-    List<Map<String, dynamic>> items;
+    List<Map<String, dynamic>> items = [];
 
     if (widget.allWords.isNotEmpty) {
-      items = widget.allWords;
-    } else if (lessonIds.isNotEmpty) {
-      final lessonBatches = await Future.wait(lessonIds.map((lessonId) => lessons.loadVocabulary(lessonId)));
-      items = lessonBatches.expand((batch) => batch).map((word) => word.toJson()).toList();
-    } else if (widget.categoryId.isNotEmpty) {
-      items = await lessons.loadCategoryActivity(widget.categoryId);
+      // Words passed in directly (e.g. from retry)
+      items = widget.allWords.take(10).toList();
     } else {
-      items = const [];
+      // Sequential loading: fetch lesson 1 first, then lesson 2
+      final lessonIds = await _resolveLessonIds(lessons);
+      for (final lessonId in lessonIds) {
+        if (items.length >= 10) break;
+        final batch = await lessons.loadVocabulary(lessonId);
+        final mapped = batch.map((w) => w.toJson()).toList();
+        for (final word in mapped) {
+          if (items.length >= 10) break;
+          items.add(word);
+        }
+      }
+      if (items.isEmpty && widget.categoryId.isNotEmpty) {
+        final catItems = await lessons.loadCategoryActivity(widget.categoryId);
+        items = catItems.take(10).toList();
+      }
     }
 
-    final list = items.map((e) {
+    // Validate: we need exactly 10 words
+    if (items.isEmpty) {
+      setState(() {
+        _loading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No vocabulary words found for review.')),
+        );
+      }
+      return;
+    }
+
+    // Normalise items
+    final list = items.take(10).map((e) {
       final item = Map<String, dynamic>.from(e);
       return <String, dynamic>{
         'wordId': item['wordId'] ?? item['id'] ?? item['vocabularyId'] ?? '',
@@ -230,72 +263,61 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         'fitbSentence': item['fitbSentence'],
         'fitbAnswer': item['fitbAnswer'],
         'matchingSet': item['matchingSet'],
+        'sentenceArrangementTokens': item['sentenceArrangementTokens'],
+        'imageAssetPath': item['imageAssetPath'],
       };
-    }).toList();
+    }).where((it) => (it['wordId'] ?? '').toString().isNotEmpty).toList();
 
-    // Ensure every item has a wordId and englishWord
-    list.removeWhere((it) => ((it['wordId'] ?? it['vocabularyId'] ?? '')).toString().isEmpty);
-
-    // Build queue ensuring each word is tackled at least twice with different formats.
-    final rnd = Random();
+    // Build queue: exactly 3 fixed activities per word, in order
     _queue.clear();
+    _allWordIds = list.map((it) => (it['wordId'] ?? '').toString()).toList();
+    for (final item in list) {
+      final perWordSet = <String>{};
+      for (final fmt in _fixedActivityOrder) {
+        String resolvedFmt = fmt;
+        // IMAGE_MATCHING falls back to MULTIPLE_CHOICE if no image
+        if (resolvedFmt == 'IMAGE_MATCHING') {
+          final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
+          if (!hasImage) resolvedFmt = 'MULTIPLE_CHOICE';
+        }
+        // SENTENCE_RECONSTRUCTION falls back to MULTIPLE_CHOICE if not enough tokens
+        if (resolvedFmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
+          resolvedFmt = 'MULTIPLE_CHOICE';
+        }
 
-    // First pass: vary across all formats
-    final firstPassFormats = _buildQueueFormats(list.length);
-    for (var i = 0; i < list.length; i++) {
-      final item = list[i];
-      var fmt = firstPassFormats[i];
-      // Ensure image matching actually uses an image if available
-      final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
-      if (fmt == 'MULTIPLE_CHOICE' && hasImage && rnd.nextBool()) {
-        fmt = 'IMAGE_MATCHING';
+        // Avoid duplicate activity types per word. If duplicate, prefer MULTIPLE_CHOICE as a substitute.
+        if (perWordSet.contains(resolvedFmt)) {
+          if (!perWordSet.contains('MULTIPLE_CHOICE')) {
+            resolvedFmt = 'MULTIPLE_CHOICE';
+          } else if (!perWordSet.contains('FLASHCARD_RECALL')) {
+            resolvedFmt = 'FLASHCARD_RECALL';
+          } else {
+            // As a last resort, keep original but we won't duplicate in set
+            // find a safe unique fallback
+            resolvedFmt = 'FLASHCARD_RECALL';
+          }
+        }
+
+        perWordSet.add(resolvedFmt);
+        _queue.add({...item, 'activityFormat': resolvedFmt});
       }
-      if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
-        fmt = 'FILL_IN_THE_BLANK';
-      }
-      _queue.add({...item, 'activityFormat': fmt});
     }
-
-    // Second pass: focus on different formats to ensure thorough tackling
-    final secondPassFormats = _buildQueueFormats(list.length);
-    for (var i = 0; i < list.length; i++) {
-      final item = list[i];
-      var fmt = secondPassFormats[i];
-      
-      // Ensure different format from first pass if possible
-      final firstFmt = _queue[i]['activityFormat'];
-      if (fmt == firstFmt) {
-        final alternatives = _mainFormats.where((f) => f != firstFmt).toList();
-        fmt = alternatives[rnd.nextInt(alternatives.length)];
-      }
-
-      final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
-      if (hasImage && rnd.nextBool()) {
-        fmt = 'IMAGE_MATCHING';
-      }
-
-      if (fmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
-        fmt = 'FILL_IN_THE_BLANK';
-      }
-      _queue.add({...item, 'activityFormat': fmt});
-    }
-
-    // Shuffle the entire combined queue
-    _queue.shuffle(rnd);
 
     setState(() {
       _reviewItems = list;
       _loading = false;
       _currentIndex = 0;
-      // Do not compute final weighted score yet; will compute on finish using prior-module data.
       _weightedScore = null;
       _firstPassCorrectCount = 0;
       _retryQueue.clear();
       _results.clear();
+      _wordWrongAttempts.clear();
+      _attemptedWordIds.clear();
+      _maxProgress = 0.0;
+      _progressOverride = null;
       _prepareCurrentActivityState();
     });
 
-    // Save initial state
     LocalStorageService.saveCumulativeReviewState(widget.sessionId, {
       'reviewItems': _reviewItems,
       'queue': _queue,
@@ -303,6 +325,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       'currentIndex': _currentIndex,
       'results': _results,
       'attemptCounts': _attemptCounts,
+      'itemResults': _itemResults,
+      'attemptedWordIds': _attemptedWordIds.toList(),
+      'inReinforcementPass': _inReinforcementPass,
       'firstPassCorrectCount': _firstPassCorrectCount,
       'weightedScore': _weightedScore,
     });
@@ -326,6 +351,17 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _attemptCounts
         ..clear()
         ..addAll((saved['attemptCounts'] as Map?)?.map((k, v) => MapEntry(k.toString(), v as int)) ?? {});
+      _itemResults
+        ..clear()
+        ..addAll((saved['itemResults'] as Map?)?.map((k, v) => MapEntry(k.toString(), v as bool)) ?? {});
+      _attemptedWordIds
+        ..clear()
+        ..addAll((saved['attemptedWordIds'] as List<dynamic>? ?? const []).map((e) => e.toString()));
+      if (_attemptedWordIds.isEmpty) {
+        // Backward compatibility for sessions saved before attemptedWordIds existed.
+        _attemptedWordIds.addAll(_wordWrongAttempts.keys);
+      }
+      _inReinforcementPass = saved['inReinforcementPass'] as bool? ?? false;
       _firstPassCorrectCount = saved['firstPassCorrectCount'] as int? ?? _results.values.where((value) => value).length;
       _weightedScore = (saved['weightedScore'] as num?)?.toDouble();
       _pendingSavedState = null;
@@ -352,13 +388,56 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     TTSService.speak(text);
   }
 
+  void _showIncorrectMessage(int attemptsLeft) {
+    final message = attemptsLeft > 0
+        ? 'Incorrect. Try again. You have $attemptsLeft attempt(s) left.'
+        : 'Incorrect. No attempts left. Moving on.';
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFFB91C1C),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
   void _recordAnswer(String wordId, bool correct) {
+    _attemptedWordIds.add(wordId);
+
+    // Record item-level result (derive format from current item if available)
+    final cur = _currentItem;
+    final fmt = cur != null ? (cur['activityFormat'] ?? '').toString() : '';
+    final itemKey = '${wordId}_$fmt';
+
+    if (!correct) {
+      // Increment penalty at word level
+      _wordWrongAttempts[wordId] = (_wordWrongAttempts[wordId] ?? 0) + 1;
+    }
+
+    // Record the item-level correctness
+    _itemResults[itemKey] = correct;
+
+    // Record word-level first-pass correctness only once on first recorded correct with no prior wrongs
     if (!_results.containsKey(wordId)) {
       _results[wordId] = correct;
-      if (correct) {
+      if (correct && (_wordWrongAttempts[wordId] ?? 0) == 0) {
         _firstPassCorrectCount++;
       }
     }
+  }
+
+  void _advanceAfterAttemptsExhausted(String wordId) {
+    // Mark the current item as failed and move on. Do NOT re-enqueue during first pass.
+    _attemptedWordIds.add(wordId);
+    final cur = _currentItem;
+    final itemKey = _itemKeyFor(cur);
+    if (itemKey.isNotEmpty) {
+      _itemResults[itemKey] = false;
+    }
+    _nextItem();
   }
 
   void _nextItem() {
@@ -366,127 +445,102 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _currentIndex++;
       _prepareCurrentActivityState();
     });
+
+    // If we've completed the initial pass over the queue, either start reinforcement pass or finish
     if (_currentIndex >= _queue.length) {
-      _finishReview();
+      if (!_inReinforcementPass) {
+        _onFirstPassComplete();
+      } else {
+        _finishReview();
+      }
     }
   }
 
+  void _onFirstPassComplete() {
+    // Build reinforcement queue from items that were answered incorrectly on first pass
+    _retryQueue.clear();
+    for (final item in _queue) {
+      final key = _itemKeyFor(item);
+      final ok = _itemResults[key] ?? false;
+      if (!ok) {
+        _retryQueue.add(Map<String, dynamic>.from(item));
+      }
+    }
+
+    if (_retryQueue.isEmpty) {
+      // No reinforcement needed
+      _finishReview();
+      return;
+    }
+
+    // Prepare reinforcement pass: replace queue with retryQueue and reset indices
+    setState(() {
+      _inReinforcementPass = true;
+      _queue
+        ..clear()
+        ..addAll(_retryQueue);
+      _currentIndex = 0;
+      _prepareCurrentActivityState();
+      // reset per-item attempt counts for reinforcement pass
+      _attemptCounts.clear();
+    });
+  }
+
   Future<void> _finishReview() async {
+    // Animate progress to 100%
+    setState(() { _progressOverride = 1.0; });
+    await Future.delayed(const Duration(milliseconds: 450));
+
+    // Compute final score using unified penalty system
+    final wordIds = _allWordIds.isNotEmpty
+        ? _allWordIds
+        : _reviewItems.map((it) => (it['wordId'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
+    final cumulativeReviewScore = ScoringService.calculateCumulativeScore(_wordWrongAttempts, wordIds);
+    _weightedScore = cumulativeReviewScore;
+    final passed = ScoringService.isPassing(cumulativeReviewScore);
+
+    // Build per-word breakdown for storage
+    final wordBreakdown = <Map<String, dynamic>>[];
+    for (final wordId in wordIds) {
+      final wrong = _wordWrongAttempts[wordId] ?? 0;
+      final wordData = _reviewItems.firstWhere(
+        (it) => (it['wordId'] ?? '').toString() == wordId,
+        orElse: () => <String, dynamic>{'word': wordId},
+      );
+      wordBreakdown.add({
+        'wordId': wordId,
+        'word': (wordData['word'] ?? wordId).toString(),
+        'wrongAttempts': wrong,
+        'points': ScoringService.calculateWordScore(wrong),
+      });
+    }
+
+    // Persist breakdown details
+    await LocalStorageService.saveCumulativeReviewScoreDetails(widget.sessionId, {
+      'wordIds': wordIds,
+      'wordWrongAttempts': Map<String, dynamic>.from(_wordWrongAttempts),
+      'wordBreakdown': wordBreakdown,
+      'finalScore': cumulativeReviewScore,
+      'passed': passed,
+      'totalWords': wordIds.length,
+      'masteredCount': wordIds.where((id) => (_wordWrongAttempts[id] ?? 0) == 0).length,
+    });
+
+    _wordBreakdown = wordBreakdown;
+
+    if (!mounted) return;
+
     final lessons = Provider.of<LessonProvider>(context, listen: false);
     final lessonIds = await _resolveLessonIds(lessons);
-    final lessonScores = <double>[];
 
-    for (final lessonId in lessonIds) {
-      final storedLessonScore = await LocalStorageService.getLessonScore(lessonId);
-      if (storedLessonScore != null) {
-        lessonScores.add(storedLessonScore);
-        continue;
-      }
-
-      final module2 = await LocalStorageService.getModuleScore(lessonId, 2);
-      final module3 = await LocalStorageService.getModuleScore(lessonId, 3);
-      final scores = <double>[];
-      final module2Total = module2?['total'] ?? 0;
-      final module2Correct = module2?['correct'] ?? 0;
-      final module3Total = module3?['total'] ?? 0;
-      final module3Correct = module3?['correct'] ?? 0;
-      if (module2Total > 0) {
-        scores.add(ScoringService.computeLessonScore(module2Correct, module2Total));
-      }
-      if (module3Total > 0) {
-        scores.add(ScoringService.computeLessonScore(module3Correct, module3Total));
-      }
-      lessonScores.add(scores.isEmpty ? 0.0 : ScoringService.computeCombinedLessonScore(scores.first, scores.length > 1 ? scores[1] : scores.first));
-    }
-
-    final lessonScore = lessonScores.isEmpty ? 0.0 : lessonScores.reduce((a, b) => a + b) / lessonScores.length;
-    final uniqueWordCount = _reviewItems.map((it) => (it['wordId'] ?? '').toString()).toSet().length;
-    final cumulativeReviewScore = uniqueWordCount == 0 ? 0.0 : (_firstPassCorrectCount / uniqueWordCount) * 100.0;
-    if (widget.isSandbox) {
-      final sandboxModuleScores = await lessons.fetchSandboxModuleScores(widget.sessionId);
-      double module1 = 0.0;
-      double module2 = 0.0;
-      double module3 = 0.0;
-
-      for (final score in sandboxModuleScores) {
-        final moduleNumber = (score['moduleNumber'] as num?)?.toInt();
-        final moduleScore = (score['score'] as num?)?.toDouble() ?? 0.0;
-        if (moduleNumber == 1) {
-          module1 = moduleScore;
-        } else if (moduleNumber == 2) {
-          module2 = moduleScore;
-        } else if (moduleNumber == 3) {
-          module3 = moduleScore;
-        }
-      }
-
-      _weightedScore = (module1 * 0.30) + (module2 * 0.30) + (module3 * 0.40);
-    } else {
-      _weightedScore = ScoringService.computeFinalScore(lessonScore, cumulativeReviewScore);
-    }
-    bool passed = ScoringService.isPassing(_weightedScore ?? 0.0);
-
-    // Call backend mastery endpoint for server-side validation
-    final masteryResult = passed && !widget.isSandbox
-        ? await lessons.submitMastery(
-            categoryId: widget.categoryId,
-            lessonIds: lessonIds,
-            lessonScore: lessonScore,
-            cumulativeReviewScore: cumulativeReviewScore,
-            finalScore: _weightedScore ?? 0.0,
-            passed: passed,
-            totalItems: _reviewItems.length,
-            masteredCount: _firstPassCorrectCount,
-            missedWordIds: _reviewItems
-                .where((it) => _results[(it['wordId'] ?? '').toString()] == false)
-                .map((it) => (it['wordId'] ?? '').toString())
-                .where((id) => id.isNotEmpty)
-                .toList(),
-          )
-        : null;
-
-    // Use server-validated score if available
-    if (masteryResult != null) {
-      _weightedScore = (masteryResult['finalScore'] as num?)?.toDouble() ?? _weightedScore;
-      final serverPassed = masteryResult['passed'] as bool? ?? passed;
-      if (serverPassed != passed) {
-        passed = serverPassed;
-      }
-    }
-
-    final result = passed
-      ? widget.isSandbox
-        ? await lessons.completeSandbox(widget.sessionId, finalScore: _weightedScore ?? 0.0)
-        : await lessons.completeCategoryReview(
-          sessionId: widget.sessionId,
-          categoryId: widget.categoryId,
-          score: _weightedScore ?? cumulativeReviewScore,
-          )
-      : null;
-
-    int total = _reviewItems.length;
-    int mastered = _firstPassCorrectCount;
-    List<String> missed = _reviewItems
-        .where((it) => _results[(it['wordId'] ?? '').toString()] == false)
-        .map((it) => (it['wordId'] ?? '').toString())
-        .where((id) => id.isNotEmpty)
-        .toList();
-
-    if (result != null) {
-      total = result['totalItems'] as int? ?? total;
-      mastered = result['masteredCount'] as int? ?? (result['correctCount'] as int? ?? mastered);
-      _weightedScore = (result['score'] as num?)?.toDouble() ?? _weightedScore;
-      final backendMissed = result['missedWordIds'] ?? result['wordsToReview'] ?? result['missedWords'];
-      if (backendMissed is List) {
-        missed = backendMissed.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
-      }
-    }
+    int total = wordIds.length;
+    int mastered = wordIds.where((id) => (_wordWrongAttempts[id] ?? 0) == 0).length;
+    List<String> missed = wordIds.where((id) => (_wordWrongAttempts[id] ?? 0) > 0).toList();
 
     if (!widget.isSandbox) {
-      // Save cumulative review completion data for later retrieval (pass and fail)
       await LocalStorageService.saveCumulativeReviewCompleted(
         widget.categoryId,
-        _weightedScore ?? cumulativeReviewScore,
+        cumulativeReviewScore,
         mastered,
         total,
         widget.sessionId,
@@ -495,16 +549,37 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       );
 
       if (passed) {
+        // Call backend mastery endpoint
+        try {
+          await lessons.submitMastery(
+            categoryId: widget.categoryId,
+            lessonIds: lessonIds,
+            lessonScore: cumulativeReviewScore,
+            cumulativeReviewScore: cumulativeReviewScore,
+            finalScore: cumulativeReviewScore,
+            passed: true,
+            totalItems: total,
+            masteredCount: mastered,
+            missedWordIds: missed,
+          );
+        } catch (e) {
+          debugPrint('submitMastery failed (non-fatal): $e');
+        }
         await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
         await LocalStorageService.clearReviewCompletionState(widget.sessionId);
       } else {
         await LocalStorageService.saveReviewCompletionState(widget.sessionId, {
-          'lessonScore': lessonScore,
           'cumulativeReviewScore': cumulativeReviewScore,
-          'finalScore': _weightedScore,
+          'finalScore': cumulativeReviewScore,
           'passed': false,
-          'retryQueue': _retryQueue,
         });
+      }
+    } else {
+      // Sandbox completion
+      try {
+        await lessons.completeSandbox(widget.sessionId, finalScore: cumulativeReviewScore);
+      } catch (e) {
+        debugPrint('completeSandbox failed (non-fatal): $e');
       }
     }
 
@@ -512,15 +587,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       if (!mounted) return;
       setState(() {
         _showFailurePrompt = true;
-        _failedFinalScore = _weightedScore;
+        _failedFinalScore = cumulativeReviewScore;
       });
       return;
-    }
-
-    // Automatically speak score if it is 100%
-    final finalPercent = (_weightedScore ?? cumulativeReviewScore).round();
-    if (finalPercent == 100) {
-      TTSService.speak('Excellent! You got a perfect score of 100 percent.');
     }
 
     if (!mounted) return;
@@ -532,8 +601,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         totalItems: total,
         masteredCount: mastered,
         missedWordIds: missed,
-        allWords: widget.allWords,
+        allWords: _normalizedReviewItems,
         masteryScore: _weightedScore,
+        wordBreakdown: _wordBreakdown,
       ),
     ));
   }
@@ -597,8 +667,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                             totalItems: _reviewItems.length,
                             masteredCount: _firstPassCorrectCount,
                             missedWordIds: missedIds,
-                            allWords: widget.allWords,
+                            allWords: _normalizedReviewItems,
                             masteryScore: score,
+                            wordBreakdown: _wordBreakdown,
                           ),
                         ));
                       },
@@ -675,8 +746,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final cebuanoMeaning = (item['cebuanoMeaning'] ?? '').toString();
     final example = (item['example'] ?? '').toString();
     final wordId = (item['wordId'] ?? '').toString();
-    final currentAttempt = _attemptCounts[wordId] ?? 0;
-    final maxAttempts = 3;
+    final itemKey = _itemKeyFor(item);
+    final currentAttempt = _attemptCounts[itemKey] ?? 0;
+    final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
 
     return Card(
       elevation: 0,
@@ -742,25 +814,23 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: currentAttempt >= maxAttempts
-                  ? null
+                  ? () => _advanceAfterAttemptsExhausted(wordId)
                   : () {
+                      final itemKey = _itemKeyFor(item);
                       setState(() {
-                        _attemptCounts[wordId] = ((_attemptCounts[wordId] ?? 0) + 1);
+                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
                       });
                       _recordAnswer(wordId, true);
                       _nextItem();
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
+                backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF10B981),
+                foregroundColor: currentAttempt >= maxAttempts ? const Color(0xFF475569) : Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
-              child: Text(
-                currentAttempt >= maxAttempts ? 'No more attempts' : 'GOT IT',
-                style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8),
-              ),
+              child: Text(currentAttempt >= maxAttempts ? 'Continue' : 'GOT IT', style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
             ),
           ],
         ),
@@ -773,8 +843,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final prompt = (item['fitbSentence'] ?? item['example'] ?? '').toString().trim();
     final cebuanoMeaning = (item['cebuanoMeaning'] ?? '').toString();
     final wordId = (item['wordId'] ?? '').toString();
-    final currentAttempt = _attemptCounts[wordId] ?? 0;
-    final maxAttempts = 3;
+    final itemKey = _itemKeyFor(item);
+    final currentAttempt = _attemptCounts[itemKey] ?? 0;
+    final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
 
     return Card(
       elevation: 0,
@@ -840,7 +911,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
-              onPressed: () => _playAudio(answer),
+              onPressed: () => _playAudio('Listen carefully, then type what you hear.'),
               icon: const Icon(Icons.volume_up_rounded),
               label: const Text('Hear it again'),
               style: OutlinedButton.styleFrom(
@@ -852,37 +923,40 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ),
             const SizedBox(height: 14),
             ElevatedButton(
-              onPressed: _typingController.text.trim().isEmpty || currentAttempt >= maxAttempts
+              onPressed: _typingController.text.trim().isEmpty
                   ? null
-                  : () {
-                      final learner = _typingController.text.trim();
-                      final isCorrect = learner.toLowerCase() == answer.toLowerCase();
-                      setState(() {
-                        _attemptCounts[wordId] = ((_attemptCounts[wordId] ?? 0) + 1);
-                      });
-                      if (isCorrect) {
-                        _recordAnswer(wordId, true);
-                        _nextItem();
-                      } else if (_attemptCounts[wordId]! >= maxAttempts) {
-                        _recordAnswer(wordId, false);
-                        _nextItem();
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Incorrect. You have ${maxAttempts - _attemptCounts[wordId]!} attempt(s) left.')),
-                        );
-                      }
-                    },
+                  : currentAttempt >= maxAttempts
+                      ? () => _advanceAfterAttemptsExhausted(wordId)
+                      : () {
+                          final wordId = (item['wordId'] ?? '').toString();
+                          final userAnswer = _typingController.text.trim();
+                          final isCorrect = userAnswer.toLowerCase() == answer.toLowerCase();
+
+                          setState(() {
+                            _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
+                          });
+
+                          if (isCorrect) {
+                            _recordAnswer(wordId, true);
+                            _nextItem();
+                          } else if (_attemptCounts[itemKey]! >= maxAttempts) {
+                            // Max attempts reached — mark item failed and move on
+                            _showIncorrectMessage(0);
+                            _advanceAfterAttemptsExhausted(wordId);
+                          } else {
+                            // Wrong — accumulate penalty and allow retry
+                            _recordAnswer(wordId, false);
+                            _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
+                          }
+                        },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06A6FF),
-                foregroundColor: Colors.white,
+                backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF06A6FF),
+                foregroundColor: currentAttempt >= maxAttempts ? const Color(0xFF475569) : Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
-              child: Text(
-                currentAttempt >= maxAttempts ? 'No more attempts' : 'CHECK',
-                style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8),
-              ),
+              child: Text(currentAttempt >= maxAttempts ? 'Continue' : 'CHECK', style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
             ),
           ],
         ),
@@ -977,8 +1051,24 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                       final expected = answerTokens.join(' ').toLowerCase().trim();
                       final learner = _assembledWords.join(' ').toLowerCase().trim();
                       final isCorrect = learner == expected;
-                      _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
-                      _nextItem();
+                      final wordId = (item['wordId'] ?? '').toString();
+                      final itemKey = _itemKeyFor(item);
+                      setState(() {
+                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
+                      });
+                      if (isCorrect) {
+                        _recordAnswer(wordId, true);
+                        _nextItem();
+                      } else {
+                        final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
+                        if (_attemptCounts[itemKey]! >= maxAttempts) {
+                          _showIncorrectMessage(0);
+                          _advanceAfterAttemptsExhausted(wordId);
+                        } else {
+                          _recordAnswer(wordId, false);
+                          _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
+                        }
+                      }
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF06A6FF),
@@ -1042,11 +1132,27 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ...options.map((opt) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12.0),
-                child: ElevatedButton(
+                  child: ElevatedButton(
                   onPressed: () {
                     final isCorrect = opt == correct;
-                    _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
-                    _nextItem();
+                    final wordId = (item['wordId'] ?? '').toString();
+                    final itemKey = _itemKeyFor(item);
+                    setState(() {
+                      _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
+                    });
+                    if (isCorrect) {
+                      _recordAnswer(wordId, true);
+                      _nextItem();
+                    } else {
+                      final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
+                      if (_attemptCounts[itemKey]! >= maxAttempts) {
+                        _showIncorrectMessage(0);
+                        _advanceAfterAttemptsExhausted(wordId);
+                      } else {
+                        _recordAnswer(wordId, false);
+                        _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
+                      }
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
@@ -1156,8 +1262,24 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                   child: ElevatedButton(
                     onPressed: () {
                       final isCorrect = opt == correct;
-                      _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
-                      _nextItem();
+                      final wordId = (item['wordId'] ?? '').toString();
+                      final itemKey = _itemKeyFor(item);
+                      setState(() {
+                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
+                      });
+                      if (isCorrect) {
+                        _recordAnswer(wordId, true);
+                        _nextItem();
+                      } else {
+                        final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
+                        if (_attemptCounts[itemKey]! >= maxAttempts) {
+                          _showIncorrectMessage(0);
+                          _advanceAfterAttemptsExhausted(wordId);
+                        } else {
+                          _recordAnswer(wordId, false);
+                          _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
@@ -1196,11 +1318,12 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Widget _buildFillInBlank(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
     final sentence = (item['fitbSentence'] ?? item['example'] ?? '').toString();
-    final answer = (item['fitbAnswer'] ?? correct).toString();
+    final answer = correct;
     final definition = (item['definition'] ?? item['cebuanoMeaning'] ?? '').toString();
     final wordId = (item['wordId'] ?? '').toString();
-    final currentAttempt = _attemptCounts[wordId] ?? 0;
-    final maxAttempts = 3;
+    final itemKey = _itemKeyFor(item);
+    final currentAttempt = _attemptCounts[itemKey] ?? 0;
+    final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
     final controller = TextEditingController();
 
     return Card(
@@ -1272,45 +1395,36 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             const SizedBox(height: 14),
             ElevatedButton(
               onPressed: currentAttempt >= maxAttempts
-                  ? null
+                  ? () => _advanceAfterAttemptsExhausted(wordId)
                   : () {
                       final wordId = (item['wordId'] ?? '').toString();
                       final userAnswer = controller.text.trim();
-                      final isCorrect = userAnswer.toLowerCase() == (item['fitbAnswer'] ?? correct).toString().toLowerCase();
+                      final isCorrect = userAnswer.toLowerCase() == answer.toLowerCase();
                       
-                      setState(() {
-                        _attemptCounts[wordId] = ((_attemptCounts[wordId] ?? 0) + 1);
-                      });
-                      
-                      if (isCorrect) {
-                        _recordAnswer(wordId, true);
-                        _nextItem();
-                      } else if (_attemptCounts[wordId]! >= maxAttempts) {
-                        // Max attempts reached - mark as incorrect and move on
-                        _recordAnswer(wordId, false);
-                        _nextItem();
-                      } else {
-                        // Show error but allow retry
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Incorrect. You have ${maxAttempts - _attemptCounts[wordId]!} attempt(s) left.')),
-                        );
-                      }
+                          setState(() {
+                            _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
+                          });
+
+                          if (isCorrect) {
+                            _recordAnswer(wordId, true);
+                            _nextItem();
+                          } else if (_attemptCounts[itemKey]! >= maxAttempts) {
+                            _showIncorrectMessage(0);
+                            _advanceAfterAttemptsExhausted(wordId);
+                          } else {
+                            _recordAnswer(wordId, false);
+                            _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
+                          }
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF06A6FF),
                 disabledBackgroundColor: const Color(0xFFCBD5E1),
               ),
-              child: Text(
-                currentAttempt >= maxAttempts ? 'No more attempts' : 'Submit',
-                style: TextStyle(
-                  color: currentAttempt >= maxAttempts ? const Color(0xFF64748B) : Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: Text(currentAttempt >= maxAttempts ? 'Continue' : 'Submit', style: TextStyle(color: currentAttempt >= maxAttempts ? const Color(0xFF64748B) : Colors.white, fontWeight: FontWeight.w600)),
             ),
             const SizedBox(height: 10),
             ElevatedButton.icon(
-              onPressed: () => _playAudio(definition),
+              onPressed: () => _playAudio(correct),
               icon: const Icon(Icons.volume_up),
               label: const Text('Hear word'),
               style: ElevatedButton.styleFrom(
@@ -1457,8 +1571,24 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                   ? null
                   : () {
                       final isCorrect = selectedWord == correct;
-                      _recordAnswer((item['wordId'] ?? '').toString(), isCorrect);
-                      _nextItem();
+                      final wordId = (item['wordId'] ?? '').toString();
+                      final itemKey = _itemKeyFor(item);
+                      setState(() {
+                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
+                      });
+                      if (isCorrect) {
+                        _recordAnswer(wordId, true);
+                        _nextItem();
+                      } else {
+                        final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
+                        if (_attemptCounts[itemKey]! >= maxAttempts) {
+                          _showIncorrectMessage(0);
+                          _advanceAfterAttemptsExhausted(wordId);
+                        } else {
+                          _recordAnswer(wordId, false);
+                          _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
+                        }
+                      }
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF06A6FF),
@@ -1657,28 +1787,57 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                           'Review progress',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: const Color(0xFF059669).withValues(alpha: 0.9)),
                         ),
-                        Text(
-                          _queue.isEmpty ? '0%' : '${((_currentIndex + 1) / _queue.length * 100).round()}%',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                        Builder(
+                          builder: (context) {
+                            // Word-based progress: count unique words that were attempted (correct or wrong)
+                            final totalWords = _allWordIds.isNotEmpty ? _allWordIds.length : (_reviewItems.length);
+                            final attemptedWordCount = _allWordIds.isNotEmpty
+                                ? _allWordIds.where((id) => _attemptedWordIds.contains(id)).length
+                                : _attemptedWordIds.length;
+                            final calculatedProgress = totalWords > 0 ? attemptedWordCount / totalWords : 0.0;
+                            if (calculatedProgress > _maxProgress) _maxProgress = calculatedProgress;
+                            return Text(
+                              '$attemptedWordCount / $totalWords words',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            );
+                          },
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFFAF1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: LinearProgressIndicator(
-                          value: _queue.isEmpty ? 0 : (_currentIndex + 1) / _queue.length,
-                          minHeight: 12,
-                          backgroundColor: const Color(0x00FFFFFF),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
-                        ),
-                      ),
+                    Builder(
+                      builder: (context) {
+                        final totalWords = _allWordIds.isNotEmpty ? _allWordIds.length : (_reviewItems.length);
+                        final attemptedWordCount = _allWordIds.isNotEmpty
+                          ? _allWordIds.where((id) => _attemptedWordIds.contains(id)).length
+                          : _attemptedWordIds.length;
+                        final calculatedProgress = totalWords > 0 ? attemptedWordCount / totalWords : 0.0;
+                        if (calculatedProgress > _maxProgress) _maxProgress = calculatedProgress;
+                        final progressVal = _progressOverride ?? _maxProgress;
+                        return Container(
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFFAF1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: TweenAnimationBuilder<double>(
+                              tween: Tween<double>(begin: 0.0, end: progressVal),
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.linear,
+                              builder: (context, value, _) {
+                                return LinearProgressIndicator(
+                                  value: value,
+                                  minHeight: 12,
+                                  backgroundColor: const Color(0x00FFFFFF),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 14),
                     Expanded(

@@ -5,11 +5,11 @@ enum ActivityFormat {
   multipleChoice,
   matching,
   fillInTheBlank,
+  rearrangement,
   imageMatching,
   listeningTyping,
   translationMatching,
   flashcardRecall,
-  rearrangement,
 }
 
 enum ReinforcementStatus {
@@ -118,7 +118,7 @@ class PracticeItemModel {
   }
 
   static String _readString(Map<String, dynamic> json, String primaryKey, String secondaryKey, [String? tertiaryKey]) {
-    for (final key in [primaryKey, secondaryKey, if (tertiaryKey != null) tertiaryKey]) {
+    for (final key in [primaryKey, secondaryKey, tertiaryKey].whereType<String>()) {
       final value = json[key];
       if (value != null) {
         final text = value.toString().trim();
@@ -283,11 +283,19 @@ class LocalStorageService {
   }
 
   // --- Practice Session State ---
-  static Future<void> savePracticeSessionState(String sessionId, List<PracticeItemModel> queue, int currentIndex) async {
+  static Future<void> savePracticeSessionState(
+    String sessionId,
+    List<PracticeItemModel> queue,
+    int currentIndex, {
+    int? completedScreens,
+    int? plannedScreens,
+  }) async {
     await init();
     final data = {
       'queue': queue.map((item) => item.toJson()).toList(),
       'currentIndex': currentIndex,
+      'completedScreens': completedScreens,
+      'plannedScreens': plannedScreens,
     };
     await _prefs!.setString('practice_session_state_$sessionId', json.encode(data));
   }
@@ -322,6 +330,8 @@ class LocalStorageService {
     return {
       'queue': queue,
       'currentIndex': decoded['currentIndex'] as int,
+      'completedScreens': decoded['completedScreens'] as int?,
+      'plannedScreens': decoded['plannedScreens'] as int?,
     };
   }
 
@@ -391,6 +401,18 @@ class LocalStorageService {
   static Future<void> clearCumulativeReviewState(String sessionId) async {
     await init();
     await _prefs!.remove('cumulative_review_state_$sessionId');
+  }
+
+  static Future<void> saveCumulativeReviewScoreDetails(String sessionId, Map<String, dynamic> details) async {
+    await init();
+    await _prefs!.setString('cumulative_review_score_details_$sessionId', json.encode(details));
+  }
+
+  static Future<Map<String, dynamic>?> getCumulativeReviewScoreDetails(String sessionId) async {
+    await init();
+    final raw = _prefs!.getString('cumulative_review_score_details_$sessionId');
+    if (raw == null) return null;
+    return json.decode(raw) as Map<String, dynamic>;
   }
 
   static Future<void> saveReviewCompletionState(String sessionId, Map<String, dynamic> state) async {
@@ -560,5 +582,19 @@ class LocalStorageService {
   static Future<bool> getNotificationsEnabled() async {
     await init();
     return _prefs!.getBool('pref_notifications_enabled') ?? true;
+  }
+
+  /// Clears ALL lesson progress and score data from local storage.
+  /// App-level preferences (theme, notifications) are preserved.
+  /// Call this on logout so that a new user starts with a completely clean slate.
+  static Future<void> clearAllLessonData() async {
+    await init();
+    const keysToPreserve = {'pref_theme_mode', 'pref_notifications_enabled'};
+    final allKeys = Set<String>.from(_prefs!.getKeys());
+    for (final key in allKeys) {
+      if (!keysToPreserve.contains(key)) {
+        await _prefs!.remove(key);
+      }
+    }
   }
 }

@@ -22,6 +22,11 @@ class LessonPathScreen extends StatefulWidget {
 
 class _LessonPathScreenState extends State<LessonPathScreen> {
   Map<String, double> _localScores = {};
+  Map<String, int> _localMasteredCounts = {};
+  double? _cumulativeReviewScore;
+  int? _cumulativeReviewMastered;
+  int? _cumulativeReviewTotal;
+  bool _cumulativeReviewCompleted = false;
 
   @override
   void initState() {
@@ -35,17 +40,47 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
   Future<void> _loadLocalScores(LessonProvider provider) async {
     final scores = <String, double>{};
+    final masteredCounts = <String, int>{};
     for (final lesson in provider.lessons) {
-      // Load for all lessons regardless of backend status — covers cases where
-      // backend hasn't marked the lesson COMPLETED yet (e.g. animal category sync lag)
       final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
       if (localScore != null && localScore > 0) {
         scores[lesson.lessonId] = localScore;
       }
+      
+      final details = await LocalStorageService.getLessonScoreDetails(lesson.lessonId);
+      if (details != null) {
+        final correctRaw = details['wordPronunciationCorrect'];
+        final failedRaw = details['failedSentenceWordIds'];
+        
+        Map<String, bool> wordPronunciationCorrect = {};
+        if (correctRaw is Map) {
+          wordPronunciationCorrect = Map<String, bool>.from(correctRaw);
+        }
+        
+        Set<String> failedSentenceWordIds = {};
+        if (failedRaw is List) {
+          failedSentenceWordIds = Set<String>.from(failedRaw.map((e) => e.toString()));
+        }
+        
+        // Pronunciation correctness is fully excluded from mastery logic
+        int mastered = (lesson.totalWordCount - failedSentenceWordIds.length).clamp(0, lesson.totalWordCount);
+        masteredCounts[lesson.lessonId] = mastered;
+      }
     }
+    
+    final isReviewCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
+    final reviewScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId);
+    final reviewMastered = await LocalStorageService.getCumulativeReviewMasteredCount(widget.categoryId);
+    final reviewTotal = await LocalStorageService.getCumulativeReviewTotalItems(widget.categoryId);
+    
     if (mounted) {
       setState(() {
         _localScores = scores;
+        _localMasteredCounts = masteredCounts;
+        _cumulativeReviewCompleted = isReviewCompleted;
+        _cumulativeReviewScore = reviewScore;
+        _cumulativeReviewMastered = reviewMastered;
+        _cumulativeReviewTotal = reviewTotal;
       });
     }
   }
@@ -279,11 +314,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                     color: Color(0xFF64748B),
                                                   ),
                                                 ),
-                                                if (lesson.status == 'COMPLETED' || _localScores.containsKey(lesson.lessonId)) ...[
+                                                if (isEnabled && (lesson.status == 'COMPLETED' || _localScores.containsKey(lesson.lessonId))) ...[
                                                   Builder(
                                                     builder: (context) {
-                                                      final displayScore = _localScores[lesson.lessonId] ?? lesson.masteryScore;
-                                                      if (displayScore == null) return const SizedBox.shrink();
+                                                      final mastered = _localMasteredCounts[lesson.lessonId] ?? (lesson.status == 'COMPLETED' ? lesson.totalWordCount : 0);
                                                       return Container(
                                                         margin: const EdgeInsets.only(top: 6),
                                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -292,7 +326,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                           borderRadius: BorderRadius.circular(8),
                                                         ),
                                                         child: Text(
-                                                          'Score: ${displayScore.clamp(0.0, 100.0).toStringAsFixed(0)}%',
+                                                          'Mastered: $mastered / ${lesson.totalWordCount}',
                                                           style: TextStyle(
                                                             fontSize: 10,
                                                             color: nodeColor,
@@ -592,6 +626,24 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                           style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                           textAlign: TextAlign.center,
                         ),
+                        if (reviewUnlocked && _cumulativeReviewCompleted && _cumulativeReviewScore != null) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Score: ${_cumulativeReviewScore!.toStringAsFixed(0)}%',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF10B981),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

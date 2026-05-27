@@ -15,7 +15,8 @@
             "name": "VocabooApplication",
             "request": "launch",
             "mainClass": "com.vocaboo.VocabooApplication",
-            "projectName": "backend"
+            "projectName": "backend",
+            "vmArgs": "-Xmx512m"
         }
     ]
 }

@@ -28,6 +28,7 @@ class TTSService {
     try {
       // ignore: avoid_print
       print('TTSService.speak: "$text"');
+      await _flutterTts.stop();
       await _flutterTts.speak(text);
     } catch (e) {
       // ignore: avoid_print

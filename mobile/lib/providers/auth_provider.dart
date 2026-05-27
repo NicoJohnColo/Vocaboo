@@ -1,14 +1,16 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../models/learner_model.dart';
 import 'package:mobile/config/app_config.dart';
+import '../services/local_storage_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final _storage = const FlutterSecureStorage();
   
-  static const String baseUrl = AppConfig.baseUrl;
+  static final String baseUrl = AppConfig.baseUrl;
 
   String? _token;
   LearnerModel? _learner;
@@ -30,10 +32,12 @@ class AuthProvider with ChangeNotifier {
 
   Future<bool> checkNameAvailable(String displayName) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/learners/check-name?displayName=${Uri.encodeComponent(displayName)}'),
-        headers: {'Content-Type': 'application/json'},
-      );
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/learners/check-name?displayName=${Uri.encodeComponent(displayName)}'),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final body = json.decode(response.body);
         return body['available'] == true;
@@ -54,13 +58,15 @@ class AuthProvider with ChangeNotifier {
       
       if (savedToken != null && savedLearnerId != null) {
         // Validate token by fetching current profile
-        final response = await http.get(
-          Uri.parse('$baseUrl/learners/me'),
-          headers: {
-            'Authorization': 'Bearer $savedToken',
-            'Content-Type': 'application/json',
-          },
-        );
+        final response = await http
+            .get(
+              Uri.parse('$baseUrl/learners/me'),
+              headers: {
+                'Authorization': 'Bearer $savedToken',
+                'Content-Type': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 5));
 
         if (response.statusCode == 200) {
           _token = savedToken;
@@ -82,16 +88,18 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/learners/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'displayName': displayName,
-          'age': age,
-          'pin': pin,
-          'languagePreference': languagePreference,
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/learners/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'displayName': displayName,
+              'age': age,
+              'pin': pin,
+              'languagePreference': languagePreference,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
 
       final body = json.decode(response.body);
 
@@ -107,6 +115,7 @@ class AuthProvider with ChangeNotifier {
 
         await _storage.write(key: 'jwt_token', value: _token);
         await _storage.write(key: 'learner_id', value: _learner!.learnerId);
+        await LocalStorageService.clearAllLessonData();
         
         _isLoading = false;
         notifyListeners();
@@ -129,14 +138,16 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/learners/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'learnerId': learnerId,
-          'pin': pin,
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/learners/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'learnerId': learnerId,
+              'pin': pin,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
 
       final body = json.decode(response.body);
 
@@ -174,13 +185,15 @@ class AuthProvider with ChangeNotifier {
   Future<void> fetchProfile() async {
     if (_token == null) return;
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/learners/me'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-        },
-      );
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/learners/me'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         _learner = LearnerModel.fromJson(json.decode(response.body));
@@ -199,16 +212,18 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/learners/preferences'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'displayName': displayName,
-        }),
-      );
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/learners/preferences'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'displayName': displayName,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         await fetchProfile();
@@ -234,17 +249,19 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/learners/change-pin'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'currentPin': currentPin,
-          'newPin': newPin,
-        }),
-      );
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/learners/change-pin'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'currentPin': currentPin,
+              'newPin': newPin,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         _isLoading = false;
@@ -269,16 +286,18 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/learners/preferences'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'languagePreference': languagePreference,
-        }),
-      );
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/learners/preferences'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'languagePreference': languagePreference,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         await fetchProfile();
@@ -303,6 +322,7 @@ class AuthProvider with ChangeNotifier {
     _learner = null;
     await _storage.delete(key: 'jwt_token');
     await _storage.delete(key: 'learner_id');
+    await LocalStorageService.clearAllLessonData();
     notifyListeners();
   }
 }

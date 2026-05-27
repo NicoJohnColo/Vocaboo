@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../models/vocabulary_word_model.dart';
@@ -70,12 +69,42 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   int _attemptNumber = 1;
   PronunciationAttemptModel? _attemptResult;
   late int _maxAttempts;
+  int _totalPronunciationAttempts = 0;
 
   @override
   void initState() {
     super.initState();
-    _words = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
-    _initializeServicesAndState();
+    if (widget.isSandbox) {
+      // In sandbox mode, show all generated custom words
+      _words = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
+    } else {
+      // Otherwise, filter to only unknown words
+      final unknownIds = widget.unknownWordIds.toSet();
+      _words = widget.allWords
+          .map((w) => VocabularyWordModel.fromJson(w))
+          .where((word) => unknownIds.contains(word.wordId))
+          .toList();
+    }
+
+    if (_words.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.go(
+            '/session/${widget.sessionId}/practice',
+            extra: {
+              'lessonId': widget.lessonId,
+              'categoryId': widget.categoryId,
+              'knownWordIds': widget.knownWordIds,
+              'unknownWordIds': widget.unknownWordIds,
+              'allWords': widget.allWords,
+              'isSandbox': widget.isSandbox,
+            },
+          );
+        }
+      });
+    } else {
+      _initializeServicesAndState();
+    }
   }
 
   Future<void> _initializeServicesAndState() async {
@@ -114,7 +143,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       _isEvaluating = false;
     });
 
-    _maxAttempts = widget.isSandbox ? 0 : 3;
+    // Sandbox should allow a single attempt but not persist penalties.
+    _maxAttempts = widget.isSandbox ? 1 : 3;
 
     // Auto-speak English word on start
     _ttsService.speak(currentWord.englishWord);
@@ -138,9 +168,10 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   Future<void> _cancelRecordingSession() async {
-    // Treat cancel as a misattempt
-    final wasActive = _recordingSessionActive;
-    final shouldAdvanceAfterCancel = wasActive && _attemptNumber >= _maxAttempts;
+    final wasActiveAttempt = _recordingSessionActive && _isRecording && _attemptResult == null;
+    // Only consider attempts exhausted when maxAttempts > 0
+    final shouldMarkFailure = wasActiveAttempt && (_maxAttempts > 0 && _attemptNumber >= _maxAttempts);
+
     _recordingSessionActive = false;
     _stopAutoEvaluationMonitoring();
     await _streamingSttService.stopListening();
@@ -148,52 +179,35 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
     if (_disposed || !mounted) return;
 
-    if (wasActive) {
-      // mark this attempt as incorrect
-      setState(() {
-        _attemptResult = PronunciationAttemptModel(
-          attemptId: '',
-          isCorrect: false,
-          transcribedText: null,
-          phoneticTarget: null,
-          phonologicalTip: null,
-          attemptNumber: _attemptNumber,
-          isInconclusive: false,
-        );
-      });
+    setState(() {
+      _isRecording = false;
+      _isEvaluating = false;
+      _liveTranscriptNotifier.value = '';
 
-      // advance attempt counter and auto-retry if attempts remain
-      if (_attemptNumber < _maxAttempts) {
-        _attemptNumber++;
-        // restart recording flow after a short delay
-        Future.delayed(const Duration(milliseconds: 600), () async {
-          if (_disposed || !mounted || !_recordingSessionActive) return;
+      if (wasActiveAttempt) {
+        _totalPronunciationAttempts++;
+
+        if (shouldMarkFailure) {
+          _attemptResult = PronunciationAttemptModel(
+            attemptId: '',
+            isCorrect: false,
+            transcribedText: null,
+            phoneticTarget: null,
+            phonologicalTip: null,
+            attemptNumber: _attemptNumber,
+            isInconclusive: true,
+          );
+        } else {
+          _attemptNumber = _attemptNumber < _maxAttempts ? _attemptNumber + 1 : _maxAttempts;
           _attemptResult = null;
-          _isRecording = true;
-          _recordingSessionActive = true;
-          _liveTranscriptNotifier.value = '';
-          await _recorderService.startRecording();
-          await _startStreamingRecognition(_words[_currentWordIndex].englishWord);
-          _startAutoEvaluationMonitoring();
-        });
-        return;
+        }
+      } else {
+        _attemptResult = null;
       }
-    }
+    });
 
-    // No more retries or not active — close modal
-    if (mounted) {
-      setState(() {
-        _isRecording = false;
-        _isEvaluating = false;
-        _liveTranscriptNotifier.value = '';
-      });
-    }
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
-    }
-
-    if (shouldAdvanceAfterCancel && mounted) {
-      _nextStep();
     }
   }
 
@@ -380,8 +394,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   Future<void> _handleMicPress() async {
     if (_isEvaluating || _isRecording || _disposed) return;
 
-    final permission = await Permission.microphone.request();
-    if (permission.isGranted) {
+    if (await _recorderService.hasPermission()) {
       if (_disposed || !mounted) return;
       _recordingSessionActive = true;
       _liveTranscriptNotifier.value = '';
@@ -407,7 +420,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
       if (_attemptResult != null) {
         // If we got a result (correct or reached max attempts), auto-advance
-        if (_attemptResult!.isCorrect || _attemptNumber >= _maxAttempts) {
+        if (_attemptResult!.isCorrect || (_maxAttempts > 0 && _attemptNumber >= _maxAttempts)) {
           if (mounted) _nextStep();
         }
         return;
@@ -427,6 +440,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       if (_disposed || !mounted) return;
 
       if (path != null) {
+        _totalPronunciationAttempts++;
         final currentWord = _words[_currentWordIndex];
         final result = await _sttService.evaluatePronunciation(
           audioFilePath: path,
@@ -446,7 +460,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         if (result.isCorrect) {
           _ttsService.speak(currentWord.englishWord);
           _nextStep();
-        } else if (_attemptNumber >= _maxAttempts) {
+        } else if (_maxAttempts > 0 && _attemptNumber >= _maxAttempts) {
           // All attempts exhausted — continue automatically
           _nextStep();
         }
@@ -608,8 +622,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       _ttsService.speak(currentWord.englishWord);
     } else if (_currentStep == 1) {
       // Complete word learning and advance index
-      final isFinalSuccess = _attemptResult?.isCorrect ?? false;
-      final finalStatus = isFinalSuccess ? 'MASTERED' : 'NEEDS_PRONUNCIATION_REVIEW';
+      // Mic attempt and mic skip both advance session state identically with no score side effects
+      final finalStatus = 'INTRODUCED';
       
       provider.updateWordProgress(widget.sessionId, currentWord.wordId, _pathway, 4, finalStatus);
 
@@ -663,8 +677,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     if (_words.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final word = _words[_currentWordIndex];
-    final totalSteps = 2;
-    final stepPercentage = (_currentStep + 1) / totalSteps;
+    final totalWords = _words.length;
+    final completedWordsCount = _currentWordIndex.clamp(0, totalWords);
+    final progressVal = totalWords > 0 ? (completedWordsCount / totalWords) : 0.0;
 
     return PopScope(
       canPop: false,
@@ -681,10 +696,39 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: _showExitConfirmation,
         ),
-        title: Text(
-          LocalizationService.translate(pref, 'learning_progress', args: ['${_currentWordIndex + 1}', '${_words.length}']),
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+        title: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            height: 10,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0.0, end: progressVal),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.linear,
+              builder: (context, value, _) {
+                return LinearProgressIndicator(
+                  value: value,
+                  backgroundColor: const Color(0xFFE2E8F0),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                );
+              },
+            ),
+          ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Center(
+              child: Text(
+                '$completedWordsCount/$totalWords',
+                style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -692,18 +736,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Horizontal progress bar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: stepPercentage.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor: const Color(0xFFE2E8F0),
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF59E0B)),
-                ),
-              ),
-              const SizedBox(height: 24),
-
               Expanded(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
@@ -999,7 +1031,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 ),
               ] else ...[
                 const Text(
-                  'Tap the microphone to practice speaking',
+                  'Want to try saying it? Tap the mic to practice your pronunciation — or just continue when you are ready.',
+                  textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                 ),
               ],
@@ -1116,7 +1149,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   textAlign: TextAlign.center,
                 ),
               ],
-              if (word.phonologicalTipKey != null) ...[
+              if (word.phonologicalTipKey != null) ...[ 
                 const SizedBox(height: 18),
                 Container(
                   width: double.infinity,
@@ -1142,51 +1175,69 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
   Widget _buildBottomButton(ThemeData theme) {
     if (widget.isSandbox) {
-      return ElevatedButton(
-        onPressed: _completeSandboxIntro,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF06A6FF),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _completeSandboxIntro,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF06A6FF),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            elevation: 6,
           ),
-          elevation: 6,
-        ),
-        child: const Text(
-          'CONTINUE TO MODULE 2',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+          child: const Text(
+            'CONTINUE',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+          ),
         ),
       );
     }
 
     String buttonText = 'FLIP CARD';
     if (_currentStep == 0 && _isFlipped) buttonText = 'GOT IT';
-    if (_currentStep == 1) buttonText = 'CONFIRM & CONTINUE';
+    if (_currentStep == 1) buttonText = 'CONTINUE';
 
-    return ElevatedButton(
-      onPressed: () {
-        if (_currentStep == 0 && !_isFlipped) {
-          setState(() {
-            _isFlipped = true;
-          });
-        } else {
-          _nextStep();
-        }
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF06A6FF),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+    // Allow continue at any time (mic is optional)
+    final bool canContinue = _currentStep == 0 ? _isFlipped : true;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+          onPressed: canContinue
+              ? () {
+                  if (_currentStep == 0 && !_isFlipped) {
+                    setState(() {
+                      _isFlipped = true;
+                    });
+                  } else {
+                    _nextStep();
+                  }
+                }
+              : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF06A6FF),
+            disabledBackgroundColor: const Color(0xFFE2E8F0),
+            foregroundColor: Colors.white,
+            disabledForegroundColor: const Color(0xFF94A3B8),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            elevation: 6,
+          ),
+          child: Text(
+            buttonText,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+          ),
         ),
-        elevation: 6,
-      ),
-      child: Text(
-        buttonText,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
-      ),
+        ),
+      ],
     );
   }
 
@@ -1207,7 +1258,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     try {
       await provider.persistModuleScore(
         widget.lessonId,
-        widget.moduleNumber,
+        widget.isSandbox ? null : widget.moduleNumber,
         1,
         1,
         isSandbox: true,
@@ -1218,7 +1269,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     }
 
     if (!mounted) return;
-    debugPrint('Navigating to Module 2...');
+    debugPrint(widget.isSandbox ? 'Navigating to sandbox review...' : 'Navigating to Module 2...');
     context.go(
       '/session/${widget.sessionId}/practice',
       extra: {

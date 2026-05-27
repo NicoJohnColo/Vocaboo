@@ -152,6 +152,7 @@ class AppRouter {
             categoryId: e['categoryId']?.toString() ?? '',
             lessonTitle: e['lessonTitle'] as String?,
             allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
+            moduleNumber: 3,
             isSandbox: e['isSandbox'] as bool? ?? false,
           );
         },

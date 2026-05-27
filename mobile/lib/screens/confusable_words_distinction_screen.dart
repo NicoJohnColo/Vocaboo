@@ -27,12 +27,22 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
   // Question selection states
   String? _selectedForA; // Selected word for Blank A (contrastiveSentenceA)
   String? _selectedForB; // Selected word for Blank B (contrastiveSentenceB)
-  
 
   @override
   void initState() {
     super.initState();
     _results = {for (var pair in widget.confusablePairs) pair['pairId'] as String: true};
+    _initializeTts();
+  }
+
+  Future<void> _initializeTts() async {
+    await _ttsService.initialize();
+  }
+
+  @override
+  void dispose() {
+    _ttsService.stop();
+    super.dispose();
   }
 
   void _checkAnswers(Map<String, dynamic> pair) {
@@ -81,6 +91,28 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
 
   @override
   Widget build(BuildContext context) {
+    if (widget.confusablePairs.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          title: const Text(
+            "Confusable Words Distinction",
+            style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+          ),
+          centerTitle: true,
+          automaticallyImplyLeading: false,
+        ),
+        body: const Center(
+          child: Text(
+            'No confusable pair was available for this lesson.',
+            style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+          ),
+        ),
+      );
+    }
+
     final pair = widget.confusablePairs[_currentIndex];
 
     final wordA = pair['wordA'] as Map<String, dynamic>;
@@ -93,10 +125,18 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
 
     final sentenceA = pair['contrastiveSentenceA'] as String;
     final sentenceB = pair['contrastiveSentenceB'] as String;
+    final sentenceACebuano = (pair['contrastiveSentenceACebuano'] ?? wordA['exampleSentenceCebuano'] ?? '') as String;
+    final sentenceBCebuano = (pair['contrastiveSentenceBCebuano'] ?? wordB['exampleSentenceCebuano'] ?? '') as String;
 
     // Create sentence frames with blank
-    final sentenceAFrame = sentenceA.replaceAll(RegExp('(?i)\\b$wordAEnglish\\b'), '________');
-    final sentenceBFrame = sentenceB.replaceAll(RegExp('(?i)\\b$wordBEnglish\\b'), '________');
+    final sentenceAFrame = sentenceA.replaceAll(
+      RegExp('\b${RegExp.escape(wordAEnglish)}\b', caseSensitive: false),
+      '________',
+    );
+    final sentenceBFrame = sentenceB.replaceAll(
+      RegExp('\b${RegExp.escape(wordBEnglish)}\b', caseSensitive: false),
+      '________',
+    );
 
     final isCorrectA = _selectedForA?.toLowerCase() == wordAEnglish.toLowerCase();
     final isCorrectB = _selectedForB?.toLowerCase() == wordBEnglish.toLowerCase();
@@ -121,9 +161,7 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
               child: LinearProgressIndicator(
-                value: (widget.confusablePairs.isNotEmpty)
-                    ? (_currentIndex / widget.confusablePairs.length)
-                    : 0,
+                value: widget.confusablePairs.isNotEmpty ? ((_currentIndex + 1) / widget.confusablePairs.length) : 0,
                 backgroundColor: const Color(0xFFE2E8F0),
                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF59E0B)),
                 minHeight: 8,
@@ -249,6 +287,13 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                             sentenceAFrame,
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
                           ),
+                          if (sentenceACebuano.trim().isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Bisaya: $sentenceACebuano',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF0284C7), fontStyle: FontStyle.italic),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           Row(
                             children: [
@@ -291,6 +336,13 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                             sentenceBFrame,
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
                           ),
+                          if (sentenceBCebuano.trim().isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Bisaya: $sentenceBCebuano',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontStyle: FontStyle.italic),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           Row(
                             children: [

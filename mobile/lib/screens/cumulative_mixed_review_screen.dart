@@ -46,6 +46,14 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   bool _inReinforcementPass = false;
   List<Map<String, dynamic>> _wordBreakdown = [];
 
+  // Feedback State
+  bool _checked = false;
+  bool _isAnswerCorrect = false;
+  bool _showFeedback = false;
+  String _lastCorrectAnswer = '';
+  int? _selectedOptionIndex;
+  List<String> _currentMcOptions = [];
+
   // Fixed activity order per word
   static const List<String> _fixedActivityOrder = [
     'IMAGE_MATCHING',
@@ -74,11 +82,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final wid = (item['wordId'] ?? '').toString();
     final fmt = (item['activityFormat'] ?? '').toString();
     return '${wid}_$fmt';
-  }
-
-  int _maxAttemptsForFormat(String fmt) {
-    // Revised rule: all cumulative activities use 2 attempts maximum.
-    return 2;
   }
 
   MascotType _mascotForFormat(String fmt) {
@@ -112,6 +115,10 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     _typingController.clear();
     _scrambledWords.clear();
     _assembledWords.clear();
+    _selectedOptionIndex = null;
+    _checked = false;
+    _showFeedback = false;
+    _isAnswerCorrect = false;
 
     final item = _currentItem;
     if (item == null) return;
@@ -122,6 +129,26 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
       _scrambledWords.addAll(_sentenceTokens(item));
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_scramble'.hashCode));
+    } else if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
+      final correct = (item['word'] ?? '').toString();
+      final provided = [
+        item['mcDistractor1'],
+        item['mcDistractor2'],
+        item['mcDistractor3'],
+      ].whereType<String>().where((value) => value.isNotEmpty).toList();
+
+      final options = <String>[correct];
+      if (provided.isNotEmpty) {
+        options.addAll(provided.take(3));
+      } else {
+        final other = _reviewItems.map((e) => e['word']?.toString() ?? '').where((w) => w.isNotEmpty && w != correct).toList();
+        other.shuffle();
+        for (var i = 0; i < min(3, other.length); i++) {
+          options.add(other[i]);
+        }
+      }
+      options.shuffle(Random('${item['wordId'] ?? ''}_mc'.hashCode));
+      _currentMcOptions = options;
     }
   }
 
@@ -142,10 +169,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         .toList();
   }
 
-  List<String> _buildQueueFormats(int count) {
-    // Kept for backward compat; new code uses _fixedActivityOrder per word
-    return List<String>.generate(count, (index) => _fixedActivityOrder[index % _fixedActivityOrder.length]);
-  }
 
   List<String> _buildMatchingOptions(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString().trim();
@@ -260,46 +283,50 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         'mcDistractor1': item['mcDistractor1'],
         'mcDistractor2': item['mcDistractor2'],
         'mcDistractor3': item['mcDistractor3'],
-        'fitbSentence': item['fitbSentence'],
-        'fitbAnswer': item['fitbAnswer'],
+        'fitbSentence': item['sentenceCompletionSentence'] ?? item['fitbSentence'],
+        'fitbAnswer': item['sentenceCompletionAnswer'] ?? item['fitbAnswer'],
         'matchingSet': item['matchingSet'],
         'sentenceArrangementTokens': item['sentenceArrangementTokens'],
         'imageAssetPath': item['imageAssetPath'],
       };
     }).where((it) => (it['wordId'] ?? '').toString().isNotEmpty).toList();
 
-    // Build queue: exactly 3 fixed activities per word, in order
+    // Build queue: exactly 3 fixed activities per word (or 1 if sandbox), in order
     _queue.clear();
     _allWordIds = list.map((it) => (it['wordId'] ?? '').toString()).toList();
     for (final item in list) {
-      final perWordSet = <String>{};
-      for (final fmt in _fixedActivityOrder) {
-        String resolvedFmt = fmt;
-        // IMAGE_MATCHING falls back to MULTIPLE_CHOICE if no image
-        if (resolvedFmt == 'IMAGE_MATCHING') {
-          final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
-          if (!hasImage) resolvedFmt = 'MULTIPLE_CHOICE';
-        }
-        // SENTENCE_RECONSTRUCTION falls back to MULTIPLE_CHOICE if not enough tokens
-        if (resolvedFmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
-          resolvedFmt = 'MULTIPLE_CHOICE';
-        }
-
-        // Avoid duplicate activity types per word. If duplicate, prefer MULTIPLE_CHOICE as a substitute.
-        if (perWordSet.contains(resolvedFmt)) {
-          if (!perWordSet.contains('MULTIPLE_CHOICE')) {
-            resolvedFmt = 'MULTIPLE_CHOICE';
-          } else if (!perWordSet.contains('FLASHCARD_RECALL')) {
-            resolvedFmt = 'FLASHCARD_RECALL';
-          } else {
-            // As a last resort, keep original but we won't duplicate in set
-            // find a safe unique fallback
-            resolvedFmt = 'FLASHCARD_RECALL';
+      if (widget.isSandbox) {
+        _queue.add({...item, 'activityFormat': 'FILL_IN_THE_BLANK'});
+      } else {
+        final perWordSet = <String>{};
+        for (final fmt in _fixedActivityOrder) {
+          String resolvedFmt = fmt;
+          // IMAGE_MATCHING falls back to MULTIPLE_CHOICE if no image
+          if (resolvedFmt == 'IMAGE_MATCHING') {
+            final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
+            if (!hasImage) resolvedFmt = 'MULTIPLE_CHOICE';
           }
-        }
+          // SENTENCE_RECONSTRUCTION falls back to MULTIPLE_CHOICE if not enough tokens
+          if (resolvedFmt == 'SENTENCE_RECONSTRUCTION' && _sentenceTokens(item).length < 2) {
+            resolvedFmt = 'MULTIPLE_CHOICE';
+          }
 
-        perWordSet.add(resolvedFmt);
-        _queue.add({...item, 'activityFormat': resolvedFmt});
+          // Avoid duplicate activity types per word. If duplicate, prefer MULTIPLE_CHOICE as a substitute.
+          if (perWordSet.contains(resolvedFmt)) {
+            if (!perWordSet.contains('MULTIPLE_CHOICE')) {
+              resolvedFmt = 'MULTIPLE_CHOICE';
+            } else if (!perWordSet.contains('FLASHCARD_RECALL')) {
+              resolvedFmt = 'FLASHCARD_RECALL';
+            } else {
+              // As a last resort, keep original but we won't duplicate in set
+              // find a safe unique fallback
+              resolvedFmt = 'FLASHCARD_RECALL';
+            }
+          }
+
+          perWordSet.add(resolvedFmt);
+          _queue.add({...item, 'activityFormat': resolvedFmt});
+        }
       }
     }
 
@@ -388,22 +415,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     TTSService.speak(text);
   }
 
-  void _showIncorrectMessage(int attemptsLeft) {
-    final message = attemptsLeft > 0
-        ? 'Incorrect. Try again. You have $attemptsLeft attempt(s) left.'
-        : 'Incorrect. No attempts left. Moving on.';
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: const Color(0xFFB91C1C),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-
   void _recordAnswer(String wordId, bool correct) {
     _attemptedWordIds.add(wordId);
 
@@ -429,26 +440,15 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     }
   }
 
-  void _advanceAfterAttemptsExhausted(String wordId) {
-    // Mark the current item as failed and move on. Do NOT re-enqueue during first pass.
-    _attemptedWordIds.add(wordId);
-    final cur = _currentItem;
-    final itemKey = _itemKeyFor(cur);
-    if (itemKey.isNotEmpty) {
-      _itemResults[itemKey] = false;
-    }
-    _nextItem();
-  }
-
   void _nextItem() {
     setState(() {
       _currentIndex++;
       _prepareCurrentActivityState();
     });
 
-    // If we've completed the initial pass over the queue, either start reinforcement pass or finish
+    // If we've completed the initial pass over the queue, either start reinforcement pass (sandbox only) or finish
     if (_currentIndex >= _queue.length) {
-      if (!_inReinforcementPass) {
+      if (!_inReinforcementPass && widget.isSandbox) {
         _onFirstPassComplete();
       } else {
         _finishReview();
@@ -457,6 +457,11 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   }
 
   void _onFirstPassComplete() {
+    if (!widget.isSandbox) {
+      _finishReview();
+      return;
+    }
+
     // Build reinforcement queue from items that were answered incorrectly on first pass
     _retryQueue.clear();
     for (final item in _queue) {
@@ -717,6 +722,185 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     );
   }
 
+  void _checkAnswer() {
+    if (_currentIndex >= _queue.length) return;
+    final item = _queue[_currentIndex];
+    final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
+    final wordId = (item['wordId'] ?? '').toString();
+
+    bool correct = false;
+    String correctAns = '';
+
+    if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
+      final correctWord = (item['word'] ?? '').toString();
+      final options = _currentMcOptions;
+      if (_selectedOptionIndex != null && _selectedOptionIndex! >= 0 && _selectedOptionIndex! < options.length) {
+        final selected = options[_selectedOptionIndex!];
+        correct = selected == correctWord;
+      }
+      correctAns = correctWord;
+    } else if (fmt == 'FILL_IN_THE_BLANK') {
+      final correctWord = (item['word'] ?? '').toString();
+      final userAns = _typingController.text.trim();
+      correct = userAns.toLowerCase() == correctWord.toLowerCase();
+      correctAns = correctWord;
+    } else if (fmt == 'LISTENING_TYPING') {
+      final answer = (item['fitbAnswer'] ?? item['word'] ?? '').toString().trim();
+      final userAns = _typingController.text.trim();
+      correct = userAns.toLowerCase() == answer.toLowerCase();
+      correctAns = answer;
+    } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
+      final answerTokens = _sentenceTokens(item);
+      final expected = answerTokens.join(' ').toLowerCase().trim();
+      final learner = _assembledWords.join(' ').toLowerCase().trim();
+      correct = learner == expected;
+      correctAns = answerTokens.join(' ');
+    } else if (fmt == 'MATCHING' || fmt == 'TRANSLATION_MATCHING') {
+      final correctWord = (item['word'] ?? '').toString();
+      correct = _selectedMatchingWord == correctWord;
+      correctAns = correctWord;
+    } else if (fmt == 'FLASHCARD_RECALL') {
+      correct = _flashcardFlipped;
+      correctAns = (item['word'] ?? '').toString();
+    }
+
+    setState(() {
+      _checked = true;
+      _isAnswerCorrect = correct;
+      _showFeedback = true;
+      _lastCorrectAnswer = correctAns;
+      _recordAnswer(wordId, correct);
+    });
+  }
+
+  void _handleContinue() {
+    setState(() {
+      _nextItem();
+    });
+  }
+
+  Widget _buildBottomPanel(ThemeData theme) {
+    if (_currentIndex >= _queue.length) return const SizedBox.shrink();
+    final item = _queue[_currentIndex];
+    final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
+
+    bool isActionEnabled = false;
+    if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
+      isActionEnabled = _selectedOptionIndex != null;
+    } else if (fmt == 'FILL_IN_THE_BLANK') {
+      isActionEnabled = _typingController.text.trim().isNotEmpty;
+    } else if (fmt == 'LISTENING_TYPING') {
+      isActionEnabled = _typingController.text.trim().isNotEmpty;
+    } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
+      isActionEnabled = _assembledWords.isNotEmpty;
+    } else if (fmt == 'MATCHING' || fmt == 'TRANSLATION_MATCHING') {
+      isActionEnabled = _selectedMatchingWord != null;
+    } else if (fmt == 'FLASHCARD_RECALL') {
+      isActionEnabled = _flashcardFlipped;
+    }
+
+    if (!_showFeedback) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: isActionEnabled ? _checkAnswer : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF06A6FF), // Blue
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'CHECK',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Feedback State
+    final Color panelBg = _isAnswerCorrect ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2);
+    final Color textColor = _isAnswerCorrect ? const Color(0xFF15803D) : const Color(0xFFB91C1C);
+    final Color btnBg = _isAnswerCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+
+    return Container(
+      color: panelBg,
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _isAnswerCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                color: textColor,
+                size: 32,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isAnswerCorrect ? 'Nice!' : 'Incorrect',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                    if (!_isAnswerCorrect) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Correct answer: $_lastCorrectAnswer',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: textColor.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _handleContinue,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: btnBg,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              minimumSize: const Size(double.infinity, 50),
+              elevation: 0,
+            ),
+            child: const Text(
+              'CONTINUE',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCurrentActivity() {
     if (_currentIndex >= _queue.length) return const SizedBox.shrink();
     final item = _queue[_currentIndex];
@@ -745,10 +929,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final definition = (item['definition'] ?? '').toString();
     final cebuanoMeaning = (item['cebuanoMeaning'] ?? '').toString();
     final example = (item['example'] ?? '').toString();
-    final wordId = (item['wordId'] ?? '').toString();
-    final itemKey = _itemKeyFor(item);
-    final currentAttempt = _attemptCounts[itemKey] ?? 0;
-    final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
 
     return Card(
       elevation: 0,
@@ -759,16 +939,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Flashcard recall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
-                Text(
-                  'Attempt $currentAttempt/$maxAttempts',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: currentAttempt >= maxAttempts ? const Color(0xFFDC2626) : const Color(0xFF0F9488)),
-                ),
-              ],
-            ),
+            const Text('Flashcard recall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(18),
@@ -811,27 +982,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
               ),
               child: Text(_flashcardFlipped ? 'HIDE ANSWER' : 'REVEAL ANSWER', style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: currentAttempt >= maxAttempts
-                  ? () => _advanceAfterAttemptsExhausted(wordId)
-                  : () {
-                      final itemKey = _itemKeyFor(item);
-                      setState(() {
-                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                      });
-                      _recordAnswer(wordId, true);
-                      _nextItem();
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF10B981),
-                foregroundColor: currentAttempt >= maxAttempts ? const Color(0xFF475569) : Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: Text(currentAttempt >= maxAttempts ? 'Continue' : 'GOT IT', style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
-            ),
           ],
         ),
       ),
@@ -842,10 +992,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final answer = (item['fitbAnswer'] ?? item['word'] ?? '').toString().trim();
     final prompt = (item['fitbSentence'] ?? item['example'] ?? '').toString().trim();
     final cebuanoMeaning = (item['cebuanoMeaning'] ?? '').toString();
-    final wordId = (item['wordId'] ?? '').toString();
-    final itemKey = _itemKeyFor(item);
-    final currentAttempt = _attemptCounts[itemKey] ?? 0;
-    final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
 
     return Card(
       elevation: 0,
@@ -856,16 +1002,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Listening and typing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
-                Text(
-                  'Attempt $currentAttempt/$maxAttempts',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: currentAttempt >= maxAttempts ? const Color(0xFFDC2626) : const Color(0xFF0F9488)),
-                ),
-              ],
-            ),
+            const Text('Listening and typing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
             const SizedBox(height: 10),
             Text(
               prompt.isEmpty ? 'Type what you hear:' : prompt.replaceAll(RegExp(RegExp.escape(answer), caseSensitive: false), '_____'),
@@ -899,6 +1036,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             const SizedBox(height: 16),
             TextField(
               controller: _typingController,
+              enabled: !_checked,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: 'Type what you heard',
@@ -920,43 +1058,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-            ),
-            const SizedBox(height: 14),
-            ElevatedButton(
-              onPressed: _typingController.text.trim().isEmpty
-                  ? null
-                  : currentAttempt >= maxAttempts
-                      ? () => _advanceAfterAttemptsExhausted(wordId)
-                      : () {
-                          final wordId = (item['wordId'] ?? '').toString();
-                          final userAnswer = _typingController.text.trim();
-                          final isCorrect = userAnswer.toLowerCase() == answer.toLowerCase();
-
-                          setState(() {
-                            _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                          });
-
-                          if (isCorrect) {
-                            _recordAnswer(wordId, true);
-                            _nextItem();
-                          } else if (_attemptCounts[itemKey]! >= maxAttempts) {
-                            // Max attempts reached — mark item failed and move on
-                            _showIncorrectMessage(0);
-                            _advanceAfterAttemptsExhausted(wordId);
-                          } else {
-                            // Wrong — accumulate penalty and allow retry
-                            _recordAnswer(wordId, false);
-                            _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
-                          }
-                        },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF06A6FF),
-                foregroundColor: currentAttempt >= maxAttempts ? const Color(0xFF475569) : Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: Text(currentAttempt >= maxAttempts ? 'Continue' : 'CHECK', style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
             ),
           ],
         ),
@@ -1043,42 +1144,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ),
             const SizedBox(height: 14),
             Text('Sentence preview: ${sentencePreview.isEmpty ? '...' : sentencePreview}', style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _assembledWords.length < answerTokens.length
-                  ? null
-                  : () {
-                      final expected = answerTokens.join(' ').toLowerCase().trim();
-                      final learner = _assembledWords.join(' ').toLowerCase().trim();
-                      final isCorrect = learner == expected;
-                      final wordId = (item['wordId'] ?? '').toString();
-                      final itemKey = _itemKeyFor(item);
-                      setState(() {
-                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                      });
-                      if (isCorrect) {
-                        _recordAnswer(wordId, true);
-                        _nextItem();
-                      } else {
-                        final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
-                        if (_attemptCounts[itemKey]! >= maxAttempts) {
-                          _showIncorrectMessage(0);
-                          _advanceAfterAttemptsExhausted(wordId);
-                        } else {
-                          _recordAnswer(wordId, false);
-                          _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
-                        }
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06A6FF),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: const Text('CHECK SENTENCE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
-            ),
           ],
         ),
       ),
@@ -1088,15 +1153,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Widget _buildImageMatching(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
     final imagePath = (item['imageAssetPath'] ?? '').toString();
-    final provided = [item['mcDistractor1'], item['mcDistractor2'], item['mcDistractor3']].whereType<String>().where((value) => value.isNotEmpty).toList();
-    final options = <String>[correct];
-    if (provided.isNotEmpty) {
-      options.addAll(provided.take(3));
-    } else {
-      final other = _reviewItems.map((e) => e['word']?.toString() ?? '').where((word) => word.isNotEmpty && word != correct).toList()..shuffle();
-      options.addAll(other.take(3));
-    }
-    options.shuffle(Random('${item['wordId'] ?? correct}_image'.hashCode));
+    final options = _currentMcOptions;
 
     if (imagePath.isEmpty) {
       return _buildMultipleChoice(item);
@@ -1129,40 +1186,86 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
               ),
             ),
             const SizedBox(height: 16),
-            ...options.map((opt) {
+            ...options.asMap().entries.map((entry) {
+              final index = entry.key;
+              final opt = entry.value;
+              final isSelected = _selectedOptionIndex == index;
+              Color cardBg = Colors.white;
+              Color borderColor = const Color(0xFFE2E8F0);
+              Color textColor = const Color(0xFF334155);
+
+              if (_checked) {
+                if (opt == correct) {
+                  cardBg = const Color(0xFFF0FDF4);
+                  borderColor = const Color(0xFF22C55E);
+                  textColor = const Color(0xFF15803D);
+                } else if (isSelected) {
+                  cardBg = const Color(0xFFFEF2F2);
+                  borderColor = const Color(0xFFEF4444);
+                  textColor = const Color(0xFFB91C1C);
+                }
+              } else if (isSelected) {
+                cardBg = const Color(0xFFEFF6FF);
+                borderColor = const Color(0xFF3B82F6);
+                textColor = const Color(0xFF1D4ED8);
+              }
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12.0),
-                  child: ElevatedButton(
-                  onPressed: () {
-                    final isCorrect = opt == correct;
-                    final wordId = (item['wordId'] ?? '').toString();
-                    final itemKey = _itemKeyFor(item);
-                    setState(() {
-                      _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                    });
-                    if (isCorrect) {
-                      _recordAnswer(wordId, true);
-                      _nextItem();
-                    } else {
-                      final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
-                      if (_attemptCounts[itemKey]! >= maxAttempts) {
-                        _showIncorrectMessage(0);
-                        _advanceAfterAttemptsExhausted(wordId);
-                      } else {
-                        _recordAnswer(wordId, false);
-                        _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
-                      }
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0F172A),
-                    elevation: 0,
-                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                child: GestureDetector(
+                  onTap: _checked
+                      ? null
+                      : () {
+                          setState(() {
+                            _selectedOptionIndex = index;
+                          });
+                        },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor, width: 2),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFFCBD5E1),
+                              width: 2,
+                            ),
+                            color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            opt,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: textColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Text(opt, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
               );
             }),
@@ -1194,23 +1297,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final correct = (item['word'] ?? '').toString();
     // FIXED: Use Cebuano meaning as prompt instead of English
     final definition = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
-    final provided = [
-      item['mcDistractor1'],
-      item['mcDistractor2'],
-      item['mcDistractor3'],
-    ].whereType<String>().where((value) => value.isNotEmpty).toList();
-
-    final options = <String>[correct];
-    if (provided.isNotEmpty) {
-      options.addAll(provided.take(3));
-    } else {
-      final other = _reviewItems.map((e) => e['word']?.toString() ?? '').where((w) => w.isNotEmpty && w != correct).toList();
-      other.shuffle();
-      for (var i = 0; i < min(3, other.length); i++) {
-        options.add(other[i]);
-      }
-    }
-    options.shuffle();
+    final options = _currentMcOptions;
 
     return Card(
       elevation: 0,
@@ -1257,46 +1344,89 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 ),
               ),
             const SizedBox(height: 18),
-            ...options.map((opt) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      final isCorrect = opt == correct;
-                      final wordId = (item['wordId'] ?? '').toString();
-                      final itemKey = _itemKeyFor(item);
-                      setState(() {
-                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                      });
-                      if (isCorrect) {
-                        _recordAnswer(wordId, true);
-                        _nextItem();
-                      } else {
-                        final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
-                        if (_attemptCounts[itemKey]! >= maxAttempts) {
-                          _showIncorrectMessage(0);
-                          _advanceAfterAttemptsExhausted(wordId);
-                        } else {
-                          _recordAnswer(wordId, false);
-                          _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF0F172A),
-                      elevation: 0,
-                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ).copyWith(
-                      overlayColor: WidgetStateProperty.all(const Color(0xFFEFF6FF)),
+            ...options.asMap().entries.map((entry) {
+              final index = entry.key;
+              final opt = entry.value;
+              final isSelected = _selectedOptionIndex == index;
+              Color cardBg = Colors.white;
+              Color borderColor = const Color(0xFFE2E8F0);
+              Color textColor = const Color(0xFF334155);
+
+              if (_checked) {
+                if (opt == correct) {
+                  cardBg = const Color(0xFFF0FDF4);
+                  borderColor = const Color(0xFF22C55E);
+                  textColor = const Color(0xFF15803D);
+                } else if (isSelected) {
+                  cardBg = const Color(0xFFFEF2F2);
+                  borderColor = const Color(0xFFEF4444);
+                  textColor = const Color(0xFFB91C1C);
+                }
+              } else if (isSelected) {
+                cardBg = const Color(0xFFEFF6FF);
+                borderColor = const Color(0xFF3B82F6);
+                textColor = const Color(0xFF1D4ED8);
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: GestureDetector(
+                  onTap: _checked
+                      ? null
+                      : () {
+                          setState(() {
+                            _selectedOptionIndex = index;
+                          });
+                        },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor, width: 2),
                     ),
-                    child: Text(
-                      opt,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFFCBD5E1),
+                              width: 2,
+                            ),
+                            color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            opt,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: textColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                )),
+                ),
+              );
+            }),
             const SizedBox(height: 6),
             OutlinedButton.icon(
               onPressed: () => _playAudio(correct),
@@ -1320,11 +1450,6 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final sentence = (item['fitbSentence'] ?? item['example'] ?? '').toString();
     final answer = correct;
     final definition = (item['definition'] ?? item['cebuanoMeaning'] ?? '').toString();
-    final wordId = (item['wordId'] ?? '').toString();
-    final itemKey = _itemKeyFor(item);
-    final currentAttempt = _attemptCounts[itemKey] ?? 0;
-    final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
-    final controller = TextEditingController();
 
     return Card(
       elevation: 0,
@@ -1335,18 +1460,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Fill in the missing word',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.7),
-                ),
-                Text(
-                  'Attempt $currentAttempt/$maxAttempts',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: currentAttempt >= maxAttempts ? const Color(0xFFDC2626) : const Color(0xFF0F9488)),
-                ),
-              ],
+            const Text(
+              'Fill in the missing word',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.7),
             ),
             const SizedBox(height: 10),
             Text(
@@ -1380,8 +1496,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             ],
             const SizedBox(height: 16),
             TextField(
-              controller: controller,
-              enabled: currentAttempt < maxAttempts,
+              controller: _typingController,
+              enabled: !_checked,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: 'Answer',
                 filled: true,
@@ -1389,40 +1506,9 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2)),
-                disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
               ),
             ),
             const SizedBox(height: 14),
-            ElevatedButton(
-              onPressed: currentAttempt >= maxAttempts
-                  ? () => _advanceAfterAttemptsExhausted(wordId)
-                  : () {
-                      final wordId = (item['wordId'] ?? '').toString();
-                      final userAnswer = controller.text.trim();
-                      final isCorrect = userAnswer.toLowerCase() == answer.toLowerCase();
-                      
-                          setState(() {
-                            _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                          });
-
-                          if (isCorrect) {
-                            _recordAnswer(wordId, true);
-                            _nextItem();
-                          } else if (_attemptCounts[itemKey]! >= maxAttempts) {
-                            _showIncorrectMessage(0);
-                            _advanceAfterAttemptsExhausted(wordId);
-                          } else {
-                            _recordAnswer(wordId, false);
-                            _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
-                          }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: currentAttempt >= maxAttempts ? const Color(0xFFCBD5E1) : const Color(0xFF06A6FF),
-                disabledBackgroundColor: const Color(0xFFCBD5E1),
-              ),
-              child: Text(currentAttempt >= maxAttempts ? 'Continue' : 'Submit', style: TextStyle(color: currentAttempt >= maxAttempts ? const Color(0xFF64748B) : Colors.white, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(height: 10),
             ElevatedButton.icon(
               onPressed: () => _playAudio(correct),
               icon: const Icon(Icons.volume_up),
@@ -1556,50 +1642,18 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     shadowColor: Colors.black.withValues(alpha: 0.04),
                     elevation: 2,
-                    onPressed: () {
-                      setState(() {
-                        _selectedMatchingWord = choice;
-                      });
-                    },
+                    onPressed: _checked
+                        ? null
+                        : () {
+                            setState(() {
+                              _selectedMatchingWord = choice;
+                            });
+                          },
                   ),
                 );
               }).toList(),
             ),
             const SizedBox(height: 18),
-            ElevatedButton(
-              onPressed: selectedWord == null
-                  ? null
-                  : () {
-                      final isCorrect = selectedWord == correct;
-                      final wordId = (item['wordId'] ?? '').toString();
-                      final itemKey = _itemKeyFor(item);
-                      setState(() {
-                        _attemptCounts[itemKey] = ((_attemptCounts[itemKey] ?? 0) + 1);
-                      });
-                      if (isCorrect) {
-                        _recordAnswer(wordId, true);
-                        _nextItem();
-                      } else {
-                        final maxAttempts = _maxAttemptsForFormat((item['activityFormat'] ?? '').toString());
-                        if (_attemptCounts[itemKey]! >= maxAttempts) {
-                          _showIncorrectMessage(0);
-                          _advanceAfterAttemptsExhausted(wordId);
-                        } else {
-                          _recordAnswer(wordId, false);
-                          _showIncorrectMessage(maxAttempts - _attemptCounts[itemKey]!);
-                        }
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06A6FF),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: const Text('CHECK', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-            ),
-            const SizedBox(height: 6),
             OutlinedButton.icon(
               onPressed: () => _playAudio(correct),
               icon: const Icon(Icons.volume_up_rounded),
@@ -1757,7 +1811,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
-                                      _currentItem == null ? 'Preparing your review...' : 'Keep going. Missed words return later in the same session.',
+                                      _currentItem == null ? 'Preparing your review...' : 'Now let\'s test all that you have learned!',
                                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF475569), height: 1.45),
                                     ),
                                   ],
@@ -1848,6 +1902,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                         ),
                       ),
                     ),
+                    _buildBottomPanel(Theme.of(context)),
                   ],
                 ),
               ),

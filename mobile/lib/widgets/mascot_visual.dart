@@ -38,8 +38,8 @@ class MascotVisual extends StatelessWidget {
         );
       case MascotType.toti:
         return _MascotGif(
-          normalGif: 'assets/images/gifs/grizzy thumbs up.gif',
-          sadGif: 'assets/images/gifs/grizzy thumbs up.gif',
+          normalGif: 'assets/images/gifs/grizzy bear dancing.gif',
+          sadGif: 'assets/images/gifs/grizzy bear dancing.gif',
           celebratingGif: 'assets/images/gifs/grizzy thumbs up.gif',
           size: size,
           isCelebrating: isCelebrating,

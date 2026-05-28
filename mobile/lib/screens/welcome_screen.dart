@@ -44,7 +44,7 @@ class WelcomeScreen extends StatelessWidget {
               Center(
                 child: MascotVisual(
                   type: MascotType.group,
-                  size: 400,
+                  size: 280,
                 ),
               ),
               const Spacer(),

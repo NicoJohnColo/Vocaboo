@@ -172,7 +172,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
                 controller: _customWordController,
                 decoration: const InputDecoration(
                   labelText: 'English word',
-                  hintText: 'book',
+                  hintText: 'Input',
                 ),
               ),
               const SizedBox(height: 16),

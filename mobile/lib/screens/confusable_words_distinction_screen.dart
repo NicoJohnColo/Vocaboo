@@ -235,6 +235,22 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                             ),
                             child: Column(
                               children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD97706),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'Bonus Word',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                                 Text(
                                   wordBEnglish,
                                     style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFB45309)),

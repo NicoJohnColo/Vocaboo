@@ -10,6 +10,7 @@ import '../widgets/mascot_bubble.dart';
 import '../services/local_storage_service.dart';
 import '../services/tts_service.dart';
 import '../widgets/image_matching_widget.dart';
+import '../widgets/custom_image_viewer.dart';
 
 class ActivePracticeScreen extends StatefulWidget {
   final String sessionId;
@@ -1040,8 +1041,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    child: Image.asset(
-                      item.imageAssetPath!,
+                    child: CustomImageViewer(
+                      imagePath: item.imageAssetPath!,
                       width: 140,
                       height: 140,
                       fit: BoxFit.contain,

@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -62,7 +63,7 @@ public class LessonService {
 
     @Transactional
     public List<LessonResponse> getLessonsForCategory(UUID categoryId, UUID learnerId) {
-        List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(categoryId);
+        List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(categoryId, "PUBLISHED");
         List<LearnerLessonStatus> statuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
 
         Map<UUID, LearnerLessonStatus> statusMap = statuses.stream()
@@ -123,16 +124,28 @@ public class LessonService {
     }
 
     public List<VocabularyWordResponse> getVocabularyForLesson(UUID lessonId) {
+        Set<UUID> wordBIds = confusableRepository.findByLessonLessonId(lessonId).stream()
+                .map(pair -> pair.getWordB().getWordId())
+                .collect(Collectors.toSet());
+
         List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
         return words.stream()
+                .filter(w -> !wordBIds.contains(w.getWordId()))
                 .map(this::mapToVocabularyWordResponse)
                 .collect(Collectors.toList());
     }
 
         public List<LessonWordActivityResponse> getCategoryActivityForCategory(UUID categoryId) {
-                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(categoryId);
+                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(categoryId, "PUBLISHED");
+                
+                Set<UUID> wordBIds = lessons.stream()
+                        .flatMap(lesson -> confusableRepository.findByLessonLessonId(lesson.getLessonId()).stream())
+                        .map(pair -> pair.getWordB().getWordId())
+                        .collect(Collectors.toSet());
+
                 List<VocabularyWord> words = lessons.stream()
                                 .flatMap(lesson -> wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lesson.getLessonId()).stream())
+                                .filter(w -> !wordBIds.contains(w.getWordId()))
                                 .collect(Collectors.toList());
 
                 List<LessonWordActivityResponse> responses = new ArrayList<>();
@@ -173,7 +186,12 @@ public class LessonService {
                         }
                 }
 
+                Set<UUID> wordBIds = confusableRepository.findByLessonLessonId(lessonId).stream()
+                        .map(pair -> pair.getWordB().getWordId())
+                        .collect(Collectors.toSet());
+
                 return words.stream()
+                                .filter(w -> !wordBIds.contains(w.getWordId()))
                                 .map(word -> mapToLessonWordActivityResponse(word, activityByWordId.get(word.getWordId())))
                                 .collect(Collectors.toList());
         }
@@ -241,7 +259,7 @@ public class LessonService {
         }
 
         public CategoryReviewResponse completeCategoryReview(UUID learnerId, UUID categoryId, Double score) {
-                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(categoryId);
+                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(categoryId, "PUBLISHED");
                 if (lessons.isEmpty()) {
                         throw new IllegalArgumentException("Category not found");
                 }
@@ -294,7 +312,7 @@ public class LessonService {
                 }
 
                 VocabularyCategory nextCategory = categories.get(currentIndex + 1);
-                List<Lesson> nextLessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(nextCategory.getCategoryId());
+                List<Lesson> nextLessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(nextCategory.getCategoryId(), "PUBLISHED");
                 if (nextLessons.isEmpty()) {
                         return nextCategory.getCategoryId();
                 }

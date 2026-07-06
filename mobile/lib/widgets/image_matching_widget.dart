@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/local_storage_service.dart';
+import 'custom_image_viewer.dart';
 
 class ImageMatchingWidget extends StatelessWidget {
   final PracticeItemModel item;
@@ -35,8 +36,8 @@ class ImageMatchingWidget extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: Image.asset(
-                imagePath,
+              child: CustomImageViewer(
+                imagePath: imagePath,
                 width: 180,
                 height: 180,
                 fit: BoxFit.contain,

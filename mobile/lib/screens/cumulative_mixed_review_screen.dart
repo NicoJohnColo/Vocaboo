@@ -11,6 +11,7 @@ import '../services/tts_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/scoring_service.dart';
 import '../widgets/mascot_visual.dart';
+import '../widgets/custom_image_viewer.dart';
 import 'mastery_result_screen.dart';
 
 class CumulativeMixedReviewScreen extends StatefulWidget {
@@ -1171,8 +1172,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
             const Text('Image-to-word matching', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
             const SizedBox(height: 12),
             Center(
-              child: Image.asset(
-                imagePath,
+              child: CustomImageViewer(
+                imagePath: imagePath,
                 width: 180,
                 height: 180,
                 fit: BoxFit.contain,

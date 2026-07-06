@@ -76,6 +76,12 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Spring Mail (admin account welcome + password reset emails) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- Testing -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

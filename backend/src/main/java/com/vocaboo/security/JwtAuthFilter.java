@@ -41,10 +41,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             if (subject != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 if (jwtUtils.validateToken(jwt, subject)) {
+                    // Read role dynamically from the JWT claim instead of hard-coding ROLE_LEARNER
+                    String role = jwtUtils.extractRole(jwt);
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             subject,
                             null,
-                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_LEARNER"))
+                            Collections.singletonList(new SimpleGrantedAuthority(role))
                     );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);

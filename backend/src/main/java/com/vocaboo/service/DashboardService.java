@@ -1,11 +1,11 @@
 package com.vocaboo.service;
 
 import com.vocaboo.dto.response.DashboardResponse;
+import com.vocaboo.dto.response.DashboardStatsResponse;
 import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +20,9 @@ public class DashboardService {
     private final PronunciationAttemptRepository pronunciationAttemptRepository;
     private final SandboxSessionRepository sandboxSessionRepository;
     private final SandboxWordRepository sandboxWordRepository;
+    private final LearnerRepository learnerRepository;
+    private final AdminRepository adminRepository;
+    private final ReviewSessionRepository reviewSessionRepository;
 
     public DashboardResponse getDashboardData(UUID learnerId) {
         // Core lesson stats
@@ -73,6 +76,27 @@ public class DashboardService {
                 .totalPronunciationAttempts(totalPronunciations)
                 .correctPronunciationAttempts(correctPronunciations)
                 .sandboxHistory(sandboxHistory)
+                .build();
+    }
+
+    public DashboardStatsResponse getDashboardStats() {
+        // Count total learners
+        long totalLearners = learnerRepository.count();
+
+        // Count total lessons
+        long totalLessons = lessonRepository.count();
+
+        // Count active sessions (incomplete review sessions)
+        long activeSessions = reviewSessionRepository.countByCompletedAtIsNull();
+
+        // Count total admin accounts
+        long totalAdmins = adminRepository.count();
+
+        return DashboardStatsResponse.builder()
+                .totalLearners(totalLearners)
+                .totalLessons(totalLessons)
+                .activeSessions(activeSessions)
+                .totalAdmins(totalAdmins)
                 .build();
     }
 }

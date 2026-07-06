@@ -1,0 +1,195 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import AdminNav from '../components/AdminNav';
+import LessonTable from '../components/LessonTable';
+import CreateLessonModal from '../components/CreateLessonModal';
+import EditLessonModal from '../components/EditLessonModal';
+import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog';
+import PublishWorkflowModal from '../components/PublishWorkflowModal';
+import { LessonService, type AdminLesson } from '../services/LessonService';
+import { CategoryService, type AdminCategory } from '../services/CategoryService';
+
+type ModalType = 'create' | 'edit' | 'delete' | 'publish' | null;
+
+export default function LessonManagementPage() {
+  const navigate = useNavigate();
+  const [lessons, setLessons] = useState<AdminLesson[]>([]);
+  const [categories, setCategories] = useState<AdminCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [modal, setModal] = useState<ModalType>(null);
+  const [selected, setSelected] = useState<AdminLesson | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [modalError, setModalError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterGrade, setFilterGrade] = useState('');
+
+  const flash = (msg: string) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(''), 3500);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [l, c] = await Promise.all([LessonService.getAll(), CategoryService.getAll()]);
+      setLessons(l);
+      setCategories(c);
+    } catch {
+      setError('Failed to load lessons or categories.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openModal = (type: ModalType, lesson?: AdminLesson) => {
+    setSelected(lesson ?? null);
+    setModalError('');
+    setModal(type);
+  };
+
+  const closeModal = () => { setModal(null); setSelected(null); setModalError(''); };
+
+  const handleCreate = async (data: Parameters<typeof LessonService.create>[0]) => {
+    setSubmitting(true);
+    try {
+      await LessonService.create(data);
+      flash('Lesson created successfully!');
+      closeModal();
+      load();
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : 'Failed to create lesson');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async (data: Parameters<typeof LessonService.update>[1]) => {
+    if (!selected) return;
+    setSubmitting(true);
+    try {
+      await LessonService.update(selected.lesson_id, data);
+      flash('Lesson updated successfully!');
+      closeModal();
+      load();
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : 'Failed to update lesson');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selected) return;
+    setSubmitting(true);
+    try {
+      await LessonService.delete(selected.lesson_id);
+      flash('Lesson deleted successfully.');
+      closeModal();
+      load();
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : 'Failed to delete lesson');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePublish = async (status: string, targetGrades: string[]) => {
+    if (!selected) return;
+    setSubmitting(true);
+    try {
+      await LessonService.updateStatus(selected.lesson_id, status, targetGrades);
+      flash(`Lesson status updated to ${status}.`);
+      closeModal();
+      load();
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : 'Failed to update status');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="admin-layout">
+      <AdminNav />
+      <main className="admin-main" style={{ maxWidth: '100%' }}>
+        <header className="admin-main__header">
+          <div>
+            <h1 className="admin-main__title">Lesson Management</h1>
+            <p className="admin-main__subtitle">Create, organize, and publish vocabulary lessons for learners</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => navigate('/categories')}
+            >
+              🗂️ Categories
+            </button>
+          </div>
+        </header>
+
+        {error   && <div className="alert alert--error"   onClick={() => setError('')}>{error}</div>}
+        {success && <div className="alert alert--success">{success}</div>}
+
+        <LessonTable
+          lessons={lessons}
+          categories={categories}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          filterCategory={filterCategory}
+          onFilterCategory={setFilterCategory}
+          filterGrade={filterGrade}
+          onFilterGrade={setFilterGrade}
+          onCreate={() => openModal('create')}
+          onEdit={l => openModal('edit', l)}
+          onDelete={l => openModal('delete', l)}
+          onViewWords={l => navigate(`/lessons/${l.lesson_id}/vocabulary`, { state: { lesson: l } })}
+          onPublish={l => openModal('publish', l)}
+          loading={loading}
+        />
+
+        {/* Modals */}
+        {modal === 'create' && (
+          <CreateLessonModal
+            categories={categories}
+            onSubmit={handleCreate}
+            onClose={closeModal}
+            submitting={submitting}
+            error={modalError}
+          />
+        )}
+        {modal === 'edit' && selected && (
+          <EditLessonModal
+            lesson={selected}
+            onSubmit={handleUpdate}
+            onClose={closeModal}
+            submitting={submitting}
+            error={modalError}
+          />
+        )}
+        {modal === 'delete' && selected && (
+          <ConfirmDeleteDialog
+            title="Delete Lesson"
+            message={`Are you sure you want to delete "${selected.lesson_title}"? This will also delete all vocabulary words in this lesson. This action cannot be undone.`}
+            onConfirm={handleDelete}
+            onCancel={closeModal}
+            loading={submitting}
+          />
+        )}
+        {modal === 'publish' && selected && (
+          <PublishWorkflowModal
+            lesson={selected}
+            onSubmit={handlePublish}
+            onClose={closeModal}
+            submitting={submitting}
+            error={modalError}
+          />
+        )}
+      </main>
+    </div>
+  );
+}

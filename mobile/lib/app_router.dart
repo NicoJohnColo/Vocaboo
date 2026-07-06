@@ -34,7 +34,7 @@ class _AuthListenable extends ChangeNotifier {
 }
 
 class AppRouter {
-  static late final _AuthListenable _authListenable;
+  static _AuthListenable? _authListenable;
 
   static void setAuth(AuthProvider auth) {
     _authListenable = _AuthListenable(auth);
@@ -42,7 +42,7 @@ class AppRouter {
 
   static final GoRouter router = GoRouter(
     initialLocation: '/',
-    refreshListenable: _authListenable,
+    refreshListenable: _authListenable ?? ChangeNotifier(),
     redirect: (BuildContext context, GoRouterState state) async {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       if (!auth.isInitialized) {

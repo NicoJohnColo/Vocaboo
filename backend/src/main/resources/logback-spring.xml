@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- ─── Resolve LOG_PATH from JVM system property, default to 'logs' ─── -->
+    <springProperty name="LOG_PATH" source="LOG_PATH" defaultValue="logs"/>
+
+    <!-- ─── Shared pattern ──────────────────────────────────────────────── -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{requestId}] [%X{userId}] %logger{36} - %msg%n"/>
+
+    <!-- ─── Console appender (always active) ────────────────────────────── -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ─── File appender (all non-test profiles) ──────────────────────── -->
+    <!-- Active in default/dev/prod so System Logs works without -Dprod     -->
+    <springProfile name="!test">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/app.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!-- Roll daily, keep 30 days, cap total size at 1 GB -->
+                <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+                <maxHistory>30</maxHistory>
+                <totalSizeCap>1GB</totalSizeCap>
+            </rollingPolicy>
+            <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <!-- ─── Spring Boot default loggers ─────────────────────────────────── -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.hibernate.SQL"   level="DEBUG"/>
+
+    <!-- ─── Vocaboo application loggers ─────────────────────────────────── -->
+    <logger name="com.vocaboo" level="DEBUG"/>
+
+    <!-- ─── Root logger ──────────────────────────────────────────────────── -->
+    <springProfile name="default,dev,prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- Fallback for test profile — console only, less noise -->
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+</configuration>

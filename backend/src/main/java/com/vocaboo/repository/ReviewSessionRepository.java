@@ -11,4 +11,5 @@ public interface ReviewSessionRepository extends JpaRepository<ReviewSession, UU
     List<ReviewSession> findByLearnerLearnerId(UUID learnerId);
     List<ReviewSession> findByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
     void deleteByLearnerLearnerId(UUID learnerId);
+    long countByCompletedAtIsNull();
 }

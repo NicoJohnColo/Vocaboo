@@ -1,4 +1,4 @@
-﻿// app_router.dart
+// app_router.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -46,7 +46,10 @@ class AppRouter {
     redirect: (BuildContext context, GoRouterState state) async {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       if (!auth.isInitialized) {
-        await auth.tryAutoLogin();
+        // Start auto-login but don't block the router redirect on network IO.
+        // AuthProvider will call notifyListeners() when it completes, which
+        // will trigger the router to re-evaluate redirects.
+        auth.tryAutoLogin();
       }
       final isLoggedIn = auth.isAuthenticated;
       final isGoingToAuth = state.matchedLocation == '/' ||
@@ -149,6 +152,7 @@ class AppRouter {
             categoryId: e['categoryId']?.toString() ?? '',
             lessonTitle: e['lessonTitle'] as String?,
             allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
+            moduleNumber: 3,
             isSandbox: e['isSandbox'] as bool? ?? false,
           );
         },
@@ -168,6 +172,8 @@ class AppRouter {
             failedSentenceWordIds: Set<String>.from(e['failedSentenceWordIds']),
             overallScore: (e['overallScore'] as num).toDouble(),
             isSandbox: e['isSandbox'] as bool? ?? false,
+            masteredCount: e['masteredCount'] as int?,
+            needsReviewWords: e['needsReviewWords'] != null ? List<String>.from(e['needsReviewWords']) : null,
           );
         },
       ),

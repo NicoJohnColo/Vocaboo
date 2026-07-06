@@ -1,5 +1,7 @@
 package com.vocaboo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -14,6 +16,7 @@ import java.util.UUID;
         @UniqueConstraint(columnNames = {"session_id", "module_number"})
     }
 )
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,6 +31,7 @@ public class SandboxModuleScore {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "session_id", nullable = false)
+    @JsonIgnore
     private SandboxSession session;
 
     @Column(name = "module_number", nullable = false)

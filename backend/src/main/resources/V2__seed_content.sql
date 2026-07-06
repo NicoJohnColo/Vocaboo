@@ -11,7 +11,7 @@ ON CONFLICT (category_id) DO NOTHING;
 
 -- 5 lessons (one per category, Grade 4)
 INSERT INTO lessons (lesson_id, category_id, lesson_title, grade_level, lesson_order, total_word_count) VALUES
-  ('b1000000-0000-0000-0000-000000000001','a1000000-0000-0000-0000-000000000001','Lesson 1 - School Objects',         'GRADE_4',1,5),
+  ('b1000000-0000-0000-0000-000000000001','a1000000-0000-0000-0000-000000000001','Lesson 1 - School Objects',         'GRADE_4',1,6),
   ('b1000000-0000-0000-0000-000000000002','a1000000-0000-0000-0000-000000000002','Lesson 2 - Family Members',         'GRADE_4',1,5),
   ('b1000000-0000-0000-0000-000000000003','a1000000-0000-0000-0000-000000000003','Lesson 3 - Animals',                'GRADE_4',1,5),
   ('b1000000-0000-0000-0000-000000000004','a1000000-0000-0000-0000-000000000004','Lesson 4 - Food and Drinks',        'GRADE_4',1,5),
@@ -26,8 +26,17 @@ VALUES
   ('c1000000-0000-0000-0000-000000000002','b1000000-0000-0000-0000-000000000001','Notebook','Kuwaderno','My notebook is inside my bag.',         'Ang akong kuwaderno naa sulod sa akong bag.',           'GRADE_4',2, NULL, 'assets/images/lesson01_img02.png'),
   ('c1000000-0000-0000-0000-000000000003','b1000000-0000-0000-0000-000000000001','Eraser',  'Pamhid',   'The eraser removed the mistake.',      'Gitangtang sa pamhid ang sayop.',                       'GRADE_4',3, NULL, 'assets/images/lesson01_img03.png'),
   ('c1000000-0000-0000-0000-000000000004','b1000000-0000-0000-0000-000000000001','Bag',     'Bag',      'Her bag is color blue.',                'Asul ang iyang bag.',                                   'GRADE_4',4, NULL, 'assets/images/lesson01_img04.png'),
-  ('c1000000-0000-0000-0000-000000000005','b1000000-0000-0000-0000-000000000001','Ruler',   'Ruler',    'The ruler is used to measure lines.',  'Gigamit ang ruler sa pagsukod sa mga linya.',           'GRADE_4',5, NULL, 'assets/images/lesson01_img05.png')
+  ('c1000000-0000-0000-0000-000000000005','b1000000-0000-0000-0000-000000000001','Ruler',   'Ruler',    'The ruler is used to measure lines.',  'Gigamit ang ruler sa pagsukod sa mga linya.',           'GRADE_4',5, NULL, 'assets/images/lesson01_img05.png'),
+  ('c9000000-0000-0000-0000-000000000001','b1000000-0000-0000-0000-000000000001','Ruler',   'Magmamando','The ruler governed the kingdom with wisdom.', 'Ang magmamando nagdumala sa gingharian nga may kaalam.', 'GRADE_4',6, NULL, NULL)
 ON CONFLICT (word_id) DO NOTHING;
+
+UPDATE vocabulary_words
+SET is_confusable_pair_member = true
+WHERE word_id IN ('c1000000-0000-0000-0000-000000000005', 'c9000000-0000-0000-0000-000000000001');
+
+INSERT INTO confusable_word_pairs (pair_id, lesson_id, word_a_id, word_b_id, contrastive_sentence_a, contrastive_sentence_b) VALUES
+  ('d9000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000005', 'c9000000-0000-0000-0000-000000000001', 'The ruler is used to measure lines.', 'The ruler governed the kingdom with wisdom.')
+ON CONFLICT (pair_id) DO NOTHING;
 
 -- Lesson 2 words
 INSERT INTO vocabulary_words

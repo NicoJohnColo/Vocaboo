@@ -110,9 +110,15 @@ public class SandboxService {
 
     @Transactional
     public SandboxModuleScore saveModuleScore(UUID sessionId, Integer moduleNumber, Integer correctCount, Integer totalCount, Double score) {
-        if (moduleNumber == null || moduleNumber < 1 || moduleNumber > 3) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox moduleNumber must be between 1 and 3.");
+        // Accept null moduleNumber from clients and treat as unified module 1.
+        if (moduleNumber == null) {
+            moduleNumber = 1;
         }
+        if (moduleNumber < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox moduleNumber must be >= 1.");
+        }
+
+        final Integer finalModuleNumber = moduleNumber;
 
         SandboxSession session = sandboxSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sandbox session not found."));
@@ -124,17 +130,29 @@ public class SandboxService {
                 : score;
 
         SandboxModuleScore moduleScore = sandboxModuleScoreRepository
-                .findBySessionSessionIdAndModuleNumber(sessionId, moduleNumber)
-                .orElseGet(() -> SandboxModuleScore.builder()
-                        .session(session)
-                        .moduleNumber(moduleNumber)
-                        .build());
+            .findBySessionSessionIdAndModuleNumber(sessionId, finalModuleNumber)
+            .orElseGet(() -> SandboxModuleScore.builder()
+                .session(session)
+                .moduleNumber(finalModuleNumber)
+                .build());
 
         moduleScore.setCorrect(safeCorrectCount);
         moduleScore.setTotal(safeTotalCount);
         moduleScore.setScore(BigDecimal.valueOf(safeScore).setScale(2, java.math.RoundingMode.HALF_UP));
 
-        return sandboxModuleScoreRepository.save(moduleScore);
+        try {
+            return sandboxModuleScoreRepository.save(moduleScore);
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            // Handle rare race where two inserts happen concurrently for same unique key.
+            // Fall back to re-fetching the existing record and updating it.
+            SandboxModuleScore existing = sandboxModuleScoreRepository
+                .findBySessionSessionIdAndModuleNumber(sessionId, finalModuleNumber)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Failed to persist module score and could not recover."));
+            existing.setCorrect(safeCorrectCount);
+            existing.setTotal(safeTotalCount);
+            existing.setScore(BigDecimal.valueOf(safeScore).setScale(2, java.math.RoundingMode.HALF_UP));
+            return sandboxModuleScoreRepository.save(existing);
+        }
     }
 
     private List<String> buildSentenceArrangementTokens(String exampleSentence) {
@@ -208,7 +226,7 @@ public class SandboxService {
     }
 
     @Transactional
-    public SandboxWordProgress updateProgress(UUID sessionId, UUID wordId, Integer moduleNumber, Integer stepCompleted, String statusStr) {
+    public com.vocaboo.dto.response.SandboxWordProgressDto updateProgress(UUID sessionId, UUID wordId, Integer moduleNumber, Integer stepCompleted, String statusStr) {
         WordStatus status;
         try {
             status = WordStatus.valueOf(statusStr.toUpperCase());
@@ -228,7 +246,22 @@ public class SandboxService {
             progress.setCompletedAt(OffsetDateTime.now());
         }
 
-        return sandboxWordProgressRepository.save(progress);
+        SandboxWordProgress saved = sandboxWordProgressRepository.save(progress);
+
+        // Build DTO while still in transaction to ensure related proxies are accessible
+        com.vocaboo.dto.response.SandboxWordProgressDto dto = com.vocaboo.dto.response.SandboxWordProgressDto.builder()
+                .progressId(saved.getProgressId())
+                .sessionId(saved.getSession() != null ? saved.getSession().getSessionId() : null)
+                .wordId(saved.getWord() != null ? saved.getWord().getWordId() : null)
+                .moduleNumber(saved.getModuleNumber())
+                .stepCompleted(saved.getStepCompleted())
+                .status(saved.getStatus())
+                .completedAt(saved.getCompletedAt())
+                .createdAt(saved.getCreatedAt())
+                .updatedAt(saved.getUpdatedAt())
+                .build();
+
+        return dto;
     }
 
     @Transactional

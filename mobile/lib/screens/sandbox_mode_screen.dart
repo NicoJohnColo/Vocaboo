@@ -50,50 +50,82 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
       _error = null;
     });
 
+    Map<String, dynamic>? result;
+    String? errorMessage;
+    
     try {
-      final result = await provider.generateSandbox(customWord: customWord);
+      result = await provider.generateSandbox(customWord: customWord);
+    } catch (e) {
+      // Log error and capture the error message
+      debugPrint('Sandbox generation error (may have fallback): $e');
+      errorMessage = e.toString();
+    }
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      setState(() {
-        _loading = false;
-        final sessionValue = result?['session'];
-        final wordsValue = result?['words'];
-        _session = sessionValue is Map ? Map<String, dynamic>.from(sessionValue) : null;
-        _words = wordsValue is List
-            ? wordsValue.whereType<Map>().map((word) => Map<String, dynamic>.from(word)).toList()
-            : <Map<String, dynamic>>[];
-        _error = _session == null || _words.isEmpty ? 'Sandbox generation failed.' : null;
-      });
-
-      if (_session != null && _words.isNotEmpty) {
-        final sessionId = _session!['sessionId']?.toString() ?? '';
-        final lessonId = _session!['lessonId']?.toString() ?? sessionId;
-
-        if (sessionId.isNotEmpty) {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (ctx) => VocabularyIntroductionScreen(
-              sessionId: sessionId,
-              lessonId: lessonId,
-              categoryId: '',
-              knownWordIds: <String>[],
-              unknownWordIds: <String>[],
-              allWords: _words,
-              moduleNumber: 1,
-              isSandbox: true,
-            ),
-          ));
+    // Check if we have valid data (even if there was an error)
+    final sessionValue = result?['session'];
+    final wordsValue = result?['words'];
+    Map<String, dynamic>? session = sessionValue is Map ? Map<String, dynamic>.from(sessionValue) : null;
+    List<Map<String, dynamic>> words = wordsValue is List
+        ? wordsValue.whereType<Map>().map((word) => Map<String, dynamic>.from(word)).toList()
+        : <Map<String, dynamic>>[];
+    
+    debugPrint('After generate: session=${session != null}, words=${words.length}');
+    if (words.isNotEmpty) {
+      debugPrint('First word data: ${words[0]}');
+    }
+    
+    // Check if backend returned data but with missing/empty cebuanoMeaning
+    if (words.isNotEmpty) {
+      for (var word in words) {
+        final cebuanoMeaning = word['cebuanoMeaning']?.toString() ?? '';
+        if (cebuanoMeaning.isEmpty) {
+          debugPrint('WARNING: Backend returned empty cebuanoMeaning for word: ${word['englishWord']}');
+          debugPrint('Full word data: $word');
         }
       }
-    } catch (e) {
-      if (!mounted) return;
-      final message = e.toString().replaceFirst('Exception: ', '');
-      setState(() {
-        _loading = false;
-        _error = message.contains('Gemini API key is not configured')
-            ? 'Sandbox generation needs a Gemini API key configured on the backend.'
-            : message;
-      });
+    }
+    
+    setState(() {
+      _loading = false;
+      _session = session;
+      _words = words;
+      
+      // Only show error if we have no data at all
+      if (_session == null || _words.isEmpty) {
+        // Check if it's a rate limit error
+        if (errorMessage != null && 
+            (errorMessage.contains('429') || 
+             errorMessage.toLowerCase().contains('rate limit'))) {
+          _error = 'Rate limit reached. Please wait a moment and try again.';
+        } else {
+          _error = 'Could not generate lesson. Please try again.';
+        }
+      } else {
+        _error = null;
+      }
+    });
+
+    // If we have data, proceed to lesson (even if Gemini failed but fallback worked)
+    if (_session != null && _words.isNotEmpty) {
+      final sessionId = _session!['sessionId']?.toString() ?? '';
+      final lessonId = _session!['lessonId']?.toString() ?? sessionId;
+
+      if (sessionId.isNotEmpty) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (ctx) => VocabularyIntroductionScreen(
+            sessionId: sessionId,
+            lessonId: lessonId,
+            categoryId: '',
+            knownWordIds: <String>[],
+            unknownWordIds: <String>[],
+            allWords: _words,
+            moduleNumber: 1,
+            isSandbox: true,
+          ),
+        ));
+      }
     }
   }
 
@@ -140,7 +172,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
                 controller: _customWordController,
                 decoration: const InputDecoration(
                   labelText: 'English word',
-                  hintText: 'book',
+                  hintText: 'Input',
                 ),
               ),
               const SizedBox(height: 16),

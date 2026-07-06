@@ -1,7 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:mobile/config/app_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  static final String baseUrl = AppConfig.baseUrl;
   final _storage = const FlutterSecureStorage();
 
   Future<String?> getToken() async {

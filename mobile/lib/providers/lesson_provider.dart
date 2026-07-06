@@ -9,6 +9,7 @@ import '../models/vocabulary_word_model.dart';
 import '../models/diagnostic_result_model.dart';
 import '../services/scoring_service.dart';
 import '../services/local_storage_service.dart';
+import 'package:mobile/config/app_config.dart';
 
 const double lessonWeight = ScoringService.lessonWeight;
 const double reviewWeight = ScoringService.reviewWeight;
@@ -16,7 +17,7 @@ const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
   final AuthProvider? _auth;
-  static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  static final String baseUrl = AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
   List<LessonModel> _lessons = [];
@@ -308,6 +309,11 @@ class LessonProvider with ChangeNotifier {
                   'word': w['englishWord'] ?? w['word'] ?? '',
                   'definition': w['cebuanoMeaning'] ?? w['cebuanoDefinition'] ?? w['definition'] ?? '',
                   'example': w['exampleSentence'] ?? w['englishSentence'] ?? '',
+                  'exampleSentenceEn': w['exampleSentenceEn'] ?? w['exampleSentence'] ?? w['englishSentence'] ?? '',
+                  'exampleSentenceBiosatya': w['exampleSentenceBiosatya'] ?? w['cebuanoSentence'] ?? '',
+                  'sentenceArrangementTokens': w['sentenceArrangementTokens'] ?? w['arrangementTokens'] ?? [],
+                  'sentenceCompletionSentence': w['sentenceCompletionSentence'] ?? '',
+                  'sentenceCompletionAnswer': w['sentenceCompletionAnswer'] ?? '',
                 })
             .toList();
 
@@ -462,7 +468,7 @@ class LessonProvider with ChangeNotifier {
 
   Future<void> persistModuleScore(
     String lessonId,
-    int moduleNumber,
+    int? moduleNumber,
     int correctCount,
     int totalCount, {
     bool isSandbox = false,
@@ -470,52 +476,61 @@ class LessonProvider with ChangeNotifier {
   }) async {
     final score = ScoringService.computeLessonScore(correctCount, totalCount);
     try {
-      if (isSandbox) {
-        final sandboxSessionId = sessionId ?? lessonId;
-        final response = await http.post(
-          Uri.parse('$baseUrl/sandbox/sessions/$sandboxSessionId/module-score'),
-          headers: _headers,
-          body: json.encode({
-            'moduleNumber': moduleNumber,
-            'correctCount': correctCount,
-            'totalCount': totalCount,
-            'score': score,
-          }),
-        );
-
-        if (response.statusCode == 401) {
-          _auth?.logout();
-          throw Exception('Failed to persist sandbox module score: unauthorized.');
-        } else if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw Exception(_extractErrorMessage(response.body, 'Failed to persist sandbox module score.'));
+      Future<http.Response> doPost() {
+        if (isSandbox) {
+          final sandboxSessionId = sessionId ?? lessonId;
+          return http.post(
+            Uri.parse('$baseUrl/sandbox/sessions/$sandboxSessionId/module-score'),
+            headers: _headers,
+            body: json.encode({
+              'moduleNumber': moduleNumber,
+              'correctCount': correctCount,
+              'totalCount': totalCount,
+              'score': score,
+            }),
+          );
+        } else {
+          return http.post(
+            Uri.parse('$baseUrl/progress/module-score'),
+            headers: _headers,
+            body: json.encode({
+              'lessonId': lessonId,
+              'moduleNumber': moduleNumber,
+              'correctCount': correctCount,
+              'totalCount': totalCount,
+              'score': score,
+            }),
+          );
         }
-      } else {
-        final response = await http.post(
-          Uri.parse('$baseUrl/progress/module-score'),
-          headers: _headers,
-          body: json.encode({
-            'lessonId': lessonId,
-            'moduleNumber': moduleNumber,
-            'correctCount': correctCount,
-            'totalCount': totalCount,
-            'score': score,
-          }),
-        );
+      }
 
-        if (response.statusCode == 401) {
-          _auth?.logout();
-        }
+      http.Response response = await doPost();
+      // Retry once on server error (5xx)
+      if (response.statusCode >= 500 && response.statusCode < 600) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        response = await doPost();
+      }
+
+      if (response.statusCode == 401) {
+        _auth?.logout();
+        if (isSandbox) throw Exception('Failed to persist sandbox module score: unauthorized.');
+      } else if (response.statusCode < 200 || response.statusCode >= 300) {
+        final msg = _extractErrorMessage(response.body, 'Failed to persist module score');
+        debugPrint('LessonProvider.persistModuleScore backend sync error: $msg (status=${response.statusCode})');
       }
     } catch (e) {
-      debugPrint('LessonProvider.persistModuleScore backend sync error: $e');
-      if (isSandbox) {
-        rethrow;
-      }
+      debugPrint('LessonProvider.persistModuleScore backend sync error: ${e.runtimeType}: ${e.toString()}');
     }
 
-    if (!isSandbox) {
-      await LocalStorageService.saveModuleScore(lessonId, moduleNumber, correctCount, totalCount);
+    // Persist locally for both sandbox and normal lessons. For sandbox flows
+    // moduleNumber may be null — treat as unified module 1 for local storage.
+    final localModuleNumber = moduleNumber ?? 1;
+    try {
+      await LocalStorageService.saveModuleScore(lessonId, localModuleNumber, correctCount, totalCount);
       await LocalStorageService.saveLessonScore(lessonId, score);
+    } catch (_) {
+      // Don't let local storage failures block the app; just log silently.
+      debugPrint('LessonProvider.persistModuleScore: failed to save locally');
     }
   }
 
@@ -529,15 +544,60 @@ class LessonProvider with ChangeNotifier {
         }),
       );
       if (response.statusCode == 200) {
-        return json.decode(response.body) as Map<String, dynamic>;
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        
+        // Ensure distractors exist - add fallback if missing
+        if (data['words'] != null && data['words'] is List) {
+          final words = data['words'] as List;
+          for (var word in words) {
+            if (word is Map) {
+              final distractors = [
+                word['mcDistractor1'],
+                word['mcDistractor2'],
+                word['mcDistractor3'],
+              ].whereType<String>().where((d) => d.trim().isNotEmpty).toList();
+              
+              // If less than 3 distractors, add fallback words
+              if (distractors.length < 3) {
+                final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog', 'sun', 'moon', 'star'];
+                final targetWord = (word['englishWord'] ?? '').toString().toLowerCase();
+                final needed = 3 - distractors.length;
+                final available = fallbacks.where((f) => f.toLowerCase() != targetWord).toList()..shuffle();
+                
+                for (int i = 0; i < needed && i < available.length; i++) {
+                  final key = 'mcDistractor${distractors.length + i + 1}';
+                  word[key] = available[i];
+                }
+                debugPrint('Added $needed fallback distractors for word: $targetWord');
+              }
+            }
+          }
+        }
+        
+        return data;
       } else if (response.statusCode == 401) {
         _auth?.logout();
         throw Exception('Sandbox generation failed: unauthorized.');
+      } else if (response.statusCode == 429 || response.statusCode == 502) {
+        // Check if it's a rate limit error
+        final errorMsg = _extractErrorMessage(response.body, '');
+        if (errorMsg.contains('429') || errorMsg.toLowerCase().contains('rate limit')) {
+          debugPrint('LessonProvider.generateSandbox: Rate limit error detected');
+          throw Exception('Rate limit reached. Please wait a moment and try again.');
+        }
+        throw Exception(_extractErrorMessage(response.body, 'Sandbox generation failed.'));
       } else {
+        debugPrint('LessonProvider.generateSandbox failed with status ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
         throw Exception(_extractErrorMessage(response.body, 'Sandbox generation failed.'));
       }
     } catch (e) {
       debugPrint('LessonProvider.generateSandbox error: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+      // Check if the error message contains rate limit info
+      if (e.toString().contains('429') || e.toString().toLowerCase().contains('rate limit')) {
+        throw Exception('Rate limit reached. Please wait a moment and try again.');
+      }
       rethrow;
     }
   }

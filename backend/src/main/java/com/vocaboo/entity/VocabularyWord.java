@@ -74,6 +74,20 @@ public class VocabularyWord {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    // ── Admin Content Management Fields ──────────────────────────────────────
+
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(name = "audio_verified", nullable = false)
+    @Builder.Default
+    private Boolean audioVerified = false;
+
+    @Column(name = "image_verified", nullable = false)
+    @Builder.Default
+    private Boolean imageVerified = false;
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

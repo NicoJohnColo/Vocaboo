@@ -13,6 +13,8 @@ import '../services/streaming_stt_service.dart';
 import '../services/pronunciation_matcher.dart';
 import '../models/pronunciation_attempt_model.dart';
 import '../services/localization_service.dart';
+import 'package:audioplayers/audioplayers.dart';
+import '../widgets/custom_image_viewer.dart';
 
 class VocabularyIntroductionScreen extends StatefulWidget {
   final String sessionId;
@@ -55,6 +57,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   DateTime? _recordingStartedAt;
   bool _recordingSessionActive = false;
   bool _disposed = false;
+  bool _isPlayingAudio = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   List<VocabularyWordModel> _words = [];
   int _currentWordIndex = 0;
@@ -99,6 +103,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     _streamingSttService.dispose();
     _liveTranscriptNotifier.dispose();
     _recorderService.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -117,15 +122,56 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     _maxAttempts = widget.isSandbox ? 0 : 3;
 
     // Auto-speak English word on start
-    _ttsService.speak(currentWord.englishWord);
+    _playWordAudio(currentWord);
+  }
+
+  Future<void> _playWordAudio(VocabularyWordModel word) async {
+    if (_isPlayingAudio) return;
+    if (mounted) setState(() => _isPlayingAudio = true);
+
+    try {
+      await _ttsService.speak(word.englishWord);
+      if (word.audioAssetPath != null && word.audioAssetPath!.trim().isNotEmpty) {
+        String path = word.audioAssetPath!.trim();
+        if (path.startsWith('http://localhost:')) {
+          path = path.replaceFirst('localhost', '10.0.2.2');
+        }
+        
+        Source source;
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          source = UrlSource(path);
+        } else if (path.startsWith('/')) {
+          source = UrlSource('http://10.0.2.2:8080$path');
+        } else {
+          source = AssetSource(path.startsWith('assets/') ? path.replaceFirst('assets/', '') : path);
+        }
+        
+        Completer<void> completer = Completer<void>();
+        StreamSubscription? sub;
+        sub = _audioPlayer.onPlayerComplete.listen((_) {
+          if (!completer.isCompleted) completer.complete();
+          sub?.cancel();
+        });
+        
+        await _audioPlayer.play(source);
+        await completer.future;
+      }
+    } catch (e) {
+      debugPrint('Error playing audio asset: $e');
+    } finally {
+      if (mounted) setState(() => _isPlayingAudio = false);
+    }
   }
 
   void _speakWord() {
-    _ttsService.speak(_words[_currentWordIndex].englishWord);
+    _playWordAudio(_words[_currentWordIndex]);
   }
 
-  void _speakSentence() {
-    _ttsService.speak(_words[_currentWordIndex].exampleSentenceEnglish);
+  Future<void> _speakSentence() async {
+    if (_isPlayingAudio) return;
+    if (mounted) setState(() => _isPlayingAudio = true);
+    await _ttsService.speak(_words[_currentWordIndex].exampleSentenceEnglish);
+    if (mounted) setState(() => _isPlayingAudio = false);
   }
 
   void _stopAutoEvaluationMonitoring() {
@@ -267,7 +313,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       Navigator.of(context).pop();
     }
 
-    _ttsService.speak(currentWord.englishWord);
+    _playWordAudio(currentWord);
   }
 
   void _startAutoEvaluationMonitoring() {
@@ -351,7 +397,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-      _ttsService.speak(currentWord.englishWord);
+      _playWordAudio(currentWord);
       return;
     }
 
@@ -444,7 +490,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           _isEvaluating = false;
         });
         if (result.isCorrect) {
-          _ttsService.speak(currentWord.englishWord);
+          _playWordAudio(currentWord);
           _nextStep();
         } else if (_attemptNumber >= _maxAttempts) {
           // All attempts exhausted — continue automatically
@@ -605,7 +651,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         _currentStep = 1;
       });
       provider.updateWordProgress(widget.sessionId, currentWord.wordId, _pathway, 1, 'INTRODUCED');
-      _ttsService.speak(currentWord.englishWord);
+      _playWordAudio(currentWord);
     } else if (_currentStep == 1) {
       // Complete word learning and advance index
       final isFinalSuccess = _attemptResult?.isCorrect ?? false;
@@ -787,8 +833,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                     style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B), size: 28),
-                    onPressed: _speakWord,
+                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
+                    onPressed: _isPlayingAudio ? null : _speakWord,
                   ),
                 ],
               ),
@@ -837,8 +883,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    word.imageAssetPath!,
+                  child: CustomImageViewer(
+                    imagePath: word.imageAssetPath!,
                     width: 180,
                     height: 180,
                     fit: BoxFit.contain,
@@ -864,8 +910,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                     style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B), size: 28),
-                    onPressed: _speakWord,
+                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
+                    onPressed: _isPlayingAudio ? null : _speakWord,
                   ),
                 ],
               ),
@@ -904,8 +950,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               ),
               const SizedBox(height: 4),
               IconButton(
-                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B)),
-                onPressed: _speakSentence,
+                icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
+                onPressed: _isPlayingAudio ? null : _speakSentence,
               ),
               if (word.exampleSentenceCebuano != null) ...[
                 const SizedBox(height: 8),
@@ -976,8 +1022,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B), size: 36),
-                    onPressed: _speakWord,
+                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 36),
+                    onPressed: _isPlayingAudio ? null : _speakWord,
                   ),
                 ],
               ),
@@ -1077,8 +1123,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               ),
               const SizedBox(height: 12),
               TextButton.icon(
-                onPressed: _speakWord,
-                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B)),
+                onPressed: _isPlayingAudio ? null : _speakWord,
+                icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
                 label: const Text('Listen'),
               ),
               const SizedBox(height: 20),
@@ -1105,8 +1151,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               ),
               const SizedBox(height: 4),
               IconButton(
-                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF59E0B)),
-                onPressed: _speakSentence,
+                icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
+                onPressed: _isPlayingAudio ? null : _speakSentence,
               ),
               if (word.exampleSentenceCebuano != null) ...[
                 const SizedBox(height: 8),

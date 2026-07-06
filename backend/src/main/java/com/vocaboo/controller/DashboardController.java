@@ -1,6 +1,7 @@
 package com.vocaboo.controller;
 
 import com.vocaboo.dto.response.DashboardResponse;
+import com.vocaboo.dto.response.DashboardStatsResponse;
 import com.vocaboo.service.DashboardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,12 @@ public class DashboardController {
     public ResponseEntity<DashboardResponse> getDashboardProgress(Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
         DashboardResponse response = dashboardService.getDashboardData(learnerId);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<DashboardStatsResponse> getDashboardStats() {
+        DashboardStatsResponse response = dashboardService.getDashboardStats();
         return ResponseEntity.ok(response);
     }
 }

@@ -70,6 +70,25 @@ public class Lesson {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    // ── Admin Content Management Fields ──────────────────────────────────────
+
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(name = "content_status", length = 20)
+    @Builder.Default
+    private String contentStatus = "DRAFT";
+
+    @Column(name = "published_date")
+    private OffsetDateTime publishedDate;
+
+    @Column(name = "published_by_admin_id")
+    private UUID publishedByAdminId;
+
+    @Column(name = "target_grades", columnDefinition = "TEXT")
+    private String targetGrades;
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

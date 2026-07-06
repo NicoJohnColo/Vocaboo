@@ -17,11 +17,11 @@ import java.util.function.Function;
 public class JwtUtils {
 
     private final SecretKey key;
-    private final long expirationMs;
+    private final long accessTokenExpirationMs;
 
     public JwtUtils(
             @Value("${app.jwt.secret}") String secret,
-            @Value("${app.jwt.expiration-ms}") long expirationMs) {
+            @Value("${app.jwt.access-token-expiration-ms:900000}") long accessTokenExpirationMs) {
         // Ensure secret key is long enough (at least 256 bits / 32 bytes)
         byte[] secretBytes = secret.getBytes(StandardCharsets.UTF_8);
         if (secretBytes.length < 32) {
@@ -31,17 +31,37 @@ public class JwtUtils {
         } else {
             this.key = Keys.hmacShaKeyFor(secretBytes);
         }
-        this.expirationMs = expirationMs;
+        this.accessTokenExpirationMs = accessTokenExpirationMs;
     }
 
+    /**
+     * Generates an access token for a learner with ROLE_LEARNER claim.
+     */
     public String generateToken(UUID learnerId, String displayName) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("displayName", displayName);
+        claims.put("role", "ROLE_LEARNER");
         return Jwts.builder()
                 .subject(learnerId.toString())
                 .claims(claims)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
+                .expiration(new Date(System.currentTimeMillis() + accessTokenExpirationMs))
+                .signWith(key)
+                .compact();
+    }
+
+    /**
+     * Generates an access token for an admin with ROLE_ADMIN claim.
+     */
+    public String generateAdminToken(UUID adminId, String username) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("username", username);
+        claims.put("role", "ROLE_ADMIN");
+        return Jwts.builder()
+                .subject(adminId.toString())
+                .claims(claims)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + accessTokenExpirationMs))
                 .signWith(key)
                 .compact();
     }
@@ -52,6 +72,20 @@ public class JwtUtils {
 
     public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
+    }
+
+    /**
+     * Extracts the role claim (e.g. "ROLE_ADMIN" or "ROLE_LEARNER") from a JWT.
+     * Returns "ROLE_LEARNER" as a safe default if the claim is absent.
+     */
+    public String extractRole(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            Object role = claims.get("role");
+            return role != null ? role.toString() : "ROLE_LEARNER";
+        } catch (Exception e) {
+            return "ROLE_LEARNER";
+        }
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
@@ -79,7 +113,7 @@ public class JwtUtils {
             return false;
         }
     }
-    
+
     public Boolean validateToken(String token) {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);

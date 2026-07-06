@@ -39,6 +39,25 @@ public class Admin {
     @Column(name = "last_login_at")
     private OffsetDateTime lastLoginAt;
 
+    // ── Fields added in V9 migration ────────────────────────────────────────
+
+    /** Optional school association (plain UUID, no FK constraint yet). */
+    @Column(name = "school_id")
+    private UUID schoolId;
+
+    /** Short-lived JWT token for password reset flow (expires in 1 hour). */
+    @Column(name = "password_reset_token", columnDefinition = "TEXT")
+    private String passwordResetToken;
+
+    /** Expiry timestamp for the password reset token. */
+    @Column(name = "password_reset_expiry")
+    private OffsetDateTime passwordResetExpiry;
+
+    /** True if the admin must set a new password on next login (e.g. first login). */
+    @Column(name = "must_change_password", nullable = false)
+    @Builder.Default
+    private Boolean mustChangePassword = false;
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

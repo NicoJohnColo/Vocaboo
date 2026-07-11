@@ -651,6 +651,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       }
     }
 
+    if (!widget.isSandbox) {
+      final provider = Provider.of<LessonProvider>(context, listen: false);
+      provider.submitReviewItem(
+        sessionId: widget.sessionId,
+        wordId: _currentWord.wordId,
+        isCorrect: _isCorrect,
+        confidence: 3,
+      );
+    }
+
     setState(() {
       _isChecked = true;
     });
@@ -2241,17 +2251,53 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                         if (_attemptResult != null) ...[
                           const SizedBox(height: 12),
                           if (_attemptResult!.isCorrect)
-                            const Column(
+                            Column(
                               children: [
-                                Text(
+                                const Text(
                                   'Excellent! You said it correctly.',
                                   style: TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
-                                SizedBox(height: 4),
-                                Text(
+                                const SizedBox(height: 4),
+                                const Text(
                                   '🎉',
                                   style: TextStyle(fontSize: 32),
-                                )
+                                ),
+                                if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF0FDF4),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          'You said: "${_attemptResult!.transcribedText}"',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontStyle: FontStyle.italic,
+                                            color: Color(0xFF166534),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        if (_attemptResult!.similarityScore != null) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Match score: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF22C55E),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ],
                             )
                           else ...[
@@ -2264,6 +2310,42 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.bold, fontSize: 15),
                               textAlign: TextAlign.center,
                             ),
+                            if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEF2F2),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFFCA5A5)),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'You said: "${_attemptResult!.transcribedText}"',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontStyle: FontStyle.italic,
+                                        color: Color(0xFF991B1B),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    if (_attemptResult!.similarityScore != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Match score: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFEF4444),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 16),
                             Container(
                               padding: const EdgeInsets.all(16),

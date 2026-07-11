@@ -27,6 +27,7 @@ public class ReviewService {
         private final VocabularyCategoryRepository categoryRepository;
     private final LearnerRepository learnerRepository;
     private final VocabularyWordRepository wordRepository;
+    private final IntroductionSessionRepository introductionSessionRepository;
 
     @Transactional
     public ReviewSession startReview(UUID learnerId, UUID lessonId) {
@@ -47,8 +48,32 @@ public class ReviewService {
 
     @Transactional
     public ReviewItem saveReviewItem(UUID sessionId, UUID wordId, Boolean isCorrect) {
-        ReviewSession session = reviewSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Review session not found"));
+        Optional<ReviewSession> sessionOpt = reviewSessionRepository.findById(sessionId);
+        ReviewSession session;
+        if (sessionOpt.isPresent()) {
+            session = sessionOpt.get();
+        } else {
+            Optional<IntroductionSession> introOpt = introductionSessionRepository.findById(sessionId);
+            if (introOpt.isPresent()) {
+                IntroductionSession introSession = introOpt.get();
+                UUID learnerId = introSession.getLearner().getLearnerId();
+                UUID lessonId = introSession.getLesson().getLessonId();
+                List<ReviewSession> reviewSessions = reviewSessionRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
+                if (!reviewSessions.isEmpty()) {
+                    session = reviewSessions.get(0);
+                } else {
+                    session = ReviewSession.builder()
+                            .learner(introSession.getLearner())
+                            .lesson(introSession.getLesson())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
+                            .build();
+                    session = reviewSessionRepository.save(session);
+                }
+            } else {
+                throw new IllegalArgumentException("Session not found");
+            }
+        }
         VocabularyWord word = wordRepository.findById(wordId)
                 .orElseThrow(() -> new IllegalArgumentException("Word not found"));
 

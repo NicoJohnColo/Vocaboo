@@ -71,20 +71,85 @@ class TTSService {
     }
   }
 
-  /// Speaks the provided [text] using the configured TTS engine.
+  /// Speaks the provided [text] using the configured TTS engine (defaulting to English).
   static Future<void> speak(String text) async {
-    if (text.trim().isEmpty) return;
+    await speakEnglish(text);
+  }
+
+  /// Speaks the provided [text] in Cebuano using the native fil-PH locale.
+  /// Returns true if successful, false if the language/engine is not supported.
+  static Future<bool> speakCebuano(String text) async {
+    if (text.trim().isEmpty) return true;
 
     try {
       await initialize();
-      // ignore: avoid_print
-      print('TTSService.speak: "$text"');
+      
+      // Check language availability
+      final isAvailable = await _flutterTts.isLanguageAvailable('fil-PH');
+      if (isAvailable == null || isAvailable == false) {
+        // ignore: avoid_print
+        print('TTSService: fil-PH language not available on this device');
+        return false;
+      }
+
       await _flutterTts.stop();
-      await _flutterTts.speak(text);
+      await _flutterTts.setLanguage('fil-PH');
+      
+      // Clean and normalize Cebuano text (diacritics/accents) for Tagalog TTS compatibility
+      final cleanedText = cleanCebuanoDiacritics(text);
+      // ignore: avoid_print
+      print('TTSService.speakCebuano: "$cleanedText" (original: "$text")');
+      
+      final result = await _flutterTts.speak(cleanedText);
+      return result == 1; // 1 indicates success in flutter_tts API
     } catch (e) {
       // ignore: avoid_print
-      print('TTSService.speak error: $e');
+      print('TTSService.speakCebuano error: $e');
+      return false;
     }
+  }
+
+  /// Speaks the provided [text] in English using the native en-US locale.
+  /// Returns true if successful.
+  static Future<bool> speakEnglish(String text) async {
+    if (text.trim().isEmpty) return true;
+
+    try {
+      await initialize();
+      await _flutterTts.stop();
+      await _flutterTts.setLanguage('en-US');
+      
+      // ignore: avoid_print
+      print('TTSService.speakEnglish: "$text"');
+      final result = await _flutterTts.speak(text);
+      return result == 1;
+    } catch (e) {
+      // ignore: avoid_print
+      print('TTSService.speakEnglish error: $e');
+      return false;
+    }
+  }
+
+  /// Cleans and replaces common accented characters to ensure smooth pronunciation by the engine.
+  static String cleanCebuanoDiacritics(String text) {
+    var cleaned = text;
+    const diacritics = {
+      'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+      'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o',
+      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+      'Á': 'A', 'À': 'A', 'Â': 'A', 'Ä': 'A', 'Ã': 'A',
+      'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+      'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I',
+      'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Ö': 'O', 'Õ': 'O',
+      'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
+    };
+    
+    diacritics.forEach((accent, replacement) {
+      cleaned = cleaned.replaceAll(accent, replacement);
+    });
+    return cleaned;
   }
 
   /// Stops any ongoing speech synthesis.
@@ -104,6 +169,10 @@ class TtsService {
   Future<void> initialize() => TTSService.initialize();
 
   Future<void> speak(String text) => TTSService.speak(text);
+  
+  Future<bool> speakCebuano(String text) => TTSService.speakCebuano(text);
+  
+  Future<bool> speakEnglish(String text) => TTSService.speakEnglish(text);
 
   Future<void> stop() => TTSService.stop();
 }

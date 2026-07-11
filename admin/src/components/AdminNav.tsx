@@ -2,11 +2,12 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 
 const NAV_ITEMS = [
-  { to: '/dashboard',  label: 'Dashboard',          icon: '⬡' },
-  { to: '/lessons',    label: 'Lesson Management',  icon: '📚' },
-  { to: '/categories', label: 'Categories',          icon: '🗂️' },
-  { to: '/accounts',   label: 'Admin Accounts',      icon: '👤' },
-  { to: '/logs',       label: 'System Logs',         icon: '📋' },
+  { to: '/dashboard',      label: 'Dashboard',              icon: '⬡' },
+  { to: '/lessons',        label: 'Lesson Management',      icon: '📚' },
+  { to: '/categories',     label: 'Categories',             icon: '🗂️' },
+  { to: '/wrong-answers',  label: 'Wrong Answer Analysis',  icon: '📊' },
+  { to: '/accounts',       label: 'Admin Accounts',         icon: '👤' },
+  { to: '/logs',           label: 'System Logs',            icon: '📋' },
 ];
 
 export default function AdminNav() {

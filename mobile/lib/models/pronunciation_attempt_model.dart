@@ -6,6 +6,7 @@ class PronunciationAttemptModel {
   final String? phonologicalTip;
   final int attemptNumber;
   final bool isInconclusive;
+  final double? similarityScore;
 
   PronunciationAttemptModel({
     required this.attemptId,
@@ -15,6 +16,7 @@ class PronunciationAttemptModel {
     this.phonologicalTip,
     required this.attemptNumber,
     required this.isInconclusive,
+    this.similarityScore,
   });
 
   factory PronunciationAttemptModel.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class PronunciationAttemptModel {
       phonologicalTip: json['phonologicalTip'],
       attemptNumber: json['attemptNumber'] ?? 1,
       isInconclusive: json['isInconclusive'] ?? false,
+      similarityScore: (json['similarityScore'] as num?)?.toDouble(),
     );
   }
 
@@ -38,6 +41,7 @@ class PronunciationAttemptModel {
       'phonologicalTip': phonologicalTip,
       'attemptNumber': attemptNumber,
       'isInconclusive': isInconclusive,
+      'similarityScore': similarityScore,
     };
   }
 }

@@ -161,7 +161,12 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     if (mounted) setState(() => _isPlayingAudio = true);
 
     try {
-      await _ttsService.speak(word.englishWord);
+      final success = await _ttsService.speakEnglish(word.englishWord);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
       if (word.audioAssetPath != null && word.audioAssetPath!.trim().isNotEmpty) {
         final path = AppConfig.sanitizeAssetPath(word.audioAssetPath!);
         
@@ -193,11 +198,48 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     _playWordAudio(_words[_currentWordIndex]);
   }
 
+  Future<void> _playCebuanoAudio(String text) async {
+    if (_isPlayingAudio) return;
+    if (mounted) setState(() => _isPlayingAudio = true);
+
+    try {
+      final success = await _ttsService.speakCebuano(text);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPlayingAudio = false);
+    }
+  }
+
   Future<void> _speakSentence() async {
     if (_isPlayingAudio) return;
     if (mounted) setState(() => _isPlayingAudio = true);
-    await _ttsService.speak(_words[_currentWordIndex].exampleSentenceEnglish);
-    if (mounted) setState(() => _isPlayingAudio = false);
+    
+    try {
+      final success = await _ttsService.speakEnglish(_words[_currentWordIndex].exampleSentenceEnglish);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPlayingAudio = false);
+    }
   }
 
   void _stopAutoEvaluationMonitoring() {
@@ -753,8 +795,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final pref = auth.learner?.languagePreference;
     if (_words.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final word = _words[_currentWordIndex];
@@ -997,10 +1037,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
               ),
               const SizedBox(height: 6),
-              Text(
-                word.cebuanoMeaning,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      word.cebuanoMeaning,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 26),
+                    onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               const Divider(color: Color(0xFFE6E7EA)),
@@ -1114,6 +1165,42 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                     color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : Colors.redAccent,
                   ),
                 ),
+                if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'You said: "${_attemptResult!.transcribedText}"',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontStyle: FontStyle.italic,
+                            color: Color(0xFF475569),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (_attemptResult!.similarityScore != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Match score: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ] else ...[
                 const Text(
                   'Want to try saying it? Tap the mic to practice your pronunciation — or just continue when you are ready.',
@@ -1205,10 +1292,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
               ),
               const SizedBox(height: 6),
-              Text(
-                word.cebuanoMeaning,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      word.cebuanoMeaning,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 26),
+                    onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
+                  ),
+                ],
               ),
               const SizedBox(height: 18),
               Text(

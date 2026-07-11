@@ -16,4 +16,5 @@ public class PronunciationAttemptResponse {
     private String phonologicalTip;
     private Integer attemptNumber;
     private Boolean isInconclusive;
+    private Double similarityScore;
 }

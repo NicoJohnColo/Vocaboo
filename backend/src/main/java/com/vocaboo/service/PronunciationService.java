@@ -209,6 +209,7 @@ public class PronunciationService {
                 .phonologicalTip(phonologicalTip)
                 .attemptNumber(request.getAttemptNumber())
                 .isInconclusive(false)
+                .similarityScore(similarityScore)
                 .build();
     }
 

@@ -186,6 +186,62 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
+                  // Wrong answers shortcut
+                  GestureDetector(
+                    onTap: () => GoRouter.of(context).push('/wrong-answers'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                            color: const Color(0xFFF97316).withValues(alpha: 0.35),
+                            width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF97316).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.warning_amber_rounded,
+                                color: Color(0xFFF97316), size: 22),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Words You Need Help With',
+                                  style: TextStyle(
+                                    fontFamily: 'Outfit',
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                    color: Color(0xFF92400E),
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Review your wrong answers & demerits',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFFC2410C),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Color(0xFFF97316)),
+                        ],
+                      ),
+                    ),
+                  ),
                   const Text(
                     'Recent sandbox sessions',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),

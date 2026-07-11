@@ -678,10 +678,21 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       evaluatedAt: DateTime.now(),
       isReinforcementAttempt: (_wordWrongAttempts[item.wordId] ?? 0) > 0 ? 1 : 0,
     );
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+
     // keep the evaluated correct answer for display in the feedback panel
     _lastCorrectAnswer = correctAns;
     debugPrint('CHECK_ANS item=${item.wordId} format=${item.activityFormat} assembled=${_assembledTokens.join(' ')} target="$correctAns" normalizedCorrect=$correct');
     await LocalStorageService.saveEvaluationResult(widget.sessionId, result);
+
+    if (!widget.isSandbox) {
+      provider.submitReviewItem(
+        sessionId: widget.sessionId,
+        wordId: item.wordId,
+        isCorrect: correct,
+        confidence: 3,
+      );
+    }
 
     if (correct) {
       if ((_wordWrongAttempts[item.wordId] ?? 0) > 0) {

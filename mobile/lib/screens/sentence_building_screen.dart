@@ -764,7 +764,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         _attemptResult = null;
       });
       await _recorderService.startRecording();
-      await _startStreamingRecognition(_currentWord.englishWord);
+      // NOTE: Streaming STT is intentionally disabled here.
+      // Starting local speech_to_text concurrently with AudioRecorder causes
+      // an Android microphone resource conflict: the OS terminates the
+      // recorder session early, producing a near-empty .m4a file (< 6 KB)
+      // that Deepgram cannot transcribe (returns empty transcript → 400).
+      // Audio is instead captured fully by AudioRecorder and evaluated via
+      // the Deepgram backend once recording completes.
+      // await _startStreamingRecognition(_currentWord.englishWord);
       _startAutoEvaluationMonitoring();
 
       if (!mounted) return;
@@ -1029,6 +1036,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     });
 
     if (result.isCorrect) {
+      _recordingSessionActive = false;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    if (result.isInconclusive) {
       _recordingSessionActive = false;
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
@@ -2241,9 +2256,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             )
                           else ...[
                             Text(
-                              _pronunciationAttempt >= 3
-                                  ? 'Incorrect. No attempts left. Moving on.'
-                                  : 'Incorrect. Try again.',
+                              _attemptResult!.isInconclusive
+                                  ? "Speech couldn't be recognized. Please try again."
+                                  : (_pronunciationAttempt >= 3
+                                      ? 'Incorrect. No attempts left. Moving on.'
+                                      : 'Incorrect. Try again.'),
                               style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.bold, fontSize: 15),
                               textAlign: TextAlign.center,
                             ),
@@ -2422,50 +2439,74 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   stream: _recorderService.onAmplitudeChanged,
                   builder: (context, snapshot) {
                     final amplitude = (snapshot.data ?? 0.0).clamp(0.0, 1.0);
+                    final isSpeechActive = amplitude > 0.18;
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 120),
                       width: 132,
                       height: 132,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
+                        color: isSpeechActive 
+                            ? const Color(0xFF10B981).withValues(alpha: 0.15 + (amplitude * 0.15))
+                            : const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
                         border: Border.all(
-                          color: const Color(0xFF06A6FF),
-                          width: 3 + (amplitude * 7),
+                          color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+                          width: isSpeechActive ? 4 + (amplitude * 8) : 3 + (amplitude * 7),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
-                            blurRadius: 20,
-                            spreadRadius: 2,
+                            color: isSpeechActive 
+                                ? const Color(0xFF10B981).withValues(alpha: 0.25 + (amplitude * 0.20))
+                                : const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
+                            blurRadius: isSpeechActive ? 28 : 20,
+                            spreadRadius: isSpeechActive ? 4 : 2,
                           ),
                         ],
                       ),
                       child: Icon(
                         Icons.mic_rounded,
-                        size: 54 + (amplitude * 10),
-                        color: const Color(0xFF06A6FF),
+                        size: 54 + (amplitude * 12),
+                        color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
                       ),
                     );
                   },
                 ),
                 const SizedBox(height: 36),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _cancelRecordingSession,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06A6FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      elevation: 0,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _cancelRecordingSession,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        ),
+                        child: const Text(
+                          'CANCEL',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      'CANCEL',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _finishRecordingAndEvaluate,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF06A6FF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'DONE',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),

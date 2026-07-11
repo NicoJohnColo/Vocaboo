@@ -456,15 +456,6 @@ INSERT INTO word_activity_data (
  'They eat ___ with grilled fish for lunch every day.', 'Rice',
  'Bread', 'Milk', 'Soup'),
 
-,-- Ruler (governor)
-('c1000000-0000-0000-0000-000000000006',
- 'Pencil', 'Eraser', 'Bag',
- 'The ___ governed the kingdom with wisdom.', 'Ruler',
- '[{"english_word":"Ruler","cebuano_meaning":"Magmamando"},{"english_word":"King","cebuano_meaning":"Hari"},{"english_word":"Teacher","cebuano_meaning":"Magtutudlo"},{"english_word":"President","cebuano_meaning":"Presidente"}]',
- '[[''The'',''ruler'',''governed'',''the'',''kingdom'',''with'',''wisdom.'']]',
- 'The ruler led the village fairly.', 'Ruler',
- 'Pencil', 'Notebook', 'Bag')
-
 -- Water
 ('c4000000-0000-0000-0000-000000000002',
  'Juice', 'Milk', 'Soup',

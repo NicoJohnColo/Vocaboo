@@ -66,6 +66,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:*",
+                "http://192.168.1.186:*",
                 "https://vocaboo-admin.app",
                 "https://*.vocaboo-admin.app"
         ));

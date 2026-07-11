@@ -14,6 +14,7 @@ import '../models/pronunciation_attempt_model.dart';
 import '../services/localization_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../widgets/custom_image_viewer.dart';
+import '../config/app_config.dart';
 
 class VocabularyIntroductionScreen extends StatefulWidget {
   final String sessionId;
@@ -162,16 +163,11 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     try {
       await _ttsService.speak(word.englishWord);
       if (word.audioAssetPath != null && word.audioAssetPath!.trim().isNotEmpty) {
-        String path = word.audioAssetPath!.trim();
-        if (path.startsWith('http://localhost:')) {
-          path = path.replaceFirst('localhost', '10.0.2.2');
-        }
+        final path = AppConfig.sanitizeAssetPath(word.audioAssetPath!);
         
         Source source;
         if (path.startsWith('http://') || path.startsWith('https://')) {
           source = UrlSource(path);
-        } else if (path.startsWith('/')) {
-          source = UrlSource('http://10.0.2.2:8080$path');
         } else {
           source = AssetSource(path.startsWith('assets/') ? path.replaceFirst('assets/', '') : path);
         }
@@ -415,6 +411,14 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       return;
     }
 
+    if (_attemptResult?.isInconclusive ?? false) {
+      _recordingSessionActive = false;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
     final shouldRetry = _recordingSessionActive && _attemptNumber < _maxAttempts;
     if (!shouldRetry) {
       _recordingSessionActive = false;
@@ -449,7 +453,14 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         _attemptResult = null;
       });
       await _recorderService.startRecording();
-      await _startStreamingRecognition(_words[_currentWordIndex].englishWord);
+      // NOTE: Streaming STT is intentionally disabled here.
+      // Starting local speech_to_text concurrently with AudioRecorder causes
+      // an Android microphone resource conflict: the OS terminates the
+      // recorder session early, producing a near-empty .m4a file (< 6 KB)
+      // that Deepgram cannot transcribe (returns empty transcript → 400).
+      // Audio is instead captured fully by AudioRecorder and evaluated via
+      // the Deepgram backend once recording completes.
+      // await _startStreamingRecognition(_words[_currentWordIndex].englishWord);
       _startAutoEvaluationMonitoring();
 
       // Show the recording visualizer modal
@@ -602,50 +613,74 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   stream: _recorderService.onAmplitudeChanged,
                   builder: (context, snapshot) {
                     final amplitude = (snapshot.data ?? 0.0).clamp(0.0, 1.0);
+                    final isSpeechActive = amplitude > 0.18;
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 120),
                       width: 132,
                       height: 132,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
+                        color: isSpeechActive 
+                            ? const Color(0xFF10B981).withValues(alpha: 0.15 + (amplitude * 0.15))
+                            : const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
                         border: Border.all(
-                          color: const Color(0xFF06A6FF),
-                          width: 3 + (amplitude * 7),
+                          color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+                          width: isSpeechActive ? 4 + (amplitude * 8) : 3 + (amplitude * 7),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
-                            blurRadius: 20,
-                            spreadRadius: 2,
+                            color: isSpeechActive 
+                                ? const Color(0xFF10B981).withValues(alpha: 0.25 + (amplitude * 0.20))
+                                : const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
+                            blurRadius: isSpeechActive ? 28 : 20,
+                            spreadRadius: isSpeechActive ? 4 : 2,
                           ),
                         ],
                       ),
                       child: Icon(
                         Icons.mic_rounded,
-                        size: 54 + (amplitude * 10),
-                        color: const Color(0xFF06A6FF),
+                        size: 54 + (amplitude * 12),
+                        color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
                       ),
                     );
                   },
                 ),
                 const SizedBox(height: 36),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _cancelRecordingSession,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06A6FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      elevation: 0,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _cancelRecordingSession,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        ),
+                        child: const Text(
+                          'CANCEL',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      'CANCEL',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _finishRecordingAndEvaluate,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF06A6FF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'DONE',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -1068,7 +1103,11 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _attemptResult!.isCorrect ? 'Sounds good!' : 'Try saying it again',
+                  _attemptResult!.isCorrect 
+                      ? 'Sounds good!' 
+                      : (_attemptResult!.isInconclusive 
+                          ? "Speech couldn't be recognized. Please try again." 
+                          : 'Try saying it again'),
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

@@ -47,12 +47,18 @@ public class LearnerController {
     public static class PreferencesRequest {
         private String displayName;
         private String languagePreference;
+        private Boolean masteryApplyImmediately;
     }
 
     @PatchMapping("/preferences")
     public ResponseEntity<LearnerResponse> updatePreferences(@RequestBody PreferencesRequest request, Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
-        LearnerResponse response = learnerService.updatePreferences(learnerId, request.getDisplayName(), request.getLanguagePreference());
+        LearnerResponse response = learnerService.updatePreferences(
+                learnerId, 
+                request.getDisplayName(), 
+                request.getLanguagePreference(), 
+                request.getMasteryApplyImmediately()
+        );
         return ResponseEntity.ok(response);
     }
 

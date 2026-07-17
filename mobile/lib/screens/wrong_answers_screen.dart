@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'package:mobile/config/app_config.dart';
+import '../services/tts_service.dart';
 
 class WrongAnswersScreen extends StatefulWidget {
   const WrongAnswersScreen({super.key});
@@ -17,6 +18,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
   late Future<Map<String, dynamic>> _future;
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
+  final TtsService _ttsService = TtsService();
 
   @override
   void initState() {
@@ -27,6 +29,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
     _future = _loadData();
+    _ttsService.initialize();
   }
 
   Future<Map<String, dynamic>> _loadData() async {
@@ -45,6 +48,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
 
   @override
   void dispose() {
+    _ttsService.stop();
     _animController.dispose();
     super.dispose();
   }
@@ -418,14 +422,25 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              english,
-              style: const TextStyle(
-                fontFamily: 'Outfit',
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    english,
+                    style: const TextStyle(
+                      fontFamily: 'Outfit',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF97316), size: 28),
+                  onPressed: () => _ttsService.speak(english),
+                  tooltip: "Listen to word",
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(

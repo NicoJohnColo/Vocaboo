@@ -372,6 +372,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: pref != null ? LocalizationService.translate(pref, pref.toLowerCase()) : 'N/A',
                 onTap: () => GoRouter.of(context).push('/language-preference'),
               ),
+              _settingsTile(
+                icon: Icons.toggle_on_outlined,
+                title: LocalizationService.translate(pref, 'apply_immediately'),
+                subtitle: LocalizationService.translate(pref, 'apply_immediately_desc'),
+                trailing: Switch(
+                  value: learner?.masteryApplyImmediately ?? true,
+                  onChanged: (val) async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final success = await auth.updateMasteryApplyMode(val);
+                    if (!success) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text(auth.error ?? 'Error updating preference')),
+                      );
+                    }
+                  },
+                  activeThumbColor: const Color(0xFF0EA5E9),
+                ),
+              ),
+              _settingsTile(
+                icon: Icons.bar_chart_rounded,
+                title: LocalizationService.translate(pref, 'progress_summary'),
+                subtitle: LocalizationService.translate(pref, 'progress_summary_desc'),
+                onTap: () => GoRouter.of(context).push('/dashboard'),
+              ),
+              _settingsTile(
+                icon: Icons.science_outlined,
+                title: LocalizationService.translate(pref, 'sandbox_mode'),
+                subtitle: LocalizationService.translate(pref, 'sandbox_mode_desc'),
+                onTap: () => GoRouter.of(context).push('/sandbox'),
+              ),
 
               const SizedBox(height: 24),
 

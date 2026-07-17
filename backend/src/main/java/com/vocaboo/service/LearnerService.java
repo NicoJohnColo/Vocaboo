@@ -112,11 +112,12 @@ public class LearnerService {
                 .age(learner.getAge())
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
+                .masteryApplyImmediately(learner.getMasteryApplyImmediately())
                 .build();
     }
 
     @Transactional
-    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr) {
+    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr, Boolean masteryApplyImmediately) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner profile not found."));
 
@@ -139,6 +140,10 @@ public class LearnerService {
             }
         }
 
+        if (masteryApplyImmediately != null) {
+            learner.setMasteryApplyImmediately(masteryApplyImmediately);
+        }
+
         learner = learnerRepository.save(learner);
 
         return LearnerResponse.builder()
@@ -147,6 +152,7 @@ public class LearnerService {
                 .age(learner.getAge())
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
+                .masteryApplyImmediately(learner.getMasteryApplyImmediately())
                 .build();
     }
 

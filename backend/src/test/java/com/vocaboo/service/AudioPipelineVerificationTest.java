@@ -17,7 +17,7 @@ class AudioPipelineVerificationTest {
         String rawBase64 = Base64.getEncoder().encodeToString(originalAudioBytes);
 
         // 3. Instantiate PronunciationService (passing null dependencies as we are only testing local helper methods)
-        PronunciationService service = new PronunciationService(null, null, null, null, null, null);
+        PronunciationService service = new PronunciationService(null, null, null, null, null, null, null);
 
         // 4. Test raw Base64 flow
         String detectedTypeRaw = service.detectContentType(rawBase64);

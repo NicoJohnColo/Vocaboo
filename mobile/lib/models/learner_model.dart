@@ -4,6 +4,7 @@ class LearnerModel {
   final int age;
   final String languagePreference; // 'CEBUANO_TO_ENGLISH', 'FULL_ENGLISH', 'CEBUANO_ENGLISH_MIXED'
   final bool onboardingComplete;
+  final bool masteryApplyImmediately;
 
   LearnerModel({
     required this.learnerId,
@@ -11,6 +12,7 @@ class LearnerModel {
     required this.age,
     required this.languagePreference,
     required this.onboardingComplete,
+    required this.masteryApplyImmediately,
   });
 
   factory LearnerModel.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class LearnerModel {
       age: json['age'] ?? 9,
       languagePreference: json['languagePreference'] ?? 'CEBUANO_TO_ENGLISH',
       onboardingComplete: json['onboardingComplete'] ?? false,
+      masteryApplyImmediately: json['masteryApplyImmediately'] ?? true,
     );
   }
 
@@ -30,6 +33,7 @@ class LearnerModel {
       'age': age,
       'languagePreference': languagePreference,
       'onboardingComplete': onboardingComplete,
+      'masteryApplyImmediately': masteryApplyImmediately,
     };
   }
 }

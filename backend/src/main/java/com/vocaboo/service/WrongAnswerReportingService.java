@@ -5,31 +5,26 @@ import com.vocaboo.dto.response.LearnerWrongAnswersResponse.WrongWordDetail;
 import com.vocaboo.dto.response.WrongAnswerAnalysisResponse;
 import com.vocaboo.dto.response.WrongAnswerAnalysisResponse.ConfusedPairDetail;
 import com.vocaboo.dto.response.WrongAnswerAnalysisResponse.CurriculumGapDetail;
-import com.vocaboo.entity.ConfusableWordPair;
-import com.vocaboo.entity.ReviewItem;
-import com.vocaboo.entity.VocabularyWord;
-import com.vocaboo.entity.WordProgress;
-import com.vocaboo.entity.WordStatus;
-import com.vocaboo.repository.ConfusableWordPairRepository;
-import com.vocaboo.repository.ReviewItemRepository;
-import com.vocaboo.repository.WordProgressRepository;
+import com.vocaboo.entity.*;
+import com.vocaboo.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * Computes wrong-answer reports without any new database tables.
  *
- * Learner report  — groups all incorrect ReviewItem entries for the learner by word,
- *                   counts errors, determines whether the latest attempt was correct,
- *                   and calculates demerit points (2 × total errors).
+ * Learner report  — groups all incorrect ReviewItem entries and PronunciationAttempt entries
+ *                   for the learner by word, counts errors, determines whether the latest attempt
+ *                   was correct, and calculates demerit points (2 × total errors).
  *
- * Admin report    — class-wide aggregation of incorrect items, cross-referenced with
- *                   ConfusableWordPair entries to surface confusion pair statistics
- *                   and lesson-level curriculum gaps.
+ * Admin report    — class-wide aggregation of incorrect items and pronunciation attempts,
+ *                   cross-referenced with ConfusableWordPair entries to surface confusion
+ *                   pair statistics and lesson-level curriculum gaps.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,6 +36,36 @@ public class WrongAnswerReportingService {
     private final ReviewItemRepository reviewItemRepository;
     private final ConfusableWordPairRepository confusableWordPairRepository;
     private final WordProgressRepository wordProgressRepository;
+    private final PronunciationAttemptRepository pronunciationAttemptRepository;
+
+    private static class CombinedAttempt {
+        private final VocabularyWord word;
+        private final boolean isCorrect;
+        private final OffsetDateTime timestamp;
+
+        public CombinedAttempt(VocabularyWord word, boolean isCorrect, OffsetDateTime timestamp) {
+            this.word = word;
+            this.isCorrect = isCorrect;
+            this.timestamp = timestamp;
+        }
+
+        public VocabularyWord getWord() { return word; }
+        public boolean getIsCorrect() { return isCorrect; }
+        public OffsetDateTime getTimestamp() { return timestamp; }
+    }
+
+    private static class ClassWideError {
+        private final UUID learnerId;
+        private final VocabularyWord word;
+
+        public ClassWideError(UUID learnerId, VocabularyWord word) {
+            this.learnerId = learnerId;
+            this.word = word;
+        }
+
+        public UUID getLearnerId() { return learnerId; }
+        public VocabularyWord getWord() { return word; }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Learner endpoint
@@ -51,24 +76,50 @@ public class WrongAnswerReportingService {
      * error frequency (most errors first), together with their total demerit points.
      */
     public LearnerWrongAnswersResponse getLearnerWrongAnswers(UUID learnerId) {
-        List<ReviewItem> allItems =
+        List<ReviewItem> reviewItems =
                 reviewItemRepository.findAllByLearnerIdOrderByCreatedAtAsc(learnerId);
 
-        // Build: wordId → chronologically ordered list of review items
-        Map<UUID, List<ReviewItem>> itemsByWord = new LinkedHashMap<>();
-        for (ReviewItem item : allItems) {
-            UUID wordId = item.getWord().getWordId();
-            itemsByWord.computeIfAbsent(wordId, k -> new ArrayList<>()).add(item);
+        List<PronunciationAttempt> pronAttempts =
+                pronunciationAttemptRepository.findByLearnerLearnerIdOrderByRecordedAtAsc(learnerId);
+
+        // Map both types of attempts to a unified representation
+        List<CombinedAttempt> attemptsList = new ArrayList<>();
+        for (ReviewItem item : reviewItems) {
+            attemptsList.add(new CombinedAttempt(
+                    item.getWord(),
+                    Boolean.TRUE.equals(item.getIsCorrect()),
+                    item.getCreatedAt()
+            ));
+        }
+        for (PronunciationAttempt attempt : pronAttempts) {
+            // Include only non-inconclusive attempts in wrong-answers demerit aggregation
+            if (attempt.getIsCorrect() != null && !Boolean.TRUE.equals(attempt.getIsInconclusive())) {
+                attemptsList.add(new CombinedAttempt(
+                        attempt.getWord(),
+                        Boolean.TRUE.equals(attempt.getIsCorrect()),
+                        attempt.getRecordedAt()
+                ));
+            }
+        }
+
+        // Sort chronologically ascending so the latest attempt is last in list
+        attemptsList.sort(Comparator.comparing(CombinedAttempt::getTimestamp));
+
+        // Build: wordId → chronologically ordered list of attempts
+        Map<UUID, List<CombinedAttempt>> attemptsByWord = new LinkedHashMap<>();
+        for (CombinedAttempt attempt : attemptsList) {
+            UUID wordId = attempt.getWord().getWordId();
+            attemptsByWord.computeIfAbsent(wordId, k -> new ArrayList<>()).add(attempt);
         }
 
         Map<UUID, WrongWordDetail> detailsMap = new LinkedHashMap<>();
         int totalErrors = 0;
 
-        for (Map.Entry<UUID, List<ReviewItem>> entry : itemsByWord.entrySet()) {
-            List<ReviewItem> items = entry.getValue();
+        for (Map.Entry<UUID, List<CombinedAttempt>> entry : attemptsByWord.entrySet()) {
+            List<CombinedAttempt> items = entry.getValue();
 
             long errorCount = items.stream()
-                    .filter(i -> Boolean.FALSE.equals(i.getIsCorrect()))
+                    .filter(i -> !i.getIsCorrect())
                     .count();
 
             if (errorCount == 0) continue; // never answered wrong — skip
@@ -76,8 +127,8 @@ public class WrongAnswerReportingService {
             totalErrors += (int) errorCount;
 
             // The most-recent attempt determines the "currently correct" badge
-            ReviewItem latest = items.get(items.size() - 1);
-            boolean currentlyCorrect = Boolean.TRUE.equals(latest.getIsCorrect());
+            CombinedAttempt latest = items.get(items.size() - 1);
+            boolean currentlyCorrect = latest.getIsCorrect();
 
             VocabularyWord word = items.get(0).getWord();
             String lessonTitle = word.getLesson() != null ? word.getLesson().getLessonTitle() : "";
@@ -147,27 +198,41 @@ public class WrongAnswerReportingService {
 
     /**
      * Returns class-wide wrong-answer analysis: confused word pair statistics and
-     * lesson-level curriculum gaps, based on all review item records.
+     * lesson-level curriculum gaps, based on all review item and pronunciation attempt records.
      */
     public WrongAnswerAnalysisResponse getClassWideWrongAnswerAnalysis() {
-        List<ReviewItem> allItems = reviewItemRepository.findAllOrderByCreatedAtAsc();
+        List<ReviewItem> allReviewItems = reviewItemRepository.findAllOrderByCreatedAtAsc();
+        List<PronunciationAttempt> allPronAttempts = pronunciationAttemptRepository.findAll();
 
-        // Only incorrect items are relevant for this report
-        List<ReviewItem> incorrectItems = allItems.stream()
-                .filter(i -> Boolean.FALSE.equals(i.getIsCorrect()))
-                .toList();
+        List<ClassWideError> incorrectAttempts = new ArrayList<>();
+        for (ReviewItem item : allReviewItems) {
+            if (Boolean.FALSE.equals(item.getIsCorrect())) {
+                incorrectAttempts.add(new ClassWideError(
+                        item.getSession().getLearner().getLearnerId(),
+                        item.getWord()
+                ));
+            }
+        }
+        for (PronunciationAttempt attempt : allPronAttempts) {
+            if (Boolean.FALSE.equals(attempt.getIsCorrect()) && !Boolean.TRUE.equals(attempt.getIsInconclusive())) {
+                incorrectAttempts.add(new ClassWideError(
+                        attempt.getLearner().getLearnerId(),
+                        attempt.getWord()
+                ));
+            }
+        }
 
-        int totalClassErrors = incorrectItems.size();
+        int totalClassErrors = incorrectAttempts.size();
 
         // Distinct learner count with at least one error
-        long learnersWithErrors = incorrectItems.stream()
-                .map(i -> i.getSession().getLearner().getLearnerId())
+        long learnersWithErrors = incorrectAttempts.stream()
+                .map(ClassWideError::getLearnerId)
                 .distinct()
                 .count();
 
         // ── Confused Pair Analysis ─────────────────────────────────────────
-        // Build set of word IDs that appear in incorrect review items
-        Set<UUID> incorrectWordIds = incorrectItems.stream()
+        // Build set of word IDs that appear in incorrect attempts
+        Set<UUID> incorrectWordIds = incorrectAttempts.stream()
                 .map(i -> i.getWord().getWordId())
                 .collect(Collectors.toSet());
 
@@ -186,15 +251,15 @@ public class WrongAnswerReportingService {
             if (!wordAInErrors && !wordBInErrors) continue;
 
             // Count errors for either word in this pair
-            long pairErrors = incorrectItems.stream()
+            long pairErrors = incorrectAttempts.stream()
                     .filter(i -> i.getWord().getWordId().equals(wordAId)
                             || i.getWord().getWordId().equals(wordBId))
                     .count();
 
-            long affectedLearners = incorrectItems.stream()
+            long affectedLearners = incorrectAttempts.stream()
                     .filter(i -> i.getWord().getWordId().equals(wordAId)
                             || i.getWord().getWordId().equals(wordBId))
-                    .map(i -> i.getSession().getLearner().getLearnerId())
+                    .map(ClassWideError::getLearnerId)
                     .distinct()
                     .count();
 
@@ -217,18 +282,18 @@ public class WrongAnswerReportingService {
         confusedPairs.sort(Comparator.comparingInt(ConfusedPairDetail::getTotalErrors).reversed());
 
         // ── Curriculum Gap Analysis ────────────────────────────────────────
-        // Group incorrect items by lesson
-        Map<UUID, List<ReviewItem>> errorsByLesson = incorrectItems.stream()
+        // Group incorrect attempts by lesson
+        Map<UUID, List<ClassWideError>> errorsByLesson = incorrectAttempts.stream()
                 .filter(i -> i.getWord().getLesson() != null)
                 .collect(Collectors.groupingBy(i -> i.getWord().getLesson().getLessonId()));
 
         List<CurriculumGapDetail> curriculumGaps = errorsByLesson.entrySet().stream()
                 .map(entry -> {
-                    List<ReviewItem> lessonErrors = entry.getValue();
+                    List<ClassWideError> lessonErrors = entry.getValue();
                     var lesson = lessonErrors.get(0).getWord().getLesson();
 
                     long lessonAffectedLearners = lessonErrors.stream()
-                            .map(i -> i.getSession().getLearner().getLearnerId())
+                            .map(ClassWideError::getLearnerId)
                             .distinct()
                             .count();
 

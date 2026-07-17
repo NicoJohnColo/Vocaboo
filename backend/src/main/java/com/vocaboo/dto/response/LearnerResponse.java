@@ -15,4 +15,5 @@ public class LearnerResponse {
     private Integer age;
     private LanguageMedium languagePreference;
     private Boolean onboardingComplete;
+    private Boolean masteryApplyImmediately;
 }

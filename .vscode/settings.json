@@ -4,5 +4,6 @@
     "java.debug.settings.onBuildFailureProceed": true,
     "terminal.integrated.env.windows": {
         "DART_VM_OPTIONS": "--old_gen_heap_size=4096"
-    }
+    },
+    "editor.fontSize": 16
 }

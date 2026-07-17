@@ -263,6 +263,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         : word.englishWord;
   }
 
+  void _speakFullSentence() {
+    final sentence = _activitySentence(_currentWord);
+    String textToSpeak = sentence;
+    if (sentence.contains('___')) {
+      final answer = _activityAnswer(_currentWord);
+      textToSpeak = sentence.replaceAll('___', answer);
+    }
+    _ttsService.speak(textToSpeak);
+  }
+
   List<Map<String, dynamic>> _buildFallbackConfusablePairs(List<VocabularyWordModel> words) {
     final confusableWords = words.where((word) => word.isConfusablePairMember).toList()
       ..sort((a, b) => a.wordOrder.compareTo(b.wordOrder));
@@ -719,46 +729,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Widget _buildModule3Header(ThemeData theme) {
-    final totalWords = _words.length;
-    final remainingWordIds = _queue.map((word) => word.wordId).toSet();
-    final completedWordsCount = _words.map((word) => word.wordId).toSet().difference(remainingWordIds).length;
-    final progress = totalWords > 0 ? (completedWordsCount / totalWords) : 0.0;
-
-    return Column(
-      children: [
-        // Progress indicator
-        Container(
-          margin: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: progress),
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.linear,
-                    builder: (context, value, _) {
-                      return LinearProgressIndicator(
-                        value: value,
-                        minHeight: 12,
-                        backgroundColor: const Color(0xFFE2E8F0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Text(
-                '$completedWordsCount/$totalWords',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   // Pronunciation flow
@@ -1116,9 +1087,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     if (correct || reachedMaxAttempts) {
       _advancePronunciationPhase();
     } else {
-      // Try again (increment attempts)
+      // Try again (increment attempts only if not inconclusive)
       setState(() {
-        _pronunciationAttempt++;
+        if (_attemptResult?.isInconclusive != true) {
+          _pronunciationAttempt++;
+        }
         _attemptResult = null;
       });
     }
@@ -1813,97 +1786,114 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                     ),
                     child: Column(
                       children: [
-                        if (_currentFormat == ActivityFormat.completion)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: completionHasBlank
-                                ? _buildCompletionBlankSentence(
-                                    parts: completionParts,
-                                    answer: _activityAnswer(_currentWord),
-                                  )
-                                : Text(
-                                    sentence,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w500,
-                                      color: Color(0xFF1E293B),
-                                      height: 1.5,
-                                    ),
-                                  ),
-                          )
-                        else
-                          // Rearrangement assembled area
-                          DragTarget<String>(
-                            onWillAcceptWithDetails: (_) => !_isChecked,
-                            onAcceptWithDetails: (details) {
-                              if (_isChecked) return;
-                              final word = details.data;
-                              if (_assembledWords.contains(word)) return;
-                              setState(() {
-                                _scrambledWords.remove(word);
-                                _assembledWords.add(word);
-                              });
-                            },
-                            builder: (context, candidateData, rejectedData) {
-                              return Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: candidateData.isNotEmpty ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: candidateData.isNotEmpty ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 8,
-                                  runSpacing: 10,
-                                  children: _assembledWords.isEmpty
-                                      ? [
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 16),
-                                            child: Text(
-                                              "Drop or tap words here",
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Opacity(
+                              opacity: 0,
+                              child: IconButton(
+                                icon: Icon(Icons.volume_up_rounded),
+                                onPressed: null,
+                              ),
+                            ),
+                            Expanded(
+                              child: _currentFormat == ActivityFormat.completion
+                                  ? Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                      child: completionHasBlank
+                                          ? _buildCompletionBlankSentence(
+                                              parts: completionParts,
+                                              answer: _activityAnswer(_currentWord),
+                                            )
+                                          : Text(
+                                              sentence,
                                               textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: Color(0xFF94A3B8),
-                                                fontSize: 15,
-                                                fontStyle: FontStyle.italic,
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w500,
+                                                color: Color(0xFF1E293B),
+                                                height: 1.5,
                                               ),
+                                            ),
+                                    )
+                                  : DragTarget<String>(
+                                      onWillAcceptWithDetails: (_) => !_isChecked,
+                                      onAcceptWithDetails: (details) {
+                                        if (_isChecked) return;
+                                        final word = details.data;
+                                        if (_assembledWords.contains(word)) return;
+                                        setState(() {
+                                          _scrambledWords.remove(word);
+                                          _assembledWords.add(word);
+                                        });
+                                      },
+                                      builder: (context, candidateData, rejectedData) {
+                                        return Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: candidateData.isNotEmpty ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(18),
+                                            border: Border.all(
+                                              color: candidateData.isNotEmpty ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
+                                              width: 1.5,
                                             ),
                                           ),
-                                        ]
-                                      : _assembledWords.map((word) {
-                                          return ActionChip(
-                                            label: Text(
-                                              word,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
-                                                color: Color(0xFF06A6FF),
-                                              ),
-                                            ),
-                                            backgroundColor: const Color(0xFFEFF6FF),
-                                            side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            onPressed: () {
-                                              if (_isChecked) return;
-                                              setState(() {
-                                                _assembledWords.remove(word);
-                                                _scrambledWords.add(word);
-                                              });
-                                            },
-                                          );
-                                        }).toList(),
-                                ),
-                              );
-                            },
-                          ),
+                                          child: Wrap(
+                                            alignment: WrapAlignment.center,
+                                            spacing: 8,
+                                            runSpacing: 10,
+                                            children: _assembledWords.isEmpty
+                                                ? [
+                                                    const Padding(
+                                                      padding: EdgeInsets.symmetric(vertical: 16),
+                                                      child: Text(
+                                                        "Drop or tap words here",
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(
+                                                          color: Color(0xFF94A3B8),
+                                                          fontSize: 15,
+                                                          fontStyle: FontStyle.italic,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ]
+                                                : _assembledWords.map((word) {
+                                                    return ActionChip(
+                                                      label: Text(
+                                                        word,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: Color(0xFF06A6FF),
+                                                        ),
+                                                      ),
+                                                      backgroundColor: const Color(0xFFEFF6FF),
+                                                      side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius: BorderRadius.circular(12),
+                                                      ),
+                                                      onPressed: () {
+                                                        if (_isChecked) return;
+                                                        setState(() {
+                                                          _assembledWords.remove(word);
+                                                          _scrambledWords.add(word);
+                                                        });
+                                                      },
+                                                    );
+                                                  }).toList(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
+                              onPressed: _speakFullSentence,
+                              tooltip: "Listen to full sentence",
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 24),
                         const Divider(color: Color(0xFFE2E8F0)),
                         const SizedBox(height: 12),
@@ -1930,8 +1920,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
-                              onPressed: () => _ttsService.speak(_currentWord.englishWord),
-                              tooltip: "Listen to vocabulary word",
+                              onPressed: () => _ttsService.speakCebuano(_currentWord.exampleSentenceCebuano ?? _currentWord.cebuanoMeaning),
+                              tooltip: "Listen to sentence translation",
                             ),
                           ],
                         ),
@@ -2019,12 +2009,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                 size: 28,
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                _isCorrect ? "Correct!" : "Let's review the correct structure:",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isCorrect ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                              Expanded(
+                                child: Text(
+                                  _isCorrect ? "Correct!" : "Let's review the correct structure:",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isCorrect ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                                  ),
                                 ),
                               ),
                             ],

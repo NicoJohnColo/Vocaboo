@@ -39,6 +39,7 @@ class PracticeItemModel {
   final String? sentenceCompletionOption2;
   final String? sentenceCompletionOption3;
   final String? imageAssetPath;
+  final int? timeLimitSeconds;
 
   PracticeItemModel({
     required this.wordId,
@@ -61,6 +62,7 @@ class PracticeItemModel {
     this.sentenceCompletionOption2,
     this.sentenceCompletionOption3,
     this.imageAssetPath,
+    this.timeLimitSeconds,
   });
 
   Map<String, dynamic> toJson() {
@@ -85,6 +87,7 @@ class PracticeItemModel {
       'sentenceCompletionOption2': sentenceCompletionOption2,
       'sentenceCompletionOption3': sentenceCompletionOption3,
       'imageAssetPath': imageAssetPath,
+      'timeLimitSeconds': timeLimitSeconds,
     };
   }
 
@@ -114,6 +117,7 @@ class PracticeItemModel {
       sentenceCompletionOption2: _readSentenceCompletionOption(json, sentenceCompletionOptions, 1),
       sentenceCompletionOption3: _readSentenceCompletionOption(json, sentenceCompletionOptions, 2),
       imageAssetPath: json['imageAssetPath'],
+      timeLimitSeconds: json['timeLimitSeconds'] as int?,
     );
   }
 

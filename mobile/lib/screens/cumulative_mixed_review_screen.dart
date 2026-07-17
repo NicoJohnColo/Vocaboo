@@ -38,6 +38,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Map<String, dynamic>? _pendingSavedState;
   bool _showResumePrompt = false;
   bool _showFailurePrompt = false;
+  Map<String, String> _wordDifficulties = {};
   final List<Map<String, dynamic>> _retryQueue = [];
   int _firstPassCorrectCount = 0;
   double? _failedFinalScore;
@@ -132,22 +133,41 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_scramble'.hashCode));
     } else if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
       final correct = (item['word'] ?? '').toString();
+      final level = _wordDifficulties[(item['wordId'] ?? '').toString()] ?? 'LEARNING';
+      int distractorCount = 3;
+      if (level == 'LEARNING') {
+        distractorCount = 2;
+      } else if (level == 'FAMILIAR' || level == 'PROFICIENT') {
+        distractorCount = 3;
+      } else if (level == 'MASTERED') {
+        distractorCount = 4;
+      }
+
       final provided = [
         item['mcDistractor1'],
         item['mcDistractor2'],
         item['mcDistractor3'],
-      ].whereType<String>().where((value) => value.isNotEmpty).toList();
+      ].whereType<String>().where((value) => value.isNotEmpty && value != correct).toList();
 
-      final options = <String>[correct];
-      if (provided.isNotEmpty) {
-        options.addAll(provided.take(3));
-      } else {
-        final other = _reviewItems.map((e) => e['word']?.toString() ?? '').where((w) => w.isNotEmpty && w != correct).toList();
+      final distractors = <String>[...provided];
+      if (distractors.length < distractorCount) {
+        final other = _normalizedReviewItems
+            .map((e) => e['word']?.toString() ?? '')
+            .where((w) => w.isNotEmpty && w != correct && !distractors.contains(w))
+            .toList();
         other.shuffle();
-        for (var i = 0; i < min(3, other.length); i++) {
-          options.add(other[i]);
-        }
+        distractors.addAll(other);
       }
+      
+      if (distractors.length < distractorCount) {
+        final fallback = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog', 'sun', 'moon', 'star'];
+        final availableFallback = fallback
+            .where((w) => w != correct && !distractors.contains(w))
+            .toList()..shuffle();
+        distractors.addAll(availableFallback);
+      }
+
+      final options = <String>[correct, ...distractors.take(distractorCount)];
       options.shuffle(Random('${item['wordId'] ?? ''}_mc'.hashCode));
       _currentMcOptions = options;
     }
@@ -291,6 +311,20 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         'imageAssetPath': item['imageAssetPath'],
       };
     }).where((it) => (it['wordId'] ?? '').toString().isNotEmpty).toList();
+
+    // Fetch difficulty levels in parallel
+    final List<Future<void>> diffFutures = [];
+    final Map<String, String> diffMap = {};
+    for (final item in list) {
+      final wid = item['wordId'].toString();
+      diffFutures.add(lessons.getWordDifficulty(wid).then((level) {
+        diffMap[wid] = level;
+      }));
+    }
+    await Future.wait(diffFutures);
+    setState(() {
+      _wordDifficulties = diffMap;
+    });
 
     // Build queue: exactly 3 fixed activities per word (or 1 if sandbox), in order
     _queue.clear();
@@ -503,6 +537,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         : _reviewItems.map((it) => (it['wordId'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
     final cumulativeReviewScore = ScoringService.calculateCumulativeScore(_wordWrongAttempts, wordIds);
     _weightedScore = cumulativeReviewScore;
+    // NOTE: 70% is the mixed review mastery pass gate (UC-4.2).
+    // It is intentionally independent of the 80% gamification lesson-complete bonus threshold (UC-4.1).
     final passed = ScoringService.isPassing(cumulativeReviewScore);
 
     // Build per-word breakdown for storage
@@ -637,19 +673,71 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.replay_circle_filled_rounded, size: 72, color: Color(0xFFF59E0B)),
+                    const MascotVisual(type: MascotType.bibo, size: 90, isSad: true),
                     const SizedBox(height: 16),
                     const Text(
-                      'You are close, but not yet at mastery.',
+                      'Keep Trying!',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                     ),
-                    const SizedBox(height: 10),
                     Text(
                       'Final score: ${(_failedFinalScore ?? _weightedScore ?? 0.0).toStringAsFixed(1)}%. Pass at 70.0%.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 14, color: Color(0xFF475569), height: 1.4),
                     ),
+                    
+                    () {
+                      final missedItems = _reviewItems
+                          .where((it) {
+                            final wid = (it['wordId'] ?? '').toString();
+                            return _results[wid] == false;
+                          })
+                          .map((it) => (it['word'] ?? it['englishWord'] ?? '').toString())
+                          .where((w) => w.isNotEmpty)
+                          .toSet()
+                          .toList();
+
+                      if (missedItems.isEmpty) return const SizedBox.shrink();
+
+                      return Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Words Needing Review:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                              fontFamily: 'Outfit',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            alignment: WrapAlignment.center,
+                            children: missedItems.map((word) => Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFFCA5A5)),
+                              ),
+                              child: Text(
+                                word,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF991B1B),
+                                  fontFamily: 'Outfit',
+                                ),
+                              ),
+                            )).toList(),
+                          ),
+                        ],
+                      );
+                    }(),
+
                     const SizedBox(height: 18),
                     const Text(
                       'Retrying will rebuild the review queue and give you another full pass through the lesson content.',
@@ -682,7 +770,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                       icon: const Icon(Icons.visibility_rounded, size: 18),
                       label: const Text('View Score'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF06A6FF),
+                        backgroundColor: const Color(0xFFEF4444),
                         foregroundColor: Colors.white,
                         minimumSize: const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -705,7 +793,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                               await _startFresh();
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF06A6FF),
+                              backgroundColor: const Color(0xFFEF4444),
                               foregroundColor: Colors.white,
                             ),
                             child: const Text('Retry Review'),
@@ -785,6 +873,50 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final item = _queue[_currentIndex];
     final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
 
+    String? getLearnerSentenceRestatement() {
+      String learnerAns = '';
+      if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
+        if (_selectedOptionIndex != null && _selectedOptionIndex! >= 0 && _selectedOptionIndex! < _currentMcOptions.length) {
+          learnerAns = _currentMcOptions[_selectedOptionIndex!];
+        }
+      } else if (fmt == 'FILL_IN_THE_BLANK' || fmt == 'LISTENING_TYPING') {
+        learnerAns = _typingController.text.trim();
+      } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
+        return _assembledWords.join(' ');
+      }
+
+      if (fmt == 'FILL_IN_THE_BLANK') {
+        final sentence = (item['fitbSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, learnerAns.isEmpty ? '___' : learnerAns);
+          }
+          return '$sentence (Answer: $learnerAns)';
+        }
+      }
+      return null;
+    }
+
+    String? getCorrectSentenceRestatement() {
+      if (fmt == 'SENTENCE_RECONSTRUCTION') {
+        final answerTokens = _sentenceTokens(item);
+        return answerTokens.join(' ');
+      }
+      if (fmt == 'FILL_IN_THE_BLANK') {
+        final sentence = (item['fitbSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
+        final correctAns = (item['fitbAnswer'] ?? item['word'] ?? '').toString();
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, correctAns);
+          }
+          return '$sentence (Answer: $correctAns)';
+        }
+      }
+      return null;
+    }
+
     bool isActionEnabled = false;
     if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
       isActionEnabled = _selectedOptionIndex != null;
@@ -856,24 +988,55 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isAnswerCorrect ? 'Nice!' : 'Incorrect',
+                      _isAnswerCorrect ? 'Correct (+10 pts)' : 'Incorrect',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
                     ),
-                    if (!_isAnswerCorrect) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Correct answer: $_lastCorrectAnswer',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: textColor.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
+                    () {
+                      final learnerSentence = getLearnerSentenceRestatement();
+                      final correctSentence = getCorrectSentenceRestatement();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (learnerSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Your sentence: "$learnerSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                          if (!_isAnswerCorrect && correctSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct sentence: "$correctSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ] else if (!_isAnswerCorrect && correctSentence == null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct answer: $_lastCorrectAnswer',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }(),
                   ],
                 ),
               ),

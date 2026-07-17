@@ -17,4 +17,5 @@ public class PronunciationAttemptResponse {
     private Integer attemptNumber;
     private Boolean isInconclusive;
     private Double similarityScore;
+    private Boolean manualTeacherFallback;
 }

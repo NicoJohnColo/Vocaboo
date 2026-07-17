@@ -245,6 +245,28 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 15, color: Color(0xFF64748B), height: 1.5),
               ),
+              if (passed) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: const Text(
+                      '+50 bonus',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFB45309),
+                        fontFamily: 'Outfit',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 22),
 
               // ── Score tiles ──────────────────────────────────────────────
@@ -389,7 +411,7 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                   elevation: 0,
                 ),
                 child: Text(
-                  passed ? 'GO TO NEXT LESSON' : 'RETRY MODULE 4',
+                  passed ? 'Continue' : 'RETRY MODULE 4',
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
                 ),
               ),

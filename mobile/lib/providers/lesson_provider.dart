@@ -146,6 +146,22 @@ class LessonProvider with ChangeNotifier {
     return [];
   }
 
+  Future<String> getWordDifficulty(String wordId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/words/$wordId/difficulty'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['currentLevel'] ?? 'LEARNING';
+      }
+    } catch (e) {
+      debugPrint('Error getting word difficulty: $e');
+    }
+    return 'LEARNING';
+  }
+
   Future<List<VocabularyWordModel>> loadLocalV3Activity(String lessonId) async {
     try {
       final jsonStr = await rootBundle.loadString('assets/json/v3_activity_words.json');
@@ -264,6 +280,43 @@ class LessonProvider with ChangeNotifier {
       });
     } catch (e) {
       // Fail silently for fire-and-forget background sync
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadRetrievalQuestions(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/questions'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error loading retrieval questions: $e');
+    }
+    return [];
+  }
+
+  Future<void> submitRetrievalAnswer(String sessionId, String wordId, bool isCorrect) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/submit'),
+        headers: _headers,
+        body: json.encode({
+          'wordId': wordId,
+          'correct': isCorrect,
+        }),
+      );
+      if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error submitting retrieval answer: $e');
     }
   }
 
@@ -821,4 +874,58 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
+  /// Completes a mastery session on the backend, generating the summary and reward badge.
+  Future<Map<String, dynamic>?> completeMasterySession(String sessionId, String lessonId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/mastery/session/$sessionId/complete?lessonId=$lessonId'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.completeMasterySession error: $e');
+    }
+    return null;
+  }
+
+  /// Retrieves the session summary for a completed practice session.
+  Future<Map<String, dynamic>?> fetchSessionSummary(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/mastery/session/$sessionId/summary'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchSessionSummary error: $e');
+    }
+    return null;
+  }
+
+  /// Retrieves all earned badges for a learner.
+  Future<List<Map<String, dynamic>>> fetchLearnerBadges(String learnerId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/mastery/learners/$learnerId/badges'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerBadges error: $e');
+    }
+    return [];
+  }
 }

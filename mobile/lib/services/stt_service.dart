@@ -142,8 +142,11 @@ class SttService {
               DateTime.fromMillisecondsSinceEpoch((exp as int) * 1000);
           if (DateTime.now().isAfter(expiryDate)) {
             // Token is expired — refresh before proceeding.
-            await _tryRefreshToken();
-            return await _storage.read(key: 'access_token');
+            final refreshed = await _tryRefreshToken();
+            if (refreshed) {
+              final newTok = await _storage.read(key: 'access_token');
+              if (newTok != null) return newTok;
+            }
           }
         }
       }

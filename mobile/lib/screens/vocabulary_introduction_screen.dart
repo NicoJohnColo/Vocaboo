@@ -152,8 +152,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     // Sandbox should allow a single attempt but not persist penalties.
     _maxAttempts = widget.isSandbox ? 1 : 3;
 
-    // Auto-speak English word on start
-    _playWordAudio(currentWord);
+    // UC-3.1 Cebuano-first: auto-speak the Cebuano meaning on word init (Step 0).
+    // English TTS is reserved for Step 1 (phonology/reveal step).
+    _playCebuanoAudio(currentWord.cebuanoMeaning);
   }
 
   Future<void> _playWordAudio(VocabularyWordModel word) async {
@@ -916,7 +917,10 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
   Widget _buildFormAndMeaningCard(ThemeData theme, VocabularyWordModel word) {
     if (!_isFlipped) {
-      // Front of Flashcard
+      // ── Step 0 FRONT: Cebuano-first ──────────────────────────────
+      // UC-3.1: Show Cebuano word and Cebuano example sentence first.
+      // Cebuano TTS has already auto-played on entering this word.
+      // The learner's task is to think of the English equivalent.
       return Card(
         key: const ValueKey('front'),
         color: Colors.white,
@@ -928,20 +932,25 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
-                'Guess the Cebuano meaning',
+                'What is this word in English?',
                 style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 0.5),
               ),
-              const SizedBox(height: 36),
+              const SizedBox(height: 32),
+              // Cebuano word — primary display
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    word.englishWord,
-                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.black87),
+                  Flexible(
+                    child: Text(
+                      word.cebuanoMeaning,
+                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
-                    onPressed: _isPlayingAudio ? null : _speakWord,
+                    icon: Icon(Icons.volume_up_rounded,
+                        color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 28),
+                    onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
                   ),
                 ],
               ),
@@ -952,15 +961,41 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
                 ),
               ],
-              const SizedBox(height: 48),
+              if (word.exampleSentenceCebuano != null &&
+                  word.exampleSentenceCebuano!.trim().isNotEmpty) ...[
+                const SizedBox(height: 20),
+                const Divider(color: Color(0xFFE6E7EA)),
+                const SizedBox(height: 12),
+                const Text(
+                  'CEBUANO EXAMPLE',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6B7280),
+                      letterSpacing: 0.5),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  word.exampleSentenceCebuano!,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155),
+                      height: 1.4),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const SizedBox(height: 36),
               ElevatedButton.icon(
                 onPressed: () {
                   setState(() {
                     _isFlipped = true;
                   });
+                  // UC-3.1: Play English TTS on flip to reveal English word
+                  _playWordAudio(word);
                 },
                 icon: const Icon(Icons.flip_to_back_rounded),
-                label: const Text('FLIP CARD'),
+                label: const Text('REVEAL IN ENGLISH'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0F172A),
                   foregroundColor: Colors.white,
@@ -974,7 +1009,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       );
     }
 
-    // Back of Flashcard
+    // ── Step 0 BACK: English reveal ───────────────────────────────
+    // English word is now the reveal after seeing Cebuano first.
+    // English TTS has already played when the learner tapped REVEAL.
     return Card(
       key: const ValueKey('back'),
       color: Colors.white,
@@ -986,7 +1023,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Show image if available
+              // Image (if available)
               if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
@@ -1003,21 +1040,37 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
+                      child: const Center(
+                          child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
+              // English word — revealed
+              const Text(
+                'In English, this is:',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6B7280),
+                    letterSpacing: 0.4),
+              ),
+              const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    word.englishWord,
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
+                  Flexible(
+                    child: Text(
+                      word.englishWord,
+                      style: const TextStyle(
+                          fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
+                    icon: Icon(Icons.volume_up_rounded,
+                        color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
                     onPressed: _isPlayingAudio ? null : _speakWord,
                   ),
                 ],
@@ -1033,52 +1086,29 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               const Divider(color: Color(0xFFE6E7EA)),
               const SizedBox(height: 12),
               Text(
-                LocalizationService.translate(_pref, 'cebuano_meaning'),
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      word.cebuanoMeaning,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 26),
-                    onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: Color(0xFFE6E7EA)),
-              const SizedBox(height: 12),
-              Text(
                 LocalizationService.translate(_pref, 'english_example'),
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6B7280),
+                    letterSpacing: 0.5),
               ),
               const SizedBox(height: 6),
               Text(
                 word.exampleSentenceEnglish,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.4),
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                    height: 1.4),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 4),
               IconButton(
-                icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
+                icon: Icon(Icons.volume_up_rounded,
+                    color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
                 onPressed: _isPlayingAudio ? null : _speakSentence,
               ),
-              if (word.exampleSentenceCebuano != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  word.exampleSentenceCebuano!,
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF475569), fontStyle: FontStyle.italic),
-                  textAlign: TextAlign.center,
-                ),
-              ],
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: () {
@@ -1087,7 +1117,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   });
                 },
                 icon: const Icon(Icons.flip_to_front_rounded),
-                label: const Text('FLIP BACK'),
+                label: const Text('REVIEW CEBUANO'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF64748B),
                   foregroundColor: Colors.white,
@@ -1158,7 +1188,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                       ? 'Sounds good!' 
                       : (_attemptResult!.isInconclusive 
                           ? "Speech couldn't be recognized. Please try again." 
-                          : 'Try saying it again'),
+                          : 'Try saying it again (Attempt $_attemptNumber/3)'),
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1381,10 +1411,18 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
     String buttonText = 'FLIP CARD';
     if (_currentStep == 0 && _isFlipped) buttonText = 'GOT IT';
-    if (_currentStep == 1) buttonText = 'CONTINUE';
+    if (_currentStep == 1) {
+      if (_attemptResult != null && _attemptResult!.isCorrect == false && _attemptNumber >= 3) {
+        buttonText = 'TEACHER SKIP';
+      } else {
+        buttonText = 'CONTINUE';
+      }
+    }
 
-    // Allow continue at any time (mic is optional)
-    final bool canContinue = _currentStep == 0 ? _isFlipped : true;
+    // Require correct pronunciation or 3 failed attempts to continue step 1
+    final bool canContinue = _currentStep == 0 
+        ? _isFlipped 
+        : (_attemptResult != null && (_attemptResult!.isCorrect == true || _attemptNumber >= 3));
 
     return Column(
       mainAxisSize: MainAxisSize.min,

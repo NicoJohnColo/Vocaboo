@@ -29,6 +29,7 @@ public class PronunciationService {
 
     private final DeepgramSpeechService deepgramSpeechService;
     private final PronunciationEvaluationService pronunciationEvaluationService;
+    private final PhoneticFeedbackService phoneticFeedbackService;
 
     String detectContentType(String audioBase64) {
         if (audioBase64 == null) {
@@ -151,6 +152,7 @@ public class PronunciationService {
         String transcript = null;
         Double confidence = null;
         String apiError = null;
+        boolean isInconclusive = false;
         long startTime = System.currentTimeMillis();
 
         try {
@@ -164,10 +166,13 @@ public class PronunciationService {
                 isCorrect = evalResult.isCorrect();
                 similarityScore = evalResult.getSimilarityScore();
                 System.out.println("Deepgram evaluation completed for target: '" + request.getTargetWord() + "' -> clean transcript: '" + transcript + "', isCorrect=" + isCorrect);
+            } else {
+                isInconclusive = true;
             }
         } catch (Exception e) {
             apiError = e.getClass().getSimpleName() + ": " + e.getMessage();
-            throw e;
+            isInconclusive = true;
+            log.warn("Deepgram Speech-to-Text ASR failed gracefully: {}", apiError);
         } finally {
             long responseTimeMs = System.currentTimeMillis() - startTime;
             logAttempt(learner.getLearnerId(), request.getTargetWord(), transcript, confidence, similarityScore, isCorrect, responseTimeMs, apiError);
@@ -177,9 +182,16 @@ public class PronunciationService {
         String phonologicalTip = null;
 
         if (!isCorrect && word.getPhonologicalTipKey() != null) {
-            Map<LanguageMedium, String> tipsByLang = TIPS_MAP.get(word.getPhonologicalTipKey());
-            if (tipsByLang != null) {
-                phonologicalTip = tipsByLang.getOrDefault(learner.getLanguagePreference(), tipsByLang.get(LanguageMedium.FULL_ENGLISH));
+            // First check the dynamic tip service
+            if (phoneticFeedbackService != null) {
+                phonologicalTip = phoneticFeedbackService.getTip(word.getPhonologicalTipKey(), learner.getLanguagePreference());
+            }
+            // Fall back to static map if tip is not found in DB
+            if (phonologicalTip == null) {
+                Map<LanguageMedium, String> tipsByLang = TIPS_MAP.get(word.getPhonologicalTipKey());
+                if (tipsByLang != null) {
+                    phonologicalTip = tipsByLang.getOrDefault(learner.getLanguagePreference(), tipsByLang.get(LanguageMedium.FULL_ENGLISH));
+                }
             }
         }
 
@@ -194,12 +206,14 @@ public class PronunciationService {
                 .targetWord(request.getTargetWord())
                 .isCorrect(isCorrect)
                 .attemptNumber(request.getAttemptNumber())
-                .isInconclusive(false)
+                .isInconclusive(isInconclusive)
                 .build();
 
         // Adjust column mapping for standard targetWord if JPA generated it
         attempt.setTargetWord(request.getTargetWord());
         attemptRepository.save(attempt);
+
+        boolean manualTeacherFallback = !isCorrect && (request.getAttemptNumber() >= 3);
 
         return PronunciationAttemptResponse.builder()
                 .attemptId(attempt.getAttemptId())
@@ -208,8 +222,9 @@ public class PronunciationService {
                 .phoneticTarget(phoneticTarget)
                 .phonologicalTip(phonologicalTip)
                 .attemptNumber(request.getAttemptNumber())
-                .isInconclusive(false)
+                .isInconclusive(isInconclusive)
                 .similarityScore(similarityScore)
+                .manualTeacherFallback(manualTeacherFallback)
                 .build();
     }
 

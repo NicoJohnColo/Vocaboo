@@ -39,6 +39,10 @@ public class Learner {
     @Builder.Default
     private Boolean onboardingComplete = false;
 
+    @Column(name = "mastery_apply_immediately", nullable = false)
+    @Builder.Default
+    private Boolean masteryApplyImmediately = true;
+
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();

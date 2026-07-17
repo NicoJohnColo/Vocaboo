@@ -95,6 +95,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   late DateTime _sessionStartTime;
   Duration _elapsedDuration = Duration.zero;
   Timer? _elapsedTimerInstance;
+  Timer? _questionTimer;
+  int _secondsRemaining = 0;
 
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes.toString().padLeft(2, '0');
@@ -120,6 +122,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   @override
   void dispose() {
     _elapsedTimerInstance?.cancel();
+    _questionTimer?.cancel();
     _typingController.dispose();
     super.dispose();
   }
@@ -145,7 +148,67 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
     } else {
       // Build new session queue
-      _buildPracticeQueue();
+      if (widget.isSandbox) {
+        _buildPracticeQueue();
+      } else {
+        final provider = Provider.of<LessonProvider>(context, listen: false);
+        final backendQuestions = await provider.loadRetrievalQuestions(widget.sessionId);
+        _practiceQueue = backendQuestions.map((q) {
+          final formatStr = q['activityFormat'] as String? ?? 'MULTIPLE_CHOICE';
+          ActivityFormat format;
+          switch (formatStr) {
+            case 'MULTIPLE_CHOICE':
+              format = ActivityFormat.multipleChoice;
+              break;
+            case 'FILL_IN_BLANK':
+              format = ActivityFormat.fillInTheBlank;
+              break;
+            case 'MATCHING':
+              format = ActivityFormat.matching;
+              break;
+            case 'SENTENCE_ARRANGEMENT':
+              format = ActivityFormat.rearrangement;
+              break;
+            default:
+              format = ActivityFormat.multipleChoice;
+          }
+
+          final options = List<String>.from(q['options'] ?? []);
+          final correctAnswer = q['correctAnswer'] as String? ?? '';
+          final distractors = options.where((o) => o != correctAnswer).toList();
+          final scrambledTokens = List<String>.from(q['scrambledTokens'] ?? []);
+
+          List<Map<String, dynamic>>? matchingSet;
+          if (q['matchingPairs'] != null) {
+            matchingSet = (q['matchingPairs'] as List<dynamic>)
+                .map((e) => {
+                      'englishWord': e['english'],
+                      'cebuanoMeaning': e['cebuano'],
+                    })
+                .toList();
+          }
+
+          return PracticeItemModel(
+            wordId: q['wordId'],
+            englishWord: q['englishWord'] ?? '',
+            cebuanoMeaning: q['cebuanoMeaning'] ?? '',
+            exampleSentenceEnglish: q['questionText'] ?? '',
+            exampleSentenceCebuano: q['cebuanoMeaning'],
+            activityFormat: format,
+            distractors: distractors,
+            mcDistractor1: distractors.isNotEmpty ? distractors[0] : null,
+            mcDistractor2: distractors.length > 1 ? distractors[1] : null,
+            mcDistractor3: distractors.length > 2 ? distractors[2] : null,
+            fitbSentence: q['questionText'],
+            fitbAnswer: correctAnswer,
+            matchingSet: matchingSet,
+            sentenceArrangementTokens: scrambledTokens,
+            imageAssetPath: q['imageAssetPath'],
+            timeLimitSeconds: q['timeLimitSeconds'] as int?,
+          );
+        }).toList();
+      }
+      
       _currentIndex = 0;
       _completedScreens = 0;
       _plannedScreens = _practiceQueue.length;
@@ -369,6 +432,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   void _loadCurrentItemState() {
+    _questionTimer?.cancel();
+    _secondsRemaining = 0;
     _checked = false;
     _showFeedback = false;
     _selectedOptionIndex = -1;
@@ -381,77 +446,60 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     if (_currentIndex >= _practiceQueue.length) return;
     final item = _practiceQueue[_currentIndex];
 
-        if (item.activityFormat == ActivityFormat.multipleChoice ||
-            item.activityFormat == ActivityFormat.imageMatching) {
-          final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
-          
-          // Ensure correct answer is a single word, not a sentence
-          var correctAnswer = item.englishWord;
-          if (correctAnswer.split(RegExp(r'\s+')).length > 2 || correctAnswer.contains('__') || correctAnswer.contains('.')) {
-            // Backend sent a sentence - extract first word as fallback
-            correctAnswer = correctAnswer.split(RegExp(r'\s+'))[0].replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
-            debugPrint('WARNING: Correct answer was sentence, using first word: $correctAnswer');
-          }
-          
-          debugPrint('MC: correctAnswer="$correctAnswer", distractors=$distractors');
-          _options = [correctAnswer, ...distractors];
-          
-          // FINAL FILTER: Remove any sentences that slipped through
-          _options = _options.where((opt) {
-            final wordCount = opt.trim().split(RegExp(r'\s+')).length;
-            final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
-            if (isSentence) {
-              debugPrint('FINAL FILTER: Removing sentence from options: "$opt"');
-            }
-            return !isSentence;
-          }).toList();
-          
-          // Ensure we have 4 options - pad with fallbacks if needed
-          if (_options.length < 4) {
-            final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
-            final needed = 4 - _options.length;
-            final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
-            _options.addAll(available.take(needed));
-            debugPrint('Padded options with $needed fallbacks');
-          }
-          
-          _options.shuffle(Random(item.wordId.hashCode)); // consistent shuffle for this word
-          debugPrint('MC options before render: $_options');
-    } else if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+    if (item.activityFormat == ActivityFormat.multipleChoice ||
+        item.activityFormat == ActivityFormat.imageMatching) {
       final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
       
-      // Use fitbAnswer as the correct option if available, otherwise fall back to englishWord
-      var correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
-          ? item.fitbAnswer!
-          : item.englishWord;
-      
       // Ensure correct answer is a single word, not a sentence
-      if (correctOption.split(RegExp(r'\s+')).length > 2 || correctOption.contains('__') || correctOption.contains('.')) {
-        // Backend sent a sentence - use the target vocabulary word instead
-        correctOption = item.englishWord;
-        debugPrint('FITB: backend sent sentence, using target word as correct answer: $correctOption');
+      var correctAnswer = item.englishWord;
+      if (correctAnswer.split(RegExp(r'\s+')).length > 2 || correctAnswer.contains('__') || correctAnswer.contains('.')) {
+        correctAnswer = correctAnswer.split(RegExp(r'\s+'))[0].replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+        debugPrint('WARNING: Correct answer was sentence, using first word: $correctAnswer');
       }
       
-      debugPrint('FITB: correctAnswer="$correctOption", distractors=$distractors');
-      _options = [correctOption, ...distractors];
+      debugPrint('MC: correctAnswer="$correctAnswer", distractors=$distractors');
+      _options = [correctAnswer, ...distractors];
       
-      // FINAL FILTER: Remove any sentences that slipped through
       _options = _options.where((opt) {
         final wordCount = opt.trim().split(RegExp(r'\s+')).length;
         final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
-        if (isSentence) {
-          debugPrint('FINAL FILTER: Removing sentence from FITB options: "$opt"');
-        }
         return !isSentence;
       }).toList();
       
-      // Ensure we have 4 options - pad with fallbacks if needed
       if (_options.length < 4) {
         final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
         final needed = 4 - _options.length;
         final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
         _options.addAll(available.take(needed));
-        debugPrint('Padded FITB options with $needed fallbacks');
+      }
+      
+      _options.shuffle(Random(item.wordId.hashCode));
+      debugPrint('MC options before render: $_options');
+    } else if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+      final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
+      
+      var correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+          ? item.fitbAnswer!
+          : item.englishWord;
+      
+      if (correctOption.split(RegExp(r'\s+')).length > 2 || correctOption.contains('__') || correctOption.contains('.')) {
+        correctOption = item.englishWord;
+      }
+      
+      debugPrint('FITB: correctAnswer="$correctOption", distractors=$distractors');
+      _options = [correctOption, ...distractors];
+      
+      _options = _options.where((opt) {
+        final wordCount = opt.trim().split(RegExp(r'\s+')).length;
+        final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
+        return !isSentence;
+      }).toList();
+      
+      if (_options.length < 4) {
+        final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
+        final needed = 4 - _options.length;
+        final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
+        _options.addAll(available.take(needed));
       }
       
       _options.shuffle(Random(item.wordId.hashCode));
@@ -470,6 +518,38 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
       _assembledTokens = [];
     }
+
+    if (item.timeLimitSeconds != null && item.timeLimitSeconds! > 0) {
+      _startQuestionTimer(item.timeLimitSeconds!);
+    }
+  }
+
+  void _startQuestionTimer(int seconds) {
+    _questionTimer?.cancel();
+    _secondsRemaining = seconds;
+    _questionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_secondsRemaining > 1) {
+          _secondsRemaining--;
+        } else {
+          _secondsRemaining = 0;
+          _questionTimer?.cancel();
+          _handleTimeout();
+        }
+      });
+    });
+  }
+
+  void _handleTimeout() {
+    if (_checked) return;
+    setState(() {
+      _selectedOptionIndex = -1;
+      _checked = true;
+      _isAnswerCorrect = false;
+      _showFeedback = true;
+      _lastCorrectAnswer = _practiceQueue[_currentIndex].englishWord;
+    });
   }
 
   Future<void> _saveCurrentState() async {
@@ -575,7 +655,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     String correctAns = item.englishWord;
 
     if (item.activityFormat == ActivityFormat.multipleChoice ||
-        item.activityFormat == ActivityFormat.fillInTheBlank ||
+        (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isNotEmpty) ||
         item.activityFormat == ActivityFormat.imageMatching) {
       if (_selectedOptionIndex == -1) return;
       if (_selectedOptionIndex < 0 || _selectedOptionIndex >= _options.length) {
@@ -602,7 +682,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       
       debugPrint('FITB check: selected="$learnerAns", comparing against="$fitbCorrect"');
       correct = (learnerAns.toLowerCase() == fitbCorrect.toLowerCase());
-    } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+      correctAns = fitbCorrect;
+    } else if (item.activityFormat == ActivityFormat.listeningTyping ||
+               (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty)) {
       learnerAns = _typingController.text.trim();
       // Use single-word target for comparison. If fitbAnswer is multi-word, fall back to englishWord.
       String correctTarget = (item.fitbAnswer ?? '').trim();
@@ -683,14 +765,14 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     // keep the evaluated correct answer for display in the feedback panel
     _lastCorrectAnswer = correctAns;
     debugPrint('CHECK_ANS item=${item.wordId} format=${item.activityFormat} assembled=${_assembledTokens.join(' ')} target="$correctAns" normalizedCorrect=$correct');
+    _questionTimer?.cancel();
     await LocalStorageService.saveEvaluationResult(widget.sessionId, result);
 
     if (!widget.isSandbox) {
-      provider.submitReviewItem(
-        sessionId: widget.sessionId,
-        wordId: item.wordId,
-        isCorrect: correct,
-        confidence: 3,
+      await provider.submitRetrievalAnswer(
+        widget.sessionId,
+        item.wordId,
+        correct,
       );
     }
 
@@ -970,7 +1052,48 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                       isSad: _checked && !_isAnswerCorrect,
                       isCelebrating: _checked && _isAnswerCorrect,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    if (item.timeLimitSeconds != null && item.timeLimitSeconds! > 0 && !_checked) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Time Remaining:',
+                                  style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                Text(
+                                  '${_secondsRemaining}s',
+                                  style: TextStyle(
+                                    color: _secondsRemaining <= 5 ? Colors.redAccent : const Color(0xFF06A6FF),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: item.timeLimitSeconds! > 0 ? (_secondsRemaining / item.timeLimitSeconds!) : 0.0,
+                                backgroundColor: const Color(0xFFE2E8F0),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  _secondsRemaining <= 5 ? Colors.redAccent : const Color(0xFF06A6FF),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                    ],
                     
                     // Main Activity Body
                     _buildActivityBody(item),
@@ -1336,29 +1459,52 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     Color blankColor = const Color(0xFF94A3B8);
     Color blankBgColor = const Color(0xFFF1F5F9);
 
-    if (_selectedOptionIndex != -1) {
-      if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
-        blankText = _options[_selectedOptionIndex];
-      } else {
-        blankText = '_______';
+    if (_options.isNotEmpty) {
+      if (_selectedOptionIndex != -1) {
+        if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
+          blankText = _options[_selectedOptionIndex];
+        } else {
+          blankText = '_______';
+        }
+        blankColor = const Color(0xFF3B82F6);
+        blankBgColor = const Color(0xFFEFF6FF);
       }
-      blankColor = const Color(0xFF3B82F6);
-      blankBgColor = const Color(0xFFEFF6FF);
-    }
 
-    if (_checked) {
-      if (!(_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length)) {
-        // invalid selected index; treat as not selected for coloring
-      } else {
-        final selectedOption = _options[_selectedOptionIndex];
-        // Use the same sentence-detection logic as answer checking
+      if (_checked) {
+        if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
+          final selectedOption = _options[_selectedOptionIndex];
+          String targetForColor = target;
+          if (targetForColor.split(RegExp(r'\s+')).length > 2 || 
+              targetForColor.contains('__') || 
+              targetForColor.contains('.')) {
+            targetForColor = item.englishWord;
+          }
+          final isCorrect = selectedOption.toLowerCase() == targetForColor.toLowerCase();
+          if (isCorrect) {
+            blankColor = const Color(0xFF22C55E);
+            blankBgColor = const Color(0xFFF0FDF4);
+          } else {
+            blankColor = const Color(0xFFEF4444);
+            blankBgColor = const Color(0xFFFEF2F2);
+          }
+        }
+      }
+    } else {
+      if (_typingController.text.trim().isNotEmpty) {
+        blankText = _typingController.text.trim();
+        blankColor = const Color(0xFF3B82F6);
+        blankBgColor = const Color(0xFFEFF6FF);
+      }
+
+      if (_checked) {
+        final typedText = _typingController.text.trim();
         String targetForColor = target;
         if (targetForColor.split(RegExp(r'\s+')).length > 2 || 
             targetForColor.contains('__') || 
             targetForColor.contains('.')) {
           targetForColor = item.englishWord;
         }
-        final isCorrect = selectedOption.toLowerCase() == targetForColor.toLowerCase();
+        final isCorrect = typedText.toLowerCase() == targetForColor.toLowerCase();
         if (isCorrect) {
           blankColor = const Color(0xFF22C55E);
           blankBgColor = const Color(0xFFF0FDF4);
@@ -1427,35 +1573,63 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        // Options List
-        ...List.generate(_options.length, (index) {
-          final option = _options[index];
-          final isSelected = _selectedOptionIndex == index;
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: OutlinedButton(
-              onPressed: _checked ? null : () => _selectMcOption(index),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: isSelected ? const Color(0xFF3B82F6) : Colors.white,
-                side: BorderSide(
-                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
-                  width: 2,
+        // Options List or Typing Input
+        if (_options.isEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: TextField(
+              controller: _typingController,
+              enabled: !_checked,
+              onChanged: (val) {
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: 'Type the missing word here...',
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Text(
-                option,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
                 ),
               ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
             ),
-          );
-        }),
+          ),
+        ] else ...[
+          ...List.generate(_options.length, (index) {
+            final option = _options[index];
+            final isSelected = _selectedOptionIndex == index;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: OutlinedButton(
+                onPressed: _checked ? null : () => _selectMcOption(index),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: isSelected ? const Color(0xFF3B82F6) : Colors.white,
+                  side: BorderSide(
+                    color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                    width: 2,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  option,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? Colors.white : const Color(0xFF334155),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
       ],
     );
   }
@@ -1725,16 +1899,66 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
       return item.englishWord;
     }
+
+    String? getLearnerSentenceRestatement() {
+      String learnerAns = '';
+      if (item.activityFormat == ActivityFormat.multipleChoice ||
+          (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isNotEmpty) ||
+          item.activityFormat == ActivityFormat.imageMatching) {
+        if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
+          learnerAns = _options[_selectedOptionIndex];
+        }
+      } else if (item.activityFormat == ActivityFormat.listeningTyping ||
+                 (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty)) {
+        learnerAns = _typingController.text.trim();
+      } else if (item.activityFormat == ActivityFormat.rearrangement) {
+        return _assembledTokens.join(' ');
+      }
+
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        final sentence = item.fitbSentence ?? item.sentenceCompletionSentence ?? '';
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, learnerAns.isEmpty ? '___' : learnerAns);
+          }
+          return '$sentence (Answer: $learnerAns)';
+        }
+      }
+      return null;
+    }
+
+    String? getCorrectSentenceRestatement() {
+      if (item.activityFormat == ActivityFormat.rearrangement) {
+        final tokens = item.sentenceArrangementTokens ?? item.exampleSentenceEnglish.split(RegExp(r'\s+'));
+        return tokens.map((t) => t.toString().trim()).where((t) => t.isNotEmpty).join(' ').trim();
+      }
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        final sentence = item.fitbSentence ?? item.sentenceCompletionSentence ?? '';
+        final correctAns = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+            ? item.fitbAnswer!
+            : item.englishWord;
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, correctAns);
+          }
+          return '$sentence (Answer: $correctAns)';
+        }
+      }
+      return null;
+    }
     
     // Determine button enabling
     bool isActionEnabled = false;
     if (item.activityFormat == ActivityFormat.multipleChoice ||
-        item.activityFormat == ActivityFormat.fillInTheBlank ||
+        (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isNotEmpty) ||
         item.activityFormat == ActivityFormat.imageMatching) {
       isActionEnabled = _selectedOptionIndex != -1;
     } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       isActionEnabled = _currentMatches.length == _matchingCebuanoList.length;
-    } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+    } else if (item.activityFormat == ActivityFormat.listeningTyping ||
+               (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty)) {
       isActionEnabled = _typingController.text.trim().isNotEmpty;
     } else if (item.activityFormat == ActivityFormat.flashcardRecall) {
       isActionEnabled = _flashcardFlipped;
@@ -1798,24 +2022,55 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isAnswerCorrect ? 'Nice!' : 'Incorrect. Review and continue.',
+                      _isAnswerCorrect ? 'Correct (+10 pts)' : 'Incorrect. Review and continue.',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
                     ),
-                    if (!_isAnswerCorrect) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Correct answer: ${correctAnswerText()}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: textColor.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
+                    () {
+                      final learnerSentence = getLearnerSentenceRestatement();
+                      final correctSentence = getCorrectSentenceRestatement();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (learnerSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Your sentence: "$learnerSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                          if (!_isAnswerCorrect && correctSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct sentence: "$correctSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ] else if (!_isAnswerCorrect && correctSentence == null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct answer: ${correctAnswerText()}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }(),
                   ],
                 ),
               ),

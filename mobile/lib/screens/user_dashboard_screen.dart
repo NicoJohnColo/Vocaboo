@@ -15,14 +15,20 @@ class UserDashboardScreen extends StatefulWidget {
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
   Future<Map<String, dynamic>?>? _dashboardFuture;
+  Future<List<Map<String, dynamic>>>? _badgesFuture;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
       final provider = Provider.of<LessonProvider>(context, listen: false);
       setState(() {
         _dashboardFuture = provider.fetchDashboardProgress();
+        final learnerId = auth.learner?.learnerId;
+        if (learnerId != null) {
+          _badgesFuture = provider.fetchLearnerBadges(learnerId);
+        }
       });
     });
   }
@@ -154,6 +160,96 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+
+                  // ── Badges Section ─────────────────────────────────────
+                  if (_badgesFuture != null)
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _badgesFuture,
+                      builder: (context, badgeSnap) {
+                        if (badgeSnap.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.only(bottom: 24),
+                            child: Center(
+                                child: CircularProgressIndicator(strokeWidth: 2)),
+                          );
+                        }
+                        final badges = badgeSnap.data ?? [];
+                        if (badges.isEmpty) return const SizedBox.shrink();
+
+                        // Count by tier
+                        int perfectGold = 0, gold = 0, silver = 0, bronze = 0;
+                        for (final b in badges) {
+                          switch (b['badgeType']) {
+                            case 'PERFECT_GOLD': perfectGold++; break;
+                            case 'GOLD': gold++; break;
+                            case 'SILVER': silver++; break;
+                            default: bronze++;
+                          }
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Lesson Badges',
+                                style: TextStyle(
+                                  fontFamily: 'Outfit',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  if (perfectGold > 0)
+                                    _BadgePill(
+                                      emoji: '🏆',
+                                      label: 'Perfect Gold',
+                                      count: perfectGold,
+                                      color: const Color(0xFFCA8A04),
+                                      bg: const Color(0xFFFEF9C3),
+                                      border: const Color(0xFFFDE047),
+                                    ),
+                                  if (gold > 0)
+                                    _BadgePill(
+                                      emoji: '🥇',
+                                      label: 'Gold',
+                                      count: gold,
+                                      color: const Color(0xFFD97706),
+                                      bg: const Color(0xFFFFFBEB),
+                                      border: const Color(0xFFFCD34D),
+                                    ),
+                                  if (silver > 0)
+                                    _BadgePill(
+                                      emoji: '🥈',
+                                      label: 'Silver',
+                                      count: silver,
+                                      color: const Color(0xFF475569),
+                                      bg: const Color(0xFFF1F5F9),
+                                      border: const Color(0xFFCBD5E1),
+                                    ),
+                                  if (bronze > 0)
+                                    _BadgePill(
+                                      emoji: '🥉',
+                                      label: 'Bronze',
+                                      count: bronze,
+                                      color: const Color(0xFF92400E),
+                                      bg: const Color(0xFFFFF7ED),
+                                      border: const Color(0xFFFED7AA),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
                   Row(
                     children: [
                       Expanded(
@@ -304,6 +400,54 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         Text(label, style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
         Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
       ],
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Badge Pill chip widget
+// ────────────────────────────────────────────────────────────────
+class _BadgePill extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final int count;
+  final Color color;
+  final Color bg;
+  final Color border;
+
+  const _BadgePill({
+    required this.emoji,
+    required this.label,
+    required this.count,
+    required this.color,
+    required this.bg,
+    required this.border,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 18)),
+          const SizedBox(width: 6),
+          Text(
+            '$count × $label',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

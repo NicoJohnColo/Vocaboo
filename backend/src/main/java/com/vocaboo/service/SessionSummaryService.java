@@ -122,6 +122,8 @@ public class SessionSummaryService {
 
         int totalPointsEarned = basePoints + bonusPoints;
 
+        int starsEarned = PracticeSessionService.calculateStars(accuracy);
+
         SessionSummary summary = SessionSummary.builder()
                 .learner(learner)
                 .sessionId(sessionId)
@@ -133,6 +135,7 @@ public class SessionSummaryService {
                 .accuracyRate(accuracy)
                 .demeritPoints(demerits)
                 .pointsEarned(totalPointsEarned)
+                .starsEarned(starsEarned)
                 .build();
 
         return summaryRepository.save(summary);

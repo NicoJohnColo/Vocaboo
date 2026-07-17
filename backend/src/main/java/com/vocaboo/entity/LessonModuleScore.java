@@ -49,6 +49,10 @@ public class LessonModuleScore {
     @Builder.Default
     private BigDecimal score = BigDecimal.ZERO;
 
+    @Column(name = "stars_earned", nullable = false)
+    @Builder.Default
+    private Integer starsEarned = 0;
+
     @Column(name = "recorded_at", updatable = false)
     @Builder.Default
     private OffsetDateTime recordedAt = OffsetDateTime.now();

@@ -18,6 +18,7 @@ public class PracticeSessionResponse {
     private UUID lessonId;
     private Integer moduleNumber;
     private BigDecimal score;
+    private Integer starsEarned;
     private OffsetDateTime completedAt;
     private OffsetDateTime createdAt;
 }

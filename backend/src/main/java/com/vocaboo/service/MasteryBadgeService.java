@@ -40,8 +40,8 @@ public class MasteryBadgeService {
         for (VocabularyWord word : words) {
             WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
                     .orElse(null);
-            int incorrect = perf != null ? perf.getIncorrectCount() : 0;
-            totalDemerits += incorrect * 2;
+            int demerits = (perf != null && perf.getDemeritPoints() != null) ? perf.getDemeritPoints() : (perf != null ? perf.getIncorrectCount() * 2 : 0);
+            totalDemerits += demerits;
 
             DifficultyProgress diff = difficultyRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
                     .orElse(null);

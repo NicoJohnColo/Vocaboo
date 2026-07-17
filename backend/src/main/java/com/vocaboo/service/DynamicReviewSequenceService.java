@@ -28,8 +28,8 @@ public class DynamicReviewSequenceService {
                     WordPerformance p2 = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, w2.getWordId())
                             .orElse(null);
 
-                    int demerits1 = p1 != null ? p1.getIncorrectCount() * 2 : 0;
-                    int demerits2 = p2 != null ? p2.getIncorrectCount() * 2 : 0;
+                    int demerits1 = p1 != null && p1.getDemeritPoints() != null ? p1.getDemeritPoints() : (p1 != null ? p1.getIncorrectCount() * 2 : 0);
+                    int demerits2 = p2 != null && p2.getDemeritPoints() != null ? p2.getDemeritPoints() : (p2 != null ? p2.getIncorrectCount() * 2 : 0);
 
                     // Most demerits first
                     return Integer.compare(demerits2, demerits1);

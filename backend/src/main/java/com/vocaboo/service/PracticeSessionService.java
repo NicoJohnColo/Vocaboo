@@ -129,6 +129,7 @@ public class PracticeSessionService {
         BigDecimal accuracy = BigDecimal.valueOf(performance.getCorrectCount() * 100.0 / performance.getTotalAttempts())
                 .setScale(2, RoundingMode.HALF_UP);
         performance.setAccuracy(accuracy);
+        performance.setDemeritPoints(performance.getIncorrectCount() * 2);
         performance.setLastPracticedAt(OffsetDateTime.now());
         performance.setUpdatedAt(OffsetDateTime.now());
 
@@ -176,6 +177,7 @@ public class PracticeSessionService {
 
         BigDecimal score = calculateScore(sessionId);
         session.setScore(score);
+        session.setStarsEarned(calculateStars(score));
         session.setCompletedAt(OffsetDateTime.now());
         session.setUpdatedAt(OffsetDateTime.now());
         session = sessionRepository.save(session);
@@ -263,6 +265,15 @@ public class PracticeSessionService {
         return toProgressResponse(mastery);
     }
 
+    public static int calculateStars(BigDecimal accuracy) {
+        if (accuracy == null) return 0;
+        double val = accuracy.doubleValue();
+        if (val >= 90.0) return 3;
+        if (val >= 80.0) return 2;
+        if (val >= 70.0) return 1;
+        return 0;
+    }
+
     private PracticeSessionResponse toSessionResponse(PracticeSession session) {
         return PracticeSessionResponse.builder()
                 .sessionId(session.getSessionId())
@@ -270,6 +281,7 @@ public class PracticeSessionService {
                 .lessonId(session.getLesson().getLessonId())
                 .moduleNumber(session.getModuleNumber())
                 .score(session.getScore())
+                .starsEarned(session.getStarsEarned())
                 .completedAt(session.getCompletedAt())
                 .createdAt(session.getCreatedAt())
                 .build();

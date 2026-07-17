@@ -108,9 +108,11 @@ public class ReviewService {
                         .moduleNumber(moduleNumber)
                         .build());
 
+        BigDecimal bdScore = BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP);
         moduleScore.setCorrectCount(safeCorrectCount);
         moduleScore.setTotalCount(safeTotalCount);
-        moduleScore.setScore(BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP));
+        moduleScore.setScore(bdScore);
+        moduleScore.setStarsEarned(PracticeSessionService.calculateStars(bdScore));
         lessonModuleScoreRepository.save(moduleScore);
     }
 

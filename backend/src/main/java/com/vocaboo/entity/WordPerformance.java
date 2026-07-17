@@ -41,6 +41,10 @@ public class WordPerformance {
     @Builder.Default
     private Integer incorrectCount = 0;
 
+    @Column(name = "demerit_points", nullable = false)
+    @Builder.Default
+    private Integer demeritPoints = 0;
+
     @Column(name = "total_attempts", nullable = false)
     @Builder.Default
     private Integer totalAttempts = 0;

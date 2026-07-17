@@ -34,6 +34,10 @@ public class PracticeSession {
     @Column(name = "score", precision = 5, scale = 2)
     private BigDecimal score;
 
+    @Column(name = "stars_earned", nullable = false)
+    @Builder.Default
+    private Integer starsEarned = 0;
+
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 

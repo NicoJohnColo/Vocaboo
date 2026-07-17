@@ -53,6 +53,10 @@ public class SessionSummary {
     @Builder.Default
     private Integer pointsEarned = 0;
 
+    @Column(name = "stars_earned", nullable = false)
+    @Builder.Default
+    private Integer starsEarned = 0;
+
     @Column(name = "completed_at", updatable = false)
     @Builder.Default
     private OffsetDateTime completedAt = OffsetDateTime.now();

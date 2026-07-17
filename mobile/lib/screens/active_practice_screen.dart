@@ -56,7 +56,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   bool _checked = false;
   bool _isAnswerCorrect = false;
   bool _showFeedback = false;
-  String? _lastCorrectAnswer;
 
   // Matching Activity Temporary States
   String? _selectedCebuano;
@@ -92,36 +91,18 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   final bool _isCompleted = false;
 
   // Timer Variables
-  late DateTime _sessionStartTime;
-  Duration _elapsedDuration = Duration.zero;
-  Timer? _elapsedTimerInstance;
   Timer? _questionTimer;
   int _secondsRemaining = 0;
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes.toString().padLeft(2, '0');
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
 
   @override
   void initState() {
     super.initState();
     _words = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
-    _sessionStartTime = DateTime.now();
-    _elapsedTimerInstance = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _elapsedDuration = DateTime.now().difference(_sessionStartTime);
-        });
-      }
-    });
     _initializeSession();
   }
 
   @override
   void dispose() {
-    _elapsedTimerInstance?.cancel();
     _questionTimer?.cancel();
     _typingController.dispose();
     super.dispose();
@@ -151,8 +132,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       if (widget.isSandbox) {
         _buildPracticeQueue();
       } else {
+        if (!mounted) return;
         final provider = Provider.of<LessonProvider>(context, listen: false);
         final backendQuestions = await provider.loadRetrievalQuestions(widget.sessionId);
+        if (!mounted) return;
         _practiceQueue = backendQuestions.map((q) {
           final formatStr = q['activityFormat'] as String? ?? 'MULTIPLE_CHOICE';
           ActivityFormat format;
@@ -552,7 +535,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _checked = true;
       _isAnswerCorrect = false;
       _showFeedback = true;
-      _lastCorrectAnswer = _practiceQueue[_currentIndex].englishWord;
     });
   }
 
@@ -766,8 +748,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     );
     final provider = Provider.of<LessonProvider>(context, listen: false);
 
-    // keep the evaluated correct answer for display in the feedback panel
-    _lastCorrectAnswer = correctAns;
     debugPrint('CHECK_ANS item=${item.wordId} format=${item.activityFormat} assembled=${_assembledTokens.join(' ')} target="$correctAns" normalizedCorrect=$correct');
     _questionTimer?.cancel();
     await LocalStorageService.saveEvaluationResult(widget.sessionId, result);
@@ -888,7 +868,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     final denom = uniqueWordCount == 0 ? 1 : uniqueWordCount;
     var moduleScore = ( _scorePoints / denom ) * 100.0;
     if (moduleScore.isNaN || moduleScore.isInfinite) moduleScore = 0.0;
-    moduleScore = moduleScore.clamp(0.0, 100.0);
+    if (!mounted) return;
     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
@@ -1826,7 +1806,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     final bisayaHint = (item.exampleSentenceCebuano?.trim().isNotEmpty ?? false)
         ? item.exampleSentenceCebuano!.trim()
         : item.cebuanoMeaning.trim();
-    final answer = (item.fitbAnswer ?? item.englishWord).trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

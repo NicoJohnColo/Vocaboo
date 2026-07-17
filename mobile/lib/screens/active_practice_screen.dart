@@ -235,9 +235,13 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         _practiceQueue.add(_createPracticeItem(word, ActivityFormat.fillInTheBlank));
       }
     } else {
-      // Non-sandbox mode: fixed selection from all formats in a stable order.
-      // Remove rearrangement from Active Practice (handled in Sentence Building module)
-      final allowedFormats = ActivityFormat.values.where((f) => f != ActivityFormat.rearrangement).toList();
+      // Non-sandbox mode: fixed selection from the 4 core retrieval formats.
+      final allowedFormats = [
+        ActivityFormat.multipleChoice,
+        ActivityFormat.fillInTheBlank,
+        ActivityFormat.matching,
+        ActivityFormat.rearrangement,
+      ];
       
       // Build queue sequentially per word: for each word, add two exercises back-to-back
       // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...

@@ -144,7 +144,7 @@ public class ReviewService {
         status.setMasteryScore(BigDecimal.valueOf(score));
         status.setUpdatedAt(OffsetDateTime.now());
 
-        if (score >= 70.0) {
+        if (score >= 80.0) {
             status.setStatus(LessonStatus.COMPLETED);
             status.setCompletedAt(OffsetDateTime.now());
 
@@ -191,7 +191,7 @@ public class ReviewService {
                 Learner learner = learnerRepository.findById(learnerId)
                                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
 
-                boolean passed = score != null && score >= 70.0;
+                boolean passed = score != null && score >= 80.0;
 
                 for (Lesson lesson : lessons) {
                         LearnerLessonStatus status = lessonStatusRepository

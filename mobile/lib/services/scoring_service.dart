@@ -6,7 +6,7 @@
 class ScoringService {
   static const double lessonWeight = 0.6;
   static const double reviewWeight = 0.4;
-  static const double passingThreshold = 70.0;
+  static const double passingThreshold = 80.0;
 
   /// Computes a percentage score from correct count and total items.
   static double computeLessonScore(int correct, int total) {

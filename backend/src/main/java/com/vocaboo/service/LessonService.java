@@ -267,7 +267,7 @@ public class LessonService {
                 Learner learner = learnerRepository.findById(learnerId)
                                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
 
-                boolean passed = score != null && score >= 70.0;
+                boolean passed = score != null && score >= 80.0;
                 for (Lesson lesson : lessons) {
                         LearnerLessonStatus status = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lesson.getLessonId())
                                         .orElseGet(() -> LearnerLessonStatus.builder()
@@ -388,7 +388,7 @@ public class LessonService {
         @Transactional
         public MasteryResponse submitMastery(MasteryRequest request, UUID learnerId) {
                 // Server-side validation: verify the score meets the passing threshold
-                final double PASSING_THRESHOLD = 70.0;
+                final double PASSING_THRESHOLD = 80.0;
                 
                 // Check if cumulative review has been completed
                 if (request.getCumulativeReviewScore() == null || request.getCumulativeReviewScore() < 0) {

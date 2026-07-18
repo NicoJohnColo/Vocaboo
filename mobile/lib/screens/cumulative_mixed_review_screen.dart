@@ -681,7 +681,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                     ),
                     Text(
-                      'Final score: ${(_failedFinalScore ?? _weightedScore ?? 0.0).toStringAsFixed(1)}%. Pass at 70.0%.',
+                      'Final score: ${(_failedFinalScore ?? _weightedScore ?? 0.0).toStringAsFixed(1)}%. Pass at 80.0%.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 14, color: Color(0xFF475569), height: 1.4),
                     ),

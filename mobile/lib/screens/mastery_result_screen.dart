@@ -7,6 +7,7 @@ import '../providers/lesson_provider.dart';
 import 'cumulative_mixed_review_screen.dart';
 import '../services/localization_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/scoring_service.dart';
 import '../widgets/mascot_visual.dart';
 
 class MasteryResultScreen extends StatefulWidget {
@@ -127,12 +128,12 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
     final masteryPercent = _masteryScore != null
       ? _masteryScore!.round()
       : (totalItems == 0 ? 0 : (masteredCount / totalItems * 100).round());
-    final passed = masteryPercent >= 70;
+    final finalScore = _masteryScore?.round() ?? masteryPercent;
+    final passed = ScoringService.isPassing(finalScore.toDouble());
     final missedCount = missedWordIds?.length ?? 0;
 
-    // Compute total wrong attempts and final score from breakdown
+    // Compute total wrong attempts from breakdown
     final totalWrongAttempts = _wordBreakdown.fold<int>(0, (sum, w) => sum + ((w['wrongAttempts'] as int?) ?? 0));
-    final finalScore = _masteryScore?.round() ?? masteryPercent;
 
     return Scaffold(
       backgroundColor: passed ? const Color(0xFFF7FBF7) : const Color(0xFFFFFBF7),
@@ -437,7 +438,7 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                     const SizedBox(height: 8),
                     _weightedRow('Module 4 cumulative review', '30 pts', const Color(0xFF10B981)),
                     const SizedBox(height: 8),
-                    _weightedRow('Passing mark', '70 pts', const Color(0xFFEF4444)),
+                    _weightedRow('Passing mark', '80 pts', const Color(0xFFEF4444)),
                   ],
                 ),
               ),
@@ -658,10 +659,10 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
-                    color: finalScore >= 70 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                    color: finalScore >= 80 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: finalScore >= 70 ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA),
+                      color: finalScore >= 80 ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA),
                     ),
                   ),
                   child: Row(
@@ -672,7 +673,7 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w900,
-                          color: finalScore >= 70 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                          color: finalScore >= 80 ? const Color(0xFF059669) : const Color(0xFFDC2626),
                         ),
                       ),
                     ],

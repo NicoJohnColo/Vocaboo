@@ -1016,7 +1016,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       _isEvaluating = false;
     });
 
-    if (result.isCorrect) {
+    final bool isPassed = result.isCorrect && ((result.similarityScore ?? 1.0) >= 0.80);
+    if (isPassed) {
       _recordingSessionActive = false;
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();

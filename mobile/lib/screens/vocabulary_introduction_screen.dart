@@ -706,7 +706,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   PronunciationAttemptModel _applyLocalBypassIfSpoken(PronunciationAttemptModel result, String target) {
     final trans = (result.transcribedText ?? '').trim();
     if (trans.isEmpty) return result;
-    if (PronunciationMatcher.matchesTranscript(trans, target)) {
+    final similarity = result.similarityScore ?? 0.0;
+    if (similarity >= 0.80 || PronunciationMatcher.matchesTranscript(trans, target)) {
       return PronunciationAttemptModel(
         attemptId: result.attemptId,
         isCorrect: true,
@@ -715,6 +716,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         phonologicalTip: result.phonologicalTip,
         attemptNumber: result.attemptNumber,
         isInconclusive: false,
+        similarityScore: result.similarityScore ?? 0.80,
       );
     }
 

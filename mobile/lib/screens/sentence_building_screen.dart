@@ -387,11 +387,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _isChecked = false;
     _isCorrect = false;
     _selectedCompletionWord = null;
-    _assembledWords = [];
-    _pronunciationAttempt = 1;
+    final wordId = _currentWord.wordId;
+    final priorAttempts = _wordPronunciationAttempts[wordId] ?? 0;
+    _pronunciationAttempt = (priorAttempts + 1).clamp(1, 3);
     _attemptResult = null;
 
-    // Modules 2-4 use longer active-recall loops, so allow more pronunciation retries.
+    // Modules 2-4 use 3 pronunciation attempts per sentence word.
     _maxAttempts = _attemptLimitForModule();
 
     if (_currentFormat == ActivityFormat.completion) {
@@ -862,6 +863,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       }
     });
     
+    _wordPronunciationAttempts[_currentWord.wordId] = _pronunciationAttempt;
+    if (_attemptResult != null && _attemptResult!.isCorrect) {
+      _wordPronunciationCorrect[_currentWord.wordId] = true;
+    }
+
     // Exit the recording/practice modal but stay in the module
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();

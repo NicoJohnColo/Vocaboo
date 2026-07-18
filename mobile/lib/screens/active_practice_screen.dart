@@ -804,15 +804,27 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         await provider.updateWordProgress(widget.sessionId, item.wordId, 'FULL', 0, 'NEEDS_PRONUNCIATION_REVIEW');
       }
 
-      // Continuous Reinforcement: immediately append failed exercise to the end of the active queue
-      final failedItem = PracticeItemModel(
+      // Continuous Reinforcement: generate a varied format exercise for the failed word and append to queue
+      final allowedFormats = [
+        ActivityFormat.multipleChoice,
+        ActivityFormat.fillInTheBlank,
+        ActivityFormat.matching,
+        ActivityFormat.rearrangement,
+      ];
+      final remaining = allowedFormats.where((f) => f != item.activityFormat).toList();
+      final nextFormat = remaining[Random().nextInt(remaining.length)];
+
+      final wordModel = VocabularyWordModel(
         wordId: item.wordId,
+        lessonId: widget.lessonId,
         englishWord: item.englishWord,
         cebuanoMeaning: item.cebuanoMeaning,
         exampleSentenceEnglish: item.exampleSentenceEnglish,
         exampleSentenceCebuano: item.exampleSentenceCebuano,
-        activityFormat: item.activityFormat,
-        distractors: item.distractors,
+        gradeLevel: '',
+        wordOrder: 0,
+        isConfusablePairMember: false,
+        imageAssetPath: item.imageAssetPath,
         mcDistractor1: item.mcDistractor1,
         mcDistractor2: item.mcDistractor2,
         mcDistractor3: item.mcDistractor3,
@@ -820,13 +832,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         fitbAnswer: item.fitbAnswer,
         matchingSet: item.matchingSet,
         sentenceArrangementTokens: item.sentenceArrangementTokens,
-        sentenceCompletionSentence: item.sentenceCompletionSentence,
-        sentenceCompletionAnswer: item.sentenceCompletionAnswer,
-        sentenceCompletionOption1: item.sentenceCompletionOption1,
-        sentenceCompletionOption2: item.sentenceCompletionOption2,
-        sentenceCompletionOption3: item.sentenceCompletionOption3,
-        imageAssetPath: item.imageAssetPath,
       );
+      var resolvedFormat = nextFormat;
+      if (resolvedFormat == ActivityFormat.rearrangement && _rearrangementTokenCount(wordModel) < 2) {
+        resolvedFormat = ActivityFormat.fillInTheBlank;
+      }
+      final failedItem = _createPracticeItem(wordModel, resolvedFormat);
       _practiceQueue.add(failedItem);
       _plannedScreens++;
 
@@ -856,6 +867,14 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _completeModuleAndAdvance() async {
+    // Strict guard: ensure all practice queue items are completed before advancing
+    if (_currentIndex < _practiceQueue.length) {
+      setState(() {
+        _loadCurrentItemState();
+      });
+      return;
+    }
+
     setState(() {
       _progressOverride = 1.0;
     });

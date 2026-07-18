@@ -326,21 +326,41 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   List<String> _activityArrangementTokens(VocabularyWordModel word) {
-    if (word.sentenceArrangementTokens != null && word.sentenceArrangementTokens!.isNotEmpty) {
+    final sentence = word.exampleSentenceEnglish.trim().isEmpty
+        ? word.englishWord
+        : word.exampleSentenceEnglish;
+    final sentenceTokens = _tokensFromSentence(sentence);
+
+    if (word.sentenceArrangementTokens != null &&
+        word.sentenceArrangementTokens!.isNotEmpty) {
       final provided = word.sentenceArrangementTokens!
           .map((token) => token.trim())
           .where((token) => token.isNotEmpty)
           .toList();
-      final sentence = word.exampleSentenceEnglish.trim().isEmpty ? word.englishWord : word.exampleSentenceEnglish;
-      final normalizedProvided = _normalizeSentenceText(provided.join(' '));
-      final normalizedSentence = _normalizeSentenceText(sentence);
-      if (provided.length >= 2 && normalizedProvided == normalizedSentence) {
-        return provided;
+
+      if (provided.length >= 2) {
+        // Only accept DB tokens if they contain exactly the same words as
+        // the sentence (same multiset, case-insensitive). This prevents
+        // distractor words from other sentences polluting the word bank.
+        final lowerProvided = provided.map((t) => t.toLowerCase()).toList()
+          ..sort();
+        final lowerSentence = sentenceTokens.map((t) => t.toLowerCase()).toList()
+          ..sort();
+
+        if (lowerProvided.join(' ') == lowerSentence.join(' ')) {
+          // Exact same words as the sentence — use DB tokens (may have
+          // different capitalisation that the author intended).
+          return provided;
+        }
+
+        debugPrint(
+            'SentenceBuilding: DB tokens differ from sentence words; '
+            'using sentence tokens only. '
+            'DB: $provided | Sentence: $sentenceTokens');
       }
     }
 
-    final sentence = word.exampleSentenceEnglish.trim().isEmpty ? word.englishWord : word.exampleSentenceEnglish;
-    return _tokensFromSentence(sentence);
+    return sentenceTokens;
   }
 
   List<String> _tokensFromSentence(String sentence) {

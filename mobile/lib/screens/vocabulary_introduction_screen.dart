@@ -782,12 +782,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _nextStep(),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _buildStepCard(theme, word),
-                  ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _buildStepCard(theme, word),
                 ),
               ),
 

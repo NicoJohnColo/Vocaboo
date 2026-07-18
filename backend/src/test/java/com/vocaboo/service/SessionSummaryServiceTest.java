@@ -78,9 +78,9 @@ class SessionSummaryServiceTest {
         SessionSummary summary = service.saveSessionSummary(learnerId, sessionId, lessonId);
 
         assertNotNull(summary);
-        // Base: 20pts, LESSON_COMPLETE (>=80% accuracy): +200, PERFECT_SESSION (100%, 0 incorrect): +100
-        // These two bonuses now STACK as per UC-4.1. Total: 20 + 200 + 100 = 320
-        assertEquals(320, summary.getPointsEarned());
+        // Base: 20pts, LESSON_COMPLETE Gold (>=90% accuracy): +100, PERFECT_SESSION (100%, 0 incorrect): +100
+        // Total: 20 + 100 + 100 = 220
+        assertEquals(220, summary.getPointsEarned());
         verify(summaryRepository).save(any(SessionSummary.class));
     }
 

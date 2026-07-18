@@ -74,24 +74,28 @@ public class SessionSummaryService {
 
         int bonusPoints = 0;
         if (sessionTotalAttempts > 0) {
-            // NOTE: 80% is the gamification lesson-complete bonus threshold (UC-4.1).
-            // It is intentionally independent of the 70% mixed review mastery pass gate.
-            if (sessionAccuracy.compareTo(BigDecimal.valueOf(80.0)) >= 0) {
-                bonusPoints += 200;
-                
+            int completionBonus = 0;
+            if (sessionAccuracy.compareTo(BigDecimal.valueOf(90.0)) >= 0) {
+                completionBonus = 100;
+            } else if (sessionAccuracy.compareTo(BigDecimal.valueOf(80.0)) >= 0) {
+                completionBonus = 50;
+            }
+
+            if (completionBonus > 0) {
+                bonusPoints += completionBonus;
                 PointTransaction tx = PointTransaction.builder()
                         .learner(learner)
                         .actionType(PointActionType.LESSON_COMPLETE)
-                        .pointsAwarded(200)
+                        .pointsAwarded(completionBonus)
                         .relatedSessionId(sessionId)
                         .createdAt(OffsetDateTime.now())
                         .build();
                 pointTransactionRepository.save(tx);
             }
-            
+
             if (sessionIncorrectCount == 0 && sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0) {
                 bonusPoints += 100;
-                
+
                 PointTransaction tx = PointTransaction.builder()
                         .learner(learner)
                         .actionType(PointActionType.PERFECT_SESSION)

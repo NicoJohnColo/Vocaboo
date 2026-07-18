@@ -1384,56 +1384,160 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               ),
               const SizedBox(height: 20),
               if (_attemptResult != null) ...[
-                Icon(
-                  _attemptResult!.isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                  color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : Colors.redAccent,
-                  size: 48,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _attemptResult!.isCorrect 
-                      ? 'Sounds good!' 
-                      : (_attemptResult!.isInconclusive 
-                          ? "Speech couldn't be recognized. Please try again." 
-                          : 'Try saying it again (Attempt $_attemptNumber/3)'),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : Colors.redAccent,
+                if (_attemptResult!.isCorrect) ...[
+                  const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 48),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Sounds good! 🎉',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
                   ),
-                ),
-                if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                  if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFBBF7D0)),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'You said: "${_attemptResult!.transcribedText}"',
+                            style: const TextStyle(
+                              fontSize: 14, fontStyle: FontStyle.italic,
+                              color: Color(0xFF166534), fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (_attemptResult!.similarityScore != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
+                              style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF10B981),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      children: [
-                        Text(
-                          'You said: "${_attemptResult!.transcribedText}"',
+                  ],
+                ] else ...[
+                  // Failure headline
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 28),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _attemptResult!.isInconclusive
+                              ? "Couldn't hear you clearly. Please try again."
+                              : _attemptNumber >= 3
+                                  ? 'No attempts left — keep practicing!'
+                                  : _buildFailureMessage(_attemptResult!.similarityScore),
                           style: const TextStyle(
-                            fontSize: 14,
-                            fontStyle: FontStyle.italic,
-                            color: Color(0xFF475569),
-                            fontWeight: FontWeight.w500,
+                            fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C),
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        if (_attemptResult!.similarityScore != null) ...[
-                          const SizedBox(height: 6),
+                      ),
+                    ],
+                  ),
+                  // What you said + match score
+                  if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFCA5A5)),
+                      ),
+                      child: Column(
+                        children: [
                           Text(
-                            'Match score: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                            'You said: "${_attemptResult!.transcribedText}"',
+                            style: const TextStyle(
+                              fontSize: 14, fontStyle: FontStyle.italic,
+                              color: Color(0xFF991B1B), fontWeight: FontWeight.w500,
                             ),
+                            textAlign: TextAlign.center,
                           ),
+                          if (_attemptResult!.similarityScore != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% — need 80% to pass',
+                              style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFEF4444),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ],
+                      ),
+                    ),
+                  ],
+                  // IPA phonetic target
+                  if (_attemptResult!.phoneticTarget != null && _attemptResult!.phoneticTarget!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.record_voice_over_rounded, color: Color(0xFF7C3AED), size: 16),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Target:',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _attemptResult!.phoneticTarget!,
+                          style: const TextStyle(
+                            fontFamily: 'Courier', fontSize: 16,
+                            fontWeight: FontWeight.bold, color: Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  // HOW TO IMPROVE tip box
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFFED7AA)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.tips_and_updates_rounded, color: Color(0xFFD97706), size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'HOW TO IMPROVE',
+                              style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.bold,
+                                color: Color(0xFF92400E), letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          (_attemptResult!.phonologicalTip != null && _attemptResult!.phonologicalTip!.trim().isNotEmpty)
+                              ? _attemptResult!.phonologicalTip!
+                              : _getPhonologicalTip(word.phonologicalTipKey),
+                          style: const TextStyle(
+                            fontSize: 13, color: Color(0xFF92400E),
+                            fontWeight: FontWeight.w600, height: 1.5,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
                       ],
                     ),
                   ),
@@ -1486,14 +1590,61 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   String _getPhonologicalTip(String? tipKey) {
-    if (tipKey == 'f_sound') {
-      return "Tip: Cebuano has no /f/ sound. Touch your upper teeth to your lower lip and blow air out: 'fff' (like Fish).";
-    } else if (tipKey == 'v_sound') {
-      return "Tip: Cebuano has no /v/ sound. Place your upper teeth on your lower lip and buzz like a bee: 'vvv' (like Very).";
-    } else if (tipKey == 'th_sound') {
-      return "Tip: Cebuano has no /θ/ sound. Put the tip of your tongue between your front teeth and blow gently (like Brother).";
+    switch (tipKey) {
+      case 'f_sound':
+        return "The /f/ sound doesn't exist in Cebuano. "
+            "Gently touch your upper front teeth to your lower lip and push air out — "
+            "like blowing out a candle slowly. Practice: 'fff-ish', 'fff-ather'.";
+      case 'v_sound':
+        return "The /v/ sound doesn't exist in Cebuano. "
+            "Touch your upper teeth to your lower lip and hum — feel the vibration. "
+            "It's like /f/ but with your voice on. Practice: 'vvv-ery', 'vvv-oice'.";
+      case 'th_sound':
+        return "The /θ/ (TH) sound doesn't exist in Cebuano. "
+            "Place the tip of your tongue lightly between your upper and lower front teeth, "
+            "then blow air out gently. Practice: 'th-ink', 'th-ree', 'th-ank'.";
+      case 'th_voiced':
+        return "The voiced /ð/ (TH) sound is like 'th' in 'the' or 'this'. "
+            "Put your tongue between your teeth and hum — feel the buzz. "
+            "Practice: 'th-is', 'th-at', 'broth-er'.";
+      case 'r_sound':
+        return "English /r/ is different from Cebuano. "
+            "Keep your tongue back and curved — don't roll it. "
+            "The tongue should not touch the roof of your mouth. Practice: 'rr-un', 'rr-ead'.";
+      case 'l_sound':
+        return "For English /l/, place the tip of your tongue on the ridge just behind "
+            "your upper front teeth and let air flow around the sides. "
+            "Practice: 'll-ight', 'll-ove', 'bell'.";
+      case 'short_i':
+        return "The short /ɪ/ sound (as in 'sit') is shorter and more relaxed than the long /iː/ in 'see'. "
+            "Relax your lips and say a quick 'ih'. Practice: 'f-ih-sh', 's-ih-t', 'th-ih-s'.";
+      case 'short_e':
+        return "The /ɛ/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
+            "It is between 'a' and 'ee'. Practice: 'b-eh-d', 'p-eh-n', 'h-eh-lp'.";
+      case 'schwa':
+        return "Many English unstressed syllables use the schwa /ə/ — a neutral, relaxed sound "
+            "like a quick 'uh'. The vowel in 'the', 'a', and the 2nd syllable of 'pencil' are schwa. "
+            "Practice: 'penc-uh-l', 'erase-uh-r'.";
+      default:
+        return "Speak slowly and clearly. Listen to the correct audio again, "
+            "then try to match the mouth shape and rhythm. "
+            "Focus on each syllable: say the word one part at a time.";
     }
-    return "Tip: Listen closely and copy the correct pronunciation.";
+  }
+
+  /// Returns a score-aware failure coaching message.
+  String _buildFailureMessage(double? score) {
+    if (score == null) return 'Not quite — give it another try!';
+    final pct = (score * 100).round();
+    if (pct >= 70) {
+      return 'Very close ($pct%)! Small adjustment needed — try again.';
+    } else if (pct >= 50) {
+      return 'Getting there ($pct%). Focus on each syllable and try again.';
+    } else if (pct >= 30) {
+      return 'Not quite ($pct%). Listen to the audio and try to match the sound.';
+    } else {
+      return 'Keep practicing! Listen carefully and try to copy the pronunciation.';
+    }
   }
 
   Widget _buildSandboxIntroCard(ThemeData theme, VocabularyWordModel word) {

@@ -661,20 +661,13 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     final currentWord = _words[_currentWordIndex];
     final provider = Provider.of<LessonProvider>(context, listen: false);
 
-    if (_currentStep == 0) {
-      if (!_isFlipped) return; // Must flip card first
+    if (_currentStep < 4) {
       setState(() {
-        _currentStep = 1;
+        _currentStep++;
       });
-      provider.updateWordProgress(widget.sessionId, currentWord.wordId, _pathway, 1, 'INTRODUCED');
-      _playWordAudio(currentWord);
-    } else if (_currentStep == 1) {
-      // Advance to Step 5 Summary Confirmation Card
-      setState(() {
-        _currentStep = 2;
-      });
-      _playWordAudio(currentWord);
-    } else if (_currentStep == 2) {
+      if (_currentStep == 1) _speakWord();
+      if (_currentStep == 2) _speakSentence();
+    } else {
       // Step 5 Confirmation: Mark word as INTRODUCED in database and advance to next word or Module 2
       final finalStatus = 'INTRODUCED';
       provider.updateWordProgress(widget.sessionId, currentWord.wordId, _pathway, 4, finalStatus);
@@ -837,14 +830,45 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
     switch (_currentStep) {
       case 0:
-        return _buildFormAndMeaningCard(theme, word);
+        return _buildCebuanoStep(theme, word);
       case 1:
-        return _buildPhonologyCard(theme, word);
+        return _buildEnglishWordStep(theme, word);
       case 2:
+        return _buildEnglishSentenceStep(theme, word);
+      case 3:
+        return _buildPhonologyCard(theme, word);
+      case 4:
         return _buildSummaryCard(theme, word);
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildStepHeaderBadge(String stepText, String titleText, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.stars_rounded, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            '$stepText: $titleText',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSummaryCard(ThemeData theme, VocabularyWordModel word) {
@@ -1107,105 +1131,76 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     );
   }
 
-  Widget _buildFormAndMeaningCard(ThemeData theme, VocabularyWordModel word) {
-    if (!_isFlipped) {
-      // ── Step 0 FRONT: Cebuano-first ──────────────────────────────
-      // UC-3.1: Show Cebuano word and Cebuano example sentence first.
-      // Cebuano TTS has already auto-played on entering this word.
-      // The learner's task is to think of the English equivalent.
-      return Card(
-        key: const ValueKey('front'),
-        color: Colors.white,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'What is this word in English?',
-                style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 32),
-              // Cebuano word — primary display
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      word.cebuanoMeaning,
-                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                      textAlign: TextAlign.center,
-                    ),
+  Widget _buildCebuanoStep(ThemeData theme, VocabularyWordModel word) {
+    return Card(
+      key: const ValueKey('cebuano_step'),
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStepHeaderBadge('STEP 1 OF 5', 'CEBUANO WORD & SENTENCE', const Color(0xFF10B981)),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    word.cebuanoMeaning,
+                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                    textAlign: TextAlign.center,
                   ),
-                  IconButton(
-                    icon: Icon(Icons.volume_up_rounded,
-                        color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 28),
-                    onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
-                  ),
-                ],
-              ),
-              if (word.partOfSpeech != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '(${word.partOfSpeech})',
-                  style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
+                ),
+                IconButton(
+                  icon: Icon(Icons.volume_up_rounded,
+                      color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 30),
+                  onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
                 ),
               ],
-              if (word.exampleSentenceCebuano != null &&
-                  word.exampleSentenceCebuano!.trim().isNotEmpty) ...[
-                const SizedBox(height: 20),
-                const Divider(color: Color(0xFFE6E7EA)),
-                const SizedBox(height: 12),
-                const Text(
-                  'CEBUANO EXAMPLE',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF6B7280),
-                      letterSpacing: 0.5),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  word.exampleSentenceCebuano!,
-                  style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155),
-                      height: 1.4),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              const SizedBox(height: 36),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _isFlipped = true;
-                  });
-                  // UC-3.1: Play English TTS on flip to reveal English word
-                  _playWordAudio(word);
-                },
-                icon: const Icon(Icons.flip_to_back_rounded),
-                label: const Text('REVEAL IN ENGLISH'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
+            ),
+            if (word.partOfSpeech != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                '(${word.partOfSpeech})',
+                style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
               ),
             ],
-          ),
+            if (word.exampleSentenceCebuano != null &&
+                word.exampleSentenceCebuano!.trim().isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const Divider(color: Color(0xFFE6E7EA)),
+              const SizedBox(height: 16),
+              const Text(
+                'CEBUANO EXAMPLE SENTENCE',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6B7280),
+                    letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                word.exampleSentenceCebuano!,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                    height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    // ── Step 0 BACK: English reveal ───────────────────────────────
-    // English word is now the reveal after seeing Cebuano first.
-    // English TTS has already played when the learner tapped REVEAL.
+  Widget _buildEnglishWordStep(ThemeData theme, VocabularyWordModel word) {
     return Card(
-      key: const ValueKey('back'),
+      key: const ValueKey('english_word_step'),
       color: Colors.white,
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -1215,18 +1210,19 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Image (if available)
+              _buildStepHeaderBadge('STEP 2 OF 5', 'ENGLISH WORD', const Color(0xFF06A6FF)),
+              const SizedBox(height: 24),
               if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: CustomImageViewer(
                     imagePath: word.imageAssetPath!,
-                    width: 180,
-                    height: 180,
+                    width: 160,
+                    height: 160,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) => Container(
-                      width: 180,
-                      height: 180,
+                      width: 160,
+                      height: 160,
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(12),
@@ -1239,86 +1235,102 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 ),
                 const SizedBox(height: 16),
               ],
-              // English word — revealed
               const Text(
                 'In English, this is:',
                 style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF6B7280),
                     letterSpacing: 0.4),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Flexible(
                     child: Text(
                       word.englishWord,
-                      style: const TextStyle(
-                          fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
+                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                       textAlign: TextAlign.center,
                     ),
                   ),
                   IconButton(
                     icon: Icon(Icons.volume_up_rounded,
-                        color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
+                        color: _isPlayingAudio ? Colors.grey : const Color(0xFF06A6FF), size: 30),
                     onPressed: _isPlayingAudio ? null : _speakWord,
                   ),
                 ],
               ),
-              if (word.partOfSpeech != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '(${word.partOfSpeech})',
-                  style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
-                ),
-              ],
               const SizedBox(height: 16),
-              const Divider(color: Color(0xFFE6E7EA)),
-              const SizedBox(height: 12),
-              Text(
-                LocalizationService.translate(_pref, 'english_example'),
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6B7280),
-                    letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                word.exampleSentenceEnglish,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                    height: 1.4),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              IconButton(
-                icon: Icon(Icons.volume_up_rounded,
-                    color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
-                onPressed: _isPlayingAudio ? null : _speakSentence,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _isFlipped = false;
-                  });
-                },
-                icon: const Icon(Icons.flip_to_front_rounded),
-                label: const Text('REVIEW CEBUANO'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF64748B),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDCFCE7)),
+                ),
+                child: Text(
+                  'Cebuano: ${word.cebuanoMeaning}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF166534)),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnglishSentenceStep(ThemeData theme, VocabularyWordModel word) {
+    return Card(
+      key: const ValueKey('english_sentence_step'),
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStepHeaderBadge('STEP 3 OF 5', 'ENGLISH EXAMPLE SENTENCE', const Color(0xFF8B5CF6)),
+            const SizedBox(height: 28),
+            Text(
+              word.englishWord,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    word.exampleSentenceEnglish,
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                        height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.volume_up_rounded,
+                      color: _isPlayingAudio ? Colors.grey : const Color(0xFF8B5CF6), size: 30),
+                  onPressed: _isPlayingAudio ? null : _speakSentence,
+                ),
+              ],
+            ),
+            if (word.exampleSentenceCebuano != null) ...[
+              const SizedBox(height: 24),
+              const Divider(color: Color(0xFFE2E8F0)),
+              const SizedBox(height: 12),
+              Text(
+                word.exampleSentenceCebuano!,
+                style: const TextStyle(fontSize: 15, color: Color(0xFF64748B), fontStyle: FontStyle.italic),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
         ),
       ),
     );

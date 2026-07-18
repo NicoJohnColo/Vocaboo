@@ -15,10 +15,13 @@ public class MasteryReviewService {
 
     @Transactional
     public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId) {
-        // Compute and save reward badge
-        badgeService.calculateAndSaveBadge(learnerId, lessonId);
-
         // Aggregate statistics and save session summary
-        return summaryService.saveSessionSummary(learnerId, sessionId, lessonId);
+        SessionSummary summary = summaryService.saveSessionSummary(learnerId, sessionId, lessonId);
+
+        // Compute and save reward badge based on session accuracy rate
+        double accuracy = summary.getAccuracyRate() != null ? summary.getAccuracyRate().doubleValue() : 0.0;
+        badgeService.calculateAndSaveBadge(learnerId, lessonId, accuracy);
+
+        return summary;
     }
 }

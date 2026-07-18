@@ -76,51 +76,31 @@ class MasteryBadgeServiceTest {
     }
 
     @Test
-    void perfectGold_zeroErrors_allMastered() {
-        when(performanceRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makePerf(5, 0)));
-        when(difficultyRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makeDiff(DifficultyLevel.MASTERED)));
-
-        String badge = service.calculateAndSaveBadge(learnerId, lessonId);
-
-        assertThat(badge).isEqualTo("PERFECT_GOLD");
-    }
-
-    @Test
-    void gold_twoErrors_allProficientOrMastered() {
-        when(performanceRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makePerf(5, 2))); // 4 demerits
-        when(difficultyRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makeDiff(DifficultyLevel.PROFICIENT)));
-
-        String badge = service.calculateAndSaveBadge(learnerId, lessonId);
-
+    void gold_ninetyPercentAccuracy() {
+        String badge = service.calculateAndSaveBadge(learnerId, lessonId, 92.5);
         assertThat(badge).isEqualTo("GOLD");
     }
 
     @Test
-    void silver_fiveErrors_allFamiliarOrAbove() {
-        when(performanceRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makePerf(3, 5))); // 10 demerits
-        when(difficultyRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makeDiff(DifficultyLevel.FAMILIAR)));
-
-        String badge = service.calculateAndSaveBadge(learnerId, lessonId);
-
+    void silver_eightyPercentAccuracy() {
+        String badge = service.calculateAndSaveBadge(learnerId, lessonId, 85.0);
         assertThat(badge).isEqualTo("SILVER");
     }
 
     @Test
-    void bronze_manyErrors() {
+    void bronze_belowEightyPercentAccuracy() {
+        String badge = service.calculateAndSaveBadge(learnerId, lessonId, 75.0);
+        assertThat(badge).isEqualTo("BRONZE");
+    }
+
+    @Test
+    void fallback_calculatesFromPerformance() {
         when(performanceRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makePerf(1, 6))); // 12 demerits
-        when(difficultyRepo.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(makeDiff(DifficultyLevel.LEARNING)));
+                .thenReturn(Optional.of(makePerf(9, 1)));
 
         String badge = service.calculateAndSaveBadge(learnerId, lessonId);
 
-        assertThat(badge).isEqualTo("BRONZE");
+        assertThat(badge).isEqualTo("GOLD");
     }
 
     @Test

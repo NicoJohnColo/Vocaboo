@@ -21,50 +21,19 @@ public class MasteryBadgeService {
     private final VocabularyWordRepository wordRepository;
 
     @Transactional
-    public String calculateAndSaveBadge(UUID learnerId, UUID lessonId) {
+    public String calculateAndSaveBadge(UUID learnerId, UUID lessonId, double sessionAccuracy) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
 
-        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
-        if (words == null || words.isEmpty()) {
-            return "BRONZE";
-        }
-
-        int totalDemerits = 0;
-        boolean allMastered = true;
-        boolean allProficientOrMastered = true;
-        boolean allFamiliarOrAbove = true;
-
-        for (VocabularyWord word : words) {
-            WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
-                    .orElse(null);
-            int demerits = (perf != null && perf.getDemeritPoints() != null) ? perf.getDemeritPoints() : (perf != null ? perf.getIncorrectCount() * 2 : 0);
-            totalDemerits += demerits;
-
-            DifficultyProgress diff = difficultyRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
-                    .orElse(null);
-            DifficultyLevel level = diff != null ? diff.getCurrentLevel() : DifficultyLevel.LEARNING;
-
-            if (level != DifficultyLevel.MASTERED) {
-                allMastered = false;
-            }
-            if (level != DifficultyLevel.PROFICIENT && level != DifficultyLevel.MASTERED) {
-                allProficientOrMastered = false;
-            }
-            if (level == DifficultyLevel.LEARNING) {
-                allFamiliarOrAbove = false;
-            }
-        }
-
-        String earnedBadge = "BRONZE";
-        if (totalDemerits == 0 && allMastered) {
-            earnedBadge = "PERFECT_GOLD";
-        } else if (totalDemerits <= 4 && allProficientOrMastered) {
+        String earnedBadge;
+        if (sessionAccuracy >= 90.0) {
             earnedBadge = "GOLD";
-        } else if (totalDemerits <= 10 && allFamiliarOrAbove) {
+        } else if (sessionAccuracy >= 80.0) {
             earnedBadge = "SILVER";
+        } else {
+            earnedBadge = "BRONZE";
         }
 
         // Save if it's the highest tier earned
@@ -88,10 +57,32 @@ public class MasteryBadgeService {
         return earnedBadge;
     }
 
+    @Transactional
+    public String calculateAndSaveBadge(UUID learnerId, UUID lessonId) {
+        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        if (words == null || words.isEmpty()) {
+            return calculateAndSaveBadge(learnerId, lessonId, 0.0);
+        }
+
+        int totalCorrect = 0;
+        int totalAttempts = 0;
+        for (VocabularyWord word : words) {
+            WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
+                    .orElse(null);
+            if (perf != null) {
+                totalCorrect += perf.getCorrectCount();
+                totalAttempts += perf.getTotalAttempts();
+            }
+        }
+
+        double accuracy = totalAttempts > 0 ? (totalCorrect * 100.0 / totalAttempts) : 0.0;
+        return calculateAndSaveBadge(learnerId, lessonId, accuracy);
+    }
+
     private int getBadgeTier(String badge) {
         if (badge == null) return 0;
         switch (badge) {
-            case "PERFECT_GOLD": return 4;
+            case "PERFECT_GOLD":
             case "GOLD": return 3;
             case "SILVER": return 2;
             case "BRONZE": return 1;

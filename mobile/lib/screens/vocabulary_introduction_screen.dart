@@ -782,9 +782,12 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _buildStepCard(theme, word),
+                child: GestureDetector(
+                  onTap: () => _nextStep(),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: _buildStepCard(theme, word),
+                  ),
                 ),
               ),
 
@@ -846,7 +849,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
   Widget _buildStepHeaderBadge(String stepText, String titleText, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(999),
@@ -855,15 +858,20 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.stars_rounded, color: color, size: 16),
+          Icon(Icons.stars_rounded, color: color, size: 14),
           const SizedBox(width: 6),
-          Text(
-            '$stepText: $titleText',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: color,
-              letterSpacing: 0.5,
+          Flexible(
+            child: Text(
+              '$stepText: $titleText',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: color,
+                letterSpacing: 0.3,
+              ),
             ),
           ),
         ],

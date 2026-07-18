@@ -64,8 +64,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   int _currentWordIndex = 0;
   
   // Card learning state
-  int _currentStep = 0; // 0: Form & Meaning, 1: Pronunciation Practice, 2: Step 5 Summary Confirmation
-  bool _isFlipped = false;
+  int _currentStep = 0; // 0 to 4 (5-step introduction flow)
   final String _pathway = 'FULL'; // 'FULL' or 'ACCELERATED'
 
   // Speech evaluation state variables
@@ -141,7 +140,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     final currentWord = _words[_currentWordIndex];
     setState(() {
       _currentStep = 0;
-      _isFlipped = false;
       _attemptNumber = 1;
       _attemptResult = null;
       _isRecording = false;
@@ -1618,25 +1616,19 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       );
     }
 
-    String buttonText = 'FLIP CARD';
-    if (_currentStep == 0 && _isFlipped) buttonText = 'GOT IT';
-    if (_currentStep == 1) {
+    String buttonText = 'NEXT: ENGLISH WORD';
+    if (_currentStep == 1) buttonText = 'NEXT: EXAMPLE SENTENCE';
+    if (_currentStep == 2) buttonText = 'NEXT: PRONUNCIATION';
+    if (_currentStep == 3) {
       if (_attemptResult != null && _attemptResult!.isCorrect == false && _attemptNumber >= 3) {
-        buttonText = 'TEACHER SKIP';
+        buttonText = 'SKIP TO CONFIRMATION';
       } else {
-        buttonText = 'CONTINUE';
+        buttonText = 'NEXT: CONFIRMATION';
       }
     }
-    if (_currentStep == 2) {
+    if (_currentStep == 4) {
       buttonText = 'I UNDERSTAND THIS WORD';
     }
-
-    // Require correct pronunciation or 3 failed attempts to continue step 1
-    final bool canContinue = _currentStep == 0 
-        ? _isFlipped 
-        : (_currentStep == 1 
-            ? (_attemptResult != null && (_attemptResult!.isCorrect == true || _attemptNumber >= 3))
-            : true);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1644,33 +1636,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-          onPressed: canContinue
-              ? () {
-                  if (_currentStep == 0 && !_isFlipped) {
-                    setState(() {
-                      _isFlipped = true;
-                    });
-                  } else {
-                    _nextStep();
-                  }
-                }
-              : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF06A6FF),
-            disabledBackgroundColor: const Color(0xFFE2E8F0),
-            foregroundColor: Colors.white,
-            disabledForegroundColor: const Color(0xFF94A3B8),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+            onPressed: () => _nextStep(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _currentStep == 4 ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 6,
             ),
-            elevation: 6,
+            child: Text(
+              buttonText,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+            ),
           ),
-          child: Text(
-            buttonText,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
-          ),
-        ),
         ),
       ],
     );

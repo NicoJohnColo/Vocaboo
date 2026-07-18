@@ -163,6 +163,38 @@ class DifficultyAdjustmentServiceTest {
     }
 
     @Test
+    void calculateNext_threeConsecutiveIncorrect_resetsToLearning() {
+        UUID learnerId = UUID.randomUUID();
+        UUID wordId = UUID.randomUUID();
+
+        Learner learner = Learner.builder().learnerId(learnerId).build();
+        VocabularyWord word = VocabularyWord.builder().wordId(wordId).build();
+        DifficultyProgress progress = DifficultyProgress.builder()
+                .learner(learner)
+                .word(word)
+                .currentLevel(DifficultyLevel.MASTERED)
+                .consecutiveCorrect(0)
+                .consecutiveIncorrect(2)
+                .build();
+
+        when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
+                .thenReturn(Optional.of(progress));
+        when(progressRepository.save(any(DifficultyProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, false);
+
+        assertNotNull(response);
+        assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
+        assertEquals(0, response.getConsecutiveIncorrect());
+
+        verify(auditLogRepository, times(1)).save(argThat(log -> 
+                log.getOldLevel() == DifficultyLevel.MASTERED &&
+                log.getNewLevel() == DifficultyLevel.LEARNING &&
+                "SEVERE_STRUGGLING_RESET".equals(log.getReason())
+        ));
+    }
+
+    @Test
     void calculateNext_incorrectResult_noDemotion() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();

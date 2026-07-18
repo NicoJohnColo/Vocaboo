@@ -17,6 +17,7 @@ public class DifficultyAdjustmentService {
 
     public static final int UPGRADE_THRESHOLD = 3;
     public static final int DOWNGRADE_THRESHOLD = 2;
+    public static final int RESET_THRESHOLD = 3;
 
     private final DifficultyProgressRepository progressRepository;
     private final DifficultyAuditLogRepository auditLogRepository;
@@ -84,15 +85,23 @@ public class DifficultyAdjustmentService {
             }
         } else {
             progress.setConsecutiveCorrect(0);
-            progress.setConsecutiveIncorrect(progress.getConsecutiveIncorrect() + 1);
+            int newIncorrect = progress.getConsecutiveIncorrect() + 1;
+            progress.setConsecutiveIncorrect(newIncorrect);
 
-            if (progress.getConsecutiveIncorrect() >= DOWNGRADE_THRESHOLD) {
+            if (newIncorrect >= RESET_THRESHOLD) {
+                newLevel = DifficultyLevel.LEARNING;
+                if (newLevel != oldLevel) {
+                    progress.setCurrentLevel(newLevel);
+                    logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "SEVERE_STRUGGLING_RESET");
+                }
+                progress.setConsecutiveIncorrect(0);
+            } else if (newIncorrect >= DOWNGRADE_THRESHOLD) {
                 newLevel = getNextLower(oldLevel);
                 if (newLevel != oldLevel) {
                     progress.setCurrentLevel(newLevel);
-                    progress.setConsecutiveIncorrect(0);
                     logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_INCORRECT");
                 }
+                progress.setConsecutiveIncorrect(0);
             }
         }
 

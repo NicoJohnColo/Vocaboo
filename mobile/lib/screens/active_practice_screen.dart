@@ -227,12 +227,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       ];
       
       // Build queue sequentially per word: for each word, add two exercises back-to-back
-      // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...
+      final random = Random();
       for (var index = 0; index < _words.length; index++) {
         final word = _words[index];
 
-        var format1 = allowedFormats[index % allowedFormats.length];
-        if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && index % 3 == 0) {
+        var format1 = allowedFormats[random.nextInt(allowedFormats.length)];
+        if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() < 0.3) {
           format1 = ActivityFormat.imageMatching;
         }
         if (format1 == ActivityFormat.rearrangement && _rearrangementTokenCount(word) < 2) {
@@ -240,11 +240,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         }
         _practiceQueue.add(_createPracticeItem(word, format1));
 
-        // Second exercise: pick the next format in order, ensuring it differs from the first.
-        var format2 = allowedFormats[(index + 1) % allowedFormats.length];
-        if (format2 == format1) {
-          format2 = allowedFormats[(index + 2) % allowedFormats.length];
-        }
+        // Second exercise: pick a random format ensuring it differs from the first format
+        final remainingFormats = allowedFormats.where((f) => f != format1).toList();
+        var format2 = remainingFormats[random.nextInt(remainingFormats.length)];
         if (format2 == ActivityFormat.rearrangement && _rearrangementTokenCount(word) < 2) {
           format2 = ActivityFormat.fillInTheBlank;
         }

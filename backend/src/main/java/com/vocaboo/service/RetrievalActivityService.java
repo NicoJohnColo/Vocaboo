@@ -37,14 +37,19 @@ public class RetrievalActivityService {
 
         List<Map<String, Object>> questionsList = new ArrayList<>();
 
+        List<String> allFormats = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "SENTENCE_ARRANGEMENT");
+        Random random = new Random();
+
         // 3. Generate questions for lesson words (2 exercises per word in different formats)
         for (int i = 0; i < lessonWords.size(); i++) {
             VocabularyWord word = lessonWords.get(i);
             
-            String f1 = selectFormat(i, 0);
+            String f1 = allFormats.get(random.nextInt(allFormats.size()));
             questionsList.add(questionGenerator.generateQuestion(learnerId, word, f1));
 
-            String f2 = selectFormat(i, 1);
+            List<String> remaining = new ArrayList<>(allFormats);
+            remaining.remove(f1);
+            String f2 = remaining.get(random.nextInt(remaining.size()));
             questionsList.add(questionGenerator.generateQuestion(learnerId, word, f2));
         }
 
@@ -52,7 +57,7 @@ public class RetrievalActivityService {
         for (int i = 0; i < reinforcementItems.size(); i++) {
             VocabularyWord rWord = reinforcementItems.get(i).getWord();
             int index = Math.min((i * 3) + 2, questionsList.size());
-            String format = selectFormat(i, 2);
+            String format = allFormats.get(random.nextInt(allFormats.size()));
             questionsList.add(index, questionGenerator.generateQuestion(learnerId, rWord, format));
         }
 

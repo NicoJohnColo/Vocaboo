@@ -407,6 +407,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _isChecked = false;
     _isCorrect = false;
     _selectedCompletionWord = null;
+    _assembledWords = []; // clear previous sentence's answer
     final wordId = _currentWord.wordId;
     final priorAttempts = _wordPronunciationAttempts[wordId] ?? 0;
     _pronunciationAttempt = (priorAttempts + 1).clamp(1, 3);

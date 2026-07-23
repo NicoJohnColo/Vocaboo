@@ -33,7 +33,10 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
     _ttsService.initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = Provider.of<LessonProvider>(context, listen: false);
-      final words = await provider.loadVocabulary(widget.lessonId);
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final posFocus = auth.learner?.posFocus;
+      final filter = (posFocus != null && posFocus != 'ALL') ? posFocus : null;
+      final words = await provider.loadVocabulary(widget.lessonId, partOfSpeech: filter);
       final pairs = await provider.loadConfusablePairs(widget.lessonId);
       setState(() {
         _localWords = words;

@@ -17,7 +17,13 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProxyProvider<AuthProvider, LessonProvider>(
           create: (_) => LessonProvider(null),
-          update: (_, auth, previous) => LessonProvider(auth),
+          update: (_, auth, previous) {
+            if (previous != null) {
+              previous.updateAuth(auth);
+              return previous;
+            }
+            return LessonProvider(auth);
+          },
         ),
       ],
       child: const VocabooApp(),

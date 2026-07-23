@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../models/lesson_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/local_storage_service.dart';
 import 'mastery_result_screen.dart';
@@ -228,12 +229,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                               if (lesson.status == 'COMPLETED') {
                                                 _showCompletedLessonOptions(lesson);
                                               } else {
-                                                context.push(
-                                                  '/lesson/${lesson.lessonId}/diagnostic',
-                                                  extra: {
-                                                    'categoryId': widget.categoryId,
-                                                  },
-                                                );
+                                                _showFocusPromptAndStartLesson(lesson);
                                               }
                                             }
                                           : null,
@@ -529,12 +525,141 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
     if (!mounted) return;
 
-    // Navigate to diagnostic as a fresh start
-    // ignore: use_build_context_synchronously
-    navContext.push(
-      '/lesson/${lesson.lessonId}/diagnostic',
-      extra: {
-        'categoryId': widget.categoryId,
+    _showFocusPromptAndStartLesson(lesson);
+  }
+
+  void _showFocusPromptAndStartLesson(LessonModel lesson) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    String selectedFocus = auth.learner?.posFocus ?? 'ALL';
+
+    final options = [
+      {'key': 'ALL', 'label': '🌟 All Words', 'desc': 'Practice all vocabulary words in this lesson'},
+      {'key': 'NOUN', 'label': '🏷️ Nouns', 'desc': 'Focus on objects, places, and names'},
+      {'key': 'VERB', 'label': '⚡ Verbs', 'desc': 'Focus on action words'},
+      {'key': 'ADJECTIVE', 'label': '🎨 Adjectives', 'desc': 'Focus on descriptive words'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (bottomSheetContext, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'What would you like to focus on?',
+                    style: TextStyle(
+                      fontFamily: 'Outfit',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      color: Color(0xFF0F172A),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    lesson.lessonTitle,
+                    style: const TextStyle(
+                      fontFamily: 'Outfit',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: Color(0xFF64748B),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  ...options.map((opt) {
+                    final key = opt['key'] as String;
+                    final isSelected = selectedFocus == key;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: ListTile(
+                        onTap: () {
+                          setModalState(() {
+                            selectedFocus = key;
+                          });
+                        },
+                        title: Text(
+                          opt['label'] as String,
+                          style: TextStyle(
+                            fontFamily: 'Outfit',
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                            color: const Color(0xFF0F172A),
+                          ),
+                        ),
+                        subtitle: Text(
+                          opt['desc'] as String,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle_rounded, color: Color(0xFF0EA5E9))
+                            : const Icon(Icons.radio_button_unchecked_rounded, color: Color(0xFF94A3B8)),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0EA5E9),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      await auth.updatePosFocus(selectedFocus);
+                      if (mounted) {
+                        context.push(
+                          '/lesson/${lesson.lessonId}/diagnostic',
+                          extra: {
+                            'categoryId': widget.categoryId,
+                          },
+                        );
+                      }
+                    },
+                    child: const Text(
+                      'Start Lesson',
+                      style: TextStyle(
+                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
       },
     );
   }

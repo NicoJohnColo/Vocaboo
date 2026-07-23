@@ -16,7 +16,7 @@ const double reviewWeight = ScoringService.reviewWeight;
 const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
-  final AuthProvider? _auth;
+  AuthProvider? _auth;
   static final String baseUrl = AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
@@ -32,6 +32,10 @@ class LessonProvider with ChangeNotifier {
   String? get error => _error;
 
   LessonProvider(this._auth);
+
+  void updateAuth(AuthProvider? auth) {
+    _auth = auth;
+  }
 
   // Expose auth provider for UI components that need learner preferences.
   AuthProvider? get authProvider => _auth;
@@ -101,14 +105,18 @@ class LessonProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<VocabularyWordModel>> loadVocabulary(String lessonId) async {
+  Future<List<VocabularyWordModel>> loadVocabulary(String lessonId, {String? partOfSpeech}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
+      final uri = (partOfSpeech != null && partOfSpeech.isNotEmpty)
+          ? Uri.parse('$baseUrl/lessons/$lessonId/vocabulary?partOfSpeech=${Uri.encodeComponent(partOfSpeech)}')
+          : Uri.parse('$baseUrl/lessons/$lessonId/vocabulary');
+
       final response = await http.get(
-        Uri.parse('$baseUrl/lessons/$lessonId/vocabulary'),
+        uri,
         headers: _headers,
       );
 

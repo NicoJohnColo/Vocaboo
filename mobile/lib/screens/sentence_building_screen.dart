@@ -540,12 +540,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   Future<void> _completeModuleAndAdvance() async {
     final navContext = context;
 
+    final totalActivities = _totalUniqueWords * 2;
     try {
       await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
         widget.lessonId,
         widget.isSandbox ? null : 3,
-        _initialPassCorrectCount,
-        _totalUniqueWords,
+        _initialPassCompletedCount,
+        totalActivities > 0 ? totalActivities : _totalUniqueWords,
         isSandbox: widget.isSandbox,
         sessionId: widget.sessionId,
       );
@@ -559,13 +560,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     if (!mounted) return;
 
-    // Calculate overall score using completed word count (not activity count)
-    // Each word has 2 activities (completion + rearrangement), so use completedCount instead of correctCount
-    final overallScore = _totalUniqueWords > 0 
-        ? (_initialPassCompletedCount / _totalUniqueWords) * 100 
-        : 0.0;
+    // Calculate overall score using completed activities count against total activities
+    // Each word has 2 activities (tile arrangement + voice validation)
+    final overallScore = (totalActivities > 0 
+        ? (_initialPassCompletedCount / totalActivities) * 100 
+        : 0.0).clamp(0.0, 100.0);
     
-    debugPrint('Module 3 score: completedCount=$_initialPassCompletedCount, totalWords=$_totalUniqueWords, score=$overallScore%');
+    debugPrint('Module 3 score: completedCount=$_initialPassCompletedCount, totalActivities=$totalActivities, totalWords=$_totalUniqueWords, score=$overallScore%');
 
     // Get failed sentence word IDs
     final failedSentenceWordIds = _failedSentenceWords.map((w) => w.wordId).toSet();

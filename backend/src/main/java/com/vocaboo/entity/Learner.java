@@ -43,6 +43,10 @@ public class Learner {
     @Builder.Default
     private Boolean masteryApplyImmediately = true;
 
+    @Column(name = "pos_focus", length = 50)
+    @Builder.Default
+    private String posFocus = "ALL";
+
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();

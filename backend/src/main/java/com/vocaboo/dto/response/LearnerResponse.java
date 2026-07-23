@@ -16,4 +16,5 @@ public class LearnerResponse {
     private LanguageMedium languagePreference;
     private Boolean onboardingComplete;
     private Boolean masteryApplyImmediately;
+    private String posFocus;
 }

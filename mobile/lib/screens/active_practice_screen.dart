@@ -149,6 +149,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             case 'MATCHING':
               format = ActivityFormat.matching;
               break;
+            case 'TYPE_WHAT_YOU_HEAR':
+              format = ActivityFormat.listeningTyping;
+              break;
             case 'SENTENCE_ARRANGEMENT':
               format = ActivityFormat.rearrangement;
               break;
@@ -188,6 +191,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             sentenceArrangementTokens: scrambledTokens,
             imageAssetPath: q['imageAssetPath'],
             timeLimitSeconds: q['timeLimitSeconds'] as int?,
+            difficultyLevel: q['difficultyLevel'] as String? ?? 'LEARNING',
           );
         }).toList();
       }
@@ -223,7 +227,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         ActivityFormat.multipleChoice,
         ActivityFormat.fillInTheBlank,
         ActivityFormat.matching,
-        ActivityFormat.rearrangement,
+        ActivityFormat.listeningTyping,
       ];
       
       // Build queue sequentially per word: for each word, add two exercises back-to-back
@@ -235,17 +239,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() < 0.3) {
           format1 = ActivityFormat.imageMatching;
         }
-        if (format1 == ActivityFormat.rearrangement && _rearrangementTokenCount(word) < 2) {
-          format1 = ActivityFormat.fillInTheBlank;
-        }
         _practiceQueue.add(_createPracticeItem(word, format1));
 
         // Second exercise: pick a random format ensuring it differs from the first format
         final remainingFormats = allowedFormats.where((f) => f != format1).toList();
         var format2 = remainingFormats[random.nextInt(remainingFormats.length)];
-        if (format2 == ActivityFormat.rearrangement && _rearrangementTokenCount(word) < 2) {
-          format2 = ActivityFormat.fillInTheBlank;
-        }
         _practiceQueue.add(_createPracticeItem(word, format2));
       }
     }
@@ -279,6 +277,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       sentenceCompletionOption1: word.sentenceCompletionOption1,
       sentenceCompletionOption2: word.sentenceCompletionOption2,
       sentenceCompletionOption3: word.sentenceCompletionOption3,
+      difficultyLevel: 'LEARNING',
     );
   }
 
@@ -574,22 +573,27 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   String _getListeningTypingAudioText(PracticeItemModel item) {
-    // Prefer a single-word answer for audio. If fitbAnswer is a single token, use it.
-    final fitb = item.fitbAnswer?.trim();
-    if (fitb != null && fitb.isNotEmpty) {
-      final tokens = fitb.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
-      if (tokens.length == 1) return tokens.first;
+    final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+    if (lvl == 'LEARNING') {
+      return item.englishWord;
+    } else if (lvl == 'FAMILIAR') {
+      return _extractPhrase(item.exampleSentenceEnglish, item.englishWord);
+    } else {
+      return item.exampleSentenceEnglish;
     }
+  }
 
-    // Fallback to the vocabulary word if it's a single token
-    final word = item.englishWord.trim();
-    if (word.isNotEmpty && word.split(RegExp(r'\s+')).length == 1) return word;
-
-    // Otherwise return the example sentence so the instructor can read the context
-    final example = item.exampleSentenceEnglish.trim();
-    if (example.isNotEmpty) return example;
-
-    return fitb ?? word;
+  String _extractPhrase(String sentence, String word) {
+    final clean = sentence.replaceAll(RegExp(r'[.,!?;:]'), '');
+    final wordsList = clean.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+    int targetIndex = wordsList.indexWhere((w) => w.toLowerCase().contains(word.toLowerCase()));
+    if (targetIndex == -1) return word;
+    
+    int start = (targetIndex - 1).clamp(0, wordsList.length - 1);
+    int end = (targetIndex + 1).clamp(0, wordsList.length - 1);
+    
+    if (start == targetIndex && end == targetIndex) return word;
+    return wordsList.sublist(start, end + 1).join(' ');
   }
 
   // --- Handlers ---
@@ -667,8 +671,34 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       debugPrint('FITB check: selected="$learnerAns", comparing against="$fitbCorrect"');
       correct = (learnerAns.toLowerCase() == fitbCorrect.toLowerCase());
       correctAns = fitbCorrect;
-    } else if (item.activityFormat == ActivityFormat.listeningTyping ||
-               (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty)) {
+    } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+      learnerAns = _typingController.text.trim();
+      final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+      String correctTarget;
+      if (lvl == 'LEARNING') {
+        correctTarget = item.englishWord;
+      } else if (lvl == 'FAMILIAR') {
+        correctTarget = _getListeningTypingAudioText(item);
+      } else {
+        correctTarget = item.exampleSentenceEnglish;
+      }
+
+      if (lvl == 'PROFICIENT') {
+        final cleanLearner = _cleanStringForCompare(learnerAns);
+        final cleanCorrect = _cleanStringForCompare(correctTarget);
+        final dist = _levenshtein(cleanLearner, cleanCorrect);
+        correct = (cleanCorrect.length >= 4) ? (dist <= 1) : (dist == 0);
+      } else if (lvl == 'MASTERED') {
+        final cleanLearner = learnerAns.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+        final cleanCorrect = correctTarget.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+        correct = cleanLearner == cleanCorrect;
+      } else {
+        final cleanLearner = _cleanStringForCompare(learnerAns);
+        final cleanCorrect = _cleanStringForCompare(correctTarget);
+        correct = cleanLearner == cleanCorrect;
+      }
+      correctAns = correctTarget;
+    } else if (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty) {
       learnerAns = _typingController.text.trim();
       // Use single-word target for comparison. If fitbAnswer is multi-word, fall back to englishWord.
       String correctTarget = (item.fitbAnswer ?? '').trim();
@@ -809,6 +839,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         ActivityFormat.multipleChoice,
         ActivityFormat.fillInTheBlank,
         ActivityFormat.matching,
+        ActivityFormat.listeningTyping,
         ActivityFormat.rearrangement,
       ];
       final remaining = allowedFormats.where((f) => f != item.activityFormat).toList();
@@ -833,11 +864,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         matchingSet: item.matchingSet,
         sentenceArrangementTokens: item.sentenceArrangementTokens,
       );
-      var resolvedFormat = nextFormat;
-      if (resolvedFormat == ActivityFormat.rearrangement && _rearrangementTokenCount(wordModel) < 2) {
-        resolvedFormat = ActivityFormat.fillInTheBlank;
-      }
-      final failedItem = _createPracticeItem(wordModel, resolvedFormat);
+      final failedItem = _createPracticeItem(wordModel, nextFormat);
       _practiceQueue.add(failedItem);
       _plannedScreens++;
 
@@ -1819,11 +1846,16 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Widget _buildListeningTyping(PracticeItemModel item) {
-    // Hide English prompt from the UI (the learner must listen); show Bisaya hint instead
-    final bisayaHint = (item.exampleSentenceCebuano?.trim().isNotEmpty ?? false)
-        ? item.exampleSentenceCebuano!.trim()
-        : item.cebuanoMeaning.trim();
-
+    final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+    final showCebuano = (lvl == 'LEARNING' || lvl == 'FAMILIAR');
+    
+    // Hide English prompt from the UI (the learner must listen); show Bisaya hint instead if enabled
+    final bisayaHint = showCebuano 
+        ? ((item.exampleSentenceCebuano?.trim().isNotEmpty ?? false)
+            ? item.exampleSentenceCebuano!.trim()
+            : item.cebuanoMeaning.trim())
+        : '';
+ 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2275,5 +2307,41 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         ),
       ],
     );
+  }
+
+  int _levenshtein(String s, String t) {
+    if (s == t) return 0;
+    if (s.isEmpty) return t.length;
+    if (t.isEmpty) return s.length;
+
+    List<int> v0 = List<int>.generate(t.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(t.length + 1, 0);
+
+    for (int i = 0; i < s.length; i++) {
+      v1[0] = i + 1;
+      for (int j = 0; j < t.length; j++) {
+        int cost = (s[i] == t[j]) ? 0 : 1;
+        v1[j + 1] = _min3(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+      }
+      for (int j = 0; j <= t.length; j++) {
+        v0[j] = v1[j];
+      }
+    }
+    return v0[t.length];
+  }
+
+  int _min3(int a, int b, int c) {
+    int m = a;
+    if (b < m) m = b;
+    if (c < m) m = c;
+    return m;
+  }
+
+  String _cleanStringForCompare(String input) {
+    return input
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[.,!?;:]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 }

@@ -37,7 +37,7 @@ public class RetrievalActivityService {
 
         List<Map<String, Object>> questionsList = new ArrayList<>();
 
-        List<String> allFormats = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "SENTENCE_ARRANGEMENT");
+        List<String> allFormats = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "TYPE_WHAT_YOU_HEAR");
         Random random = new Random();
 
         // 3. Generate questions for lesson words (2 exercises per word in different formats)
@@ -45,11 +45,13 @@ public class RetrievalActivityService {
             VocabularyWord word = lessonWords.get(i);
             
             String f1 = allFormats.get(random.nextInt(allFormats.size()));
+            System.out.println("RETRIEVAL FORMAT: word=" + word.getEnglishWord() + " format1=" + f1);
             questionsList.add(questionGenerator.generateQuestion(learnerId, word, f1));
 
             List<String> remaining = new ArrayList<>(allFormats);
             remaining.remove(f1);
             String f2 = remaining.get(random.nextInt(remaining.size()));
+            System.out.println("RETRIEVAL FORMAT: word=" + word.getEnglishWord() + " format2=" + f2);
             questionsList.add(questionGenerator.generateQuestion(learnerId, word, f2));
         }
 
@@ -93,7 +95,7 @@ public class RetrievalActivityService {
     }
 
     private String selectFormat(int index, int phase) {
-        String[] formats = {"MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "SENTENCE_ARRANGEMENT"};
+        String[] formats = {"MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "TYPE_WHAT_YOU_HEAR"};
         return formats[(index + phase) % formats.length];
     }
 }

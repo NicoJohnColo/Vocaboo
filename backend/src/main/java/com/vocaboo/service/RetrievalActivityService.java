@@ -12,6 +12,7 @@ import java.util.*;
 public class RetrievalActivityService {
 
     private final PracticeSessionRepository sessionRepository;
+    private final IntroductionSessionRepository introductionSessionRepository;
     private final ReinforcementQueueRepository queueRepository;
     private final VocabularyWordRepository wordRepository;
     private final DynamicQuestionGeneratorService questionGenerator;
@@ -20,10 +21,66 @@ public class RetrievalActivityService {
     private final DifficultyAdjustmentService difficultyService;
     private final WrongAnswerTrackingService wrongAnswerTrackingService;
 
-    @Transactional(readOnly = true)
+    private static final List<String> CORE_FORMATS = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING");
+
+    private static class FormatBag {
+        private final List<String> available = new ArrayList<>();
+        private final Random random;
+
+        public FormatBag(Random random) {
+            this.random = random;
+            refill();
+        }
+
+        private void refill() {
+            available.clear();
+            available.addAll(CORE_FORMATS);
+            Collections.shuffle(available, random);
+        }
+
+        public String draw() {
+            if (available.isEmpty()) {
+                refill();
+            }
+            return available.remove(0);
+        }
+
+        public String drawExcept(String exclude) {
+            if (available.isEmpty()) {
+                refill();
+            }
+            for (int i = 0; i < available.size(); i++) {
+                if (!available.get(i).equals(exclude)) {
+                    return available.remove(i);
+                }
+            }
+            refill();
+            for (int i = 0; i < available.size(); i++) {
+                if (!available.get(i).equals(exclude)) {
+                    return available.remove(i);
+                }
+            }
+            return available.remove(0);
+        }
+    }
+
+    @Transactional
     public List<Map<String, Object>> generateSessionQuestions(UUID sessionId) {
-        PracticeSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        PracticeSession session = sessionRepository.findById(sessionId).orElse(null);
+        if (session == null) {
+            var introOpt = introductionSessionRepository.findById(sessionId);
+            if (introOpt.isPresent()) {
+                Learner learner = introOpt.get().getLearner();
+                Lesson lesson = introOpt.get().getLesson();
+                session = sessionRepository.save(PracticeSession.builder()
+                        .learner(learner)
+                        .lesson(lesson)
+                        .moduleNumber(2)
+                        .build());
+            } else {
+                throw new IllegalArgumentException("Session not found");
+            }
+        }
 
         UUID learnerId = session.getLearner().getLearnerId();
         UUID lessonId = session.getLesson().getLessonId();
@@ -37,21 +94,16 @@ public class RetrievalActivityService {
 
         List<Map<String, Object>> questionsList = new ArrayList<>();
 
-        List<String> allFormats = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "TYPE_WHAT_YOU_HEAR");
-        Random random = new Random();
+        FormatBag bag = new FormatBag(new Random());
 
         // 3. Generate questions for lesson words (2 exercises per word in different formats)
         for (int i = 0; i < lessonWords.size(); i++) {
             VocabularyWord word = lessonWords.get(i);
             
-            String f1 = allFormats.get(random.nextInt(allFormats.size()));
-            System.out.println("RETRIEVAL FORMAT: word=" + word.getEnglishWord() + " format1=" + f1);
+            String f1 = bag.draw();
             questionsList.add(questionGenerator.generateQuestion(learnerId, word, f1));
 
-            List<String> remaining = new ArrayList<>(allFormats);
-            remaining.remove(f1);
-            String f2 = remaining.get(random.nextInt(remaining.size()));
-            System.out.println("RETRIEVAL FORMAT: word=" + word.getEnglishWord() + " format2=" + f2);
+            String f2 = bag.drawExcept(f1);
             questionsList.add(questionGenerator.generateQuestion(learnerId, word, f2));
         }
 
@@ -59,7 +111,7 @@ public class RetrievalActivityService {
         for (int i = 0; i < reinforcementItems.size(); i++) {
             VocabularyWord rWord = reinforcementItems.get(i).getWord();
             int index = Math.min((i * 3) + 2, questionsList.size());
-            String format = allFormats.get(random.nextInt(allFormats.size()));
+            String format = bag.draw();
             questionsList.add(index, questionGenerator.generateQuestion(learnerId, rWord, format));
         }
 
@@ -95,7 +147,7 @@ public class RetrievalActivityService {
     }
 
     private String selectFormat(int index, int phase) {
-        String[] formats = {"MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "TYPE_WHAT_YOU_HEAR"};
+        String[] formats = {"MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING"};
         return formats[(index + phase) % formats.length];
     }
 }

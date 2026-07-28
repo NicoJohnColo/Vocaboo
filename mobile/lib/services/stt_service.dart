@@ -90,7 +90,7 @@ class SttService {
       if (response.statusCode == 403 || response.statusCode == 401) {
         final refreshed = await _tryRefreshToken();
         if (refreshed && !_disposed) {
-          final newToken = await _storage.read(key: 'access_token');
+          final newToken = await _getValidToken();
           response = await client.post(
             Uri.parse('${ApiService.baseUrl}/pronunciation/evaluate'),
             headers: {
@@ -125,7 +125,8 @@ class SttService {
   /// Returns the stored access token, refreshing it first if it is expired.
   Future<String?> _getValidToken() async {
     try {
-      final token = await _storage.read(key: 'jwt_token');
+      String? token = await _storage.read(key: 'jwt_token');
+      token ??= await _storage.read(key: 'access_token');
       if (token == null) return null;
 
       // Decode and check the 'exp' claim without a dependency on TokenService.
@@ -144,7 +145,8 @@ class SttService {
             // Token is expired — refresh before proceeding.
             final refreshed = await _tryRefreshToken();
             if (refreshed) {
-              final newTok = await _storage.read(key: 'access_token');
+              final newTok = (await _storage.read(key: 'jwt_token')) ??
+                  (await _storage.read(key: 'access_token'));
               if (newTok != null) return newTok;
             }
           }
@@ -152,7 +154,8 @@ class SttService {
       }
       return token;
     } catch (_) {
-      return await _storage.read(key: 'jwt_token');
+      return (await _storage.read(key: 'jwt_token')) ??
+          (await _storage.read(key: 'access_token'));
     }
   }
 

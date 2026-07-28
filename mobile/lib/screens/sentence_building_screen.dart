@@ -1102,7 +1102,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       moduleNumber: widget.moduleNumber,
     );
 
-    _initialPassCompletedCount++;
+    if (_isReinforcementPass) {
+      _reinforcementCompletedCount++;
+    } else {
+      _initialPassCompletedCount++;
+    }
     setState(() {
       _currentPhase = Phase.sentenceActivity;
     });

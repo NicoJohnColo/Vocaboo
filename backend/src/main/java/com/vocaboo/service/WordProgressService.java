@@ -145,6 +145,7 @@ public class WordProgressService {
                             .orElseGet(() -> LearnerLessonStatus.builder()
                                     .learner(learner)
                                     .lesson(nextLesson)
+                                    .status(LessonStatus.LOCKED)
                                     .attempts(0)
                                     .build());
 

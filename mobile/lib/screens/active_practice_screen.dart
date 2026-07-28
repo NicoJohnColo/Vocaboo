@@ -89,6 +89,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // Session Completed State
   final bool _isCompleted = false;
+  bool _isNavigating = false;
 
   // Timer Variables
   Timer? _questionTimer;
@@ -894,6 +895,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _completeModuleAndAdvance() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
     // Strict guard: ensure all practice queue items are completed before advancing
     if (_currentIndex < _practiceQueue.length) {
       setState(() {

@@ -261,6 +261,29 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
+  Future<String?> startPracticeSession(String lessonId, {int moduleNumber = 2}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/practice-sessions'),
+        headers: _headers,
+        body: json.encode({
+          'learnerId': _auth?.learner?.learnerId,
+          'lessonId': lessonId,
+          'moduleNumber': moduleNumber,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['sessionId'] as String?;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error starting practice session: $e');
+    }
+    return null;
+  }
+
   Future<void> updateWordProgress(
     String sessionId,
     String wordId,
@@ -303,9 +326,11 @@ class LessonProvider with ChangeNotifier {
         return List<Map<String, dynamic>>.from(data);
       } else if (response.statusCode == 401) {
         _auth?.logout();
+      } else {
+        debugPrint('Error loading retrieval questions. HTTP ${response.statusCode}: ${response.body}');
       }
-    } catch (e) {
-      debugPrint('Error loading retrieval questions: $e');
+    } catch (e, stackTrace) {
+      debugPrint('Error loading retrieval questions: $e\n$stackTrace');
     }
     return [];
   }

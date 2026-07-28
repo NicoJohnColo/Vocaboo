@@ -3,7 +3,7 @@ import 'dart:io' show Platform;
 class AppConfig {
   // Centralized configuration for the backend base URL.
   // Using local machine IP on the LAN to support physical device testing.
-  static String get baseUrl => 'http://192.168.1.5:8080/api/v1';
+  static String get baseUrl => 'http://127.0.0.1:8080/api/v1';
   
 
   static String get baseHost {

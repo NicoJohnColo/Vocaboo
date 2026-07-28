@@ -1836,8 +1836,18 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
     if (!mounted) return;
     debugPrint(widget.isSandbox ? 'Navigating to sandbox review...' : 'Navigating to Module 2...');
+
+    String targetSessionId = widget.sessionId;
+    if (!widget.isSandbox) {
+      final practiceSessionId = await provider.startPracticeSession(widget.lessonId, moduleNumber: 2);
+      if (practiceSessionId != null && practiceSessionId.isNotEmpty) {
+        targetSessionId = practiceSessionId;
+      }
+    }
+
+    if (!mounted) return;
     context.go(
-      '/session/${widget.sessionId}/practice',
+      '/session/$targetSessionId/practice',
       extra: {
         'lessonId': widget.lessonId,
         'categoryId': widget.categoryId,

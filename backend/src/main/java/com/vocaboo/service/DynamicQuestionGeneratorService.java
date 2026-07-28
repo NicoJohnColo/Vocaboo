@@ -145,7 +145,7 @@ public class DynamicQuestionGeneratorService {
         q.put("questionText", "Match the English words with their Cebuano meanings.");
         
         List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(word.getLesson().getLessonId());
-        if (words.size() < 4) {
+        if (words.size() < 2) {
             words = wordRepository.findAll();
         }
 

@@ -24,18 +24,31 @@ public class MasteryController {
     public ResponseEntity<Map<String, Object>> completeSession(
             @PathVariable("sessionId") UUID sessionId,
             @RequestParam("lessonId") UUID lessonId,
+            @RequestParam(value = "score", required = false) Double score,
+            @RequestParam(value = "isPerfectFirstAttempt", required = false) Boolean isPerfectFirstAttempt,
             Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
-        SessionSummary summary = masteryService.completeSession(learnerId, sessionId, lessonId);
+        SessionSummary summary = masteryService.completeSession(learnerId, sessionId, lessonId, score, isPerfectFirstAttempt);
 
         // Fetch the badge earned for this lesson
         List<RewardData> rewards = rewardRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
         String badge = rewards.stream()
                 .map(RewardData::getBadgeType)
-                .reduce((first, second) -> second) // get the last earned/highest badge
+                .max(Comparator.comparingInt(this::getBadgeTier))
                 .orElse("BRONZE");
 
         return ResponseEntity.ok(mapToResponse(summary, badge));
+    }
+
+    private int getBadgeTier(String badge) {
+        if (badge == null) return 0;
+        switch (badge) {
+            case "PERFECT_GOLD":
+            case "GOLD": return 3;
+            case "SILVER": return 2;
+            case "BRONZE": return 1;
+            default: return 0;
+        }
     }
 
     @GetMapping("/session/{sessionId}/summary")

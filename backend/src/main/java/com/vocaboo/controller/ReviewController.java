@@ -57,6 +57,21 @@ public class ReviewController {
         return ResponseEntity.ok(session);
     }
 
+    @GetMapping("/lessons/{lessonId}/module4-review")
+    public ResponseEntity<java.util.List<java.util.Map<String, Object>>> getModule4Review(
+            @PathVariable("lessonId") UUID lessonId,
+            @RequestParam(value = "learnerId", required = false) UUID learnerId,
+            Principal principal) {
+        UUID targetLearnerId = learnerId;
+        if (targetLearnerId == null && principal != null) {
+            targetLearnerId = UUID.fromString(principal.getName());
+        }
+        if (targetLearnerId == null) {
+            throw new IllegalArgumentException("Learner ID is required");
+        }
+        return ResponseEntity.ok(reviewService.generateModule4ReviewPayload(targetLearnerId, lessonId));
+    }
+
     @PostMapping("/progress/review-items")
     public ResponseEntity<ReviewItem> submitReviewItem(@RequestBody ReviewItemRequest request) {
         ReviewItem item = reviewService.saveReviewItem(request.getSessionId(), request.getWordId(), request.getIsCorrect());

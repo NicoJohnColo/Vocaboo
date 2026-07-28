@@ -83,6 +83,7 @@ class LessonScoreScreen extends StatefulWidget {
   final bool isSandbox;
   final int? masteredCount;
   final List<String>? needsReviewWords;
+  final bool isPerfectFirstAttempt;
 
   const LessonScoreScreen({
     super.key,
@@ -98,6 +99,7 @@ class LessonScoreScreen extends StatefulWidget {
     this.isSandbox = false,
     this.masteredCount,
     this.needsReviewWords,
+    this.isPerfectFirstAttempt = false,
   });
 
   @override
@@ -142,6 +144,8 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
     final result = await provider.completeMasterySession(
       widget.sessionId,
       widget.lessonId,
+      score: widget.overallScore,
+      isPerfectFirstAttempt: widget.isPerfectFirstAttempt,
     );
     if (mounted) {
       setState(() {

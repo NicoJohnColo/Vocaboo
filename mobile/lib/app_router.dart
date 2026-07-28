@@ -167,14 +167,15 @@ class AppRouter {
             lessonId: e['lessonId'] as String,
             categoryId: e['categoryId']?.toString() ?? '',
             lessonTitle: e['lessonTitle'] as String,
-            allWords: List<VocabularyWordModel>.from(e['allWords'].map((w) => VocabularyWordModel.fromJson(w as Map<String, dynamic>))),
-            wordPronunciationCorrect: Map<String, bool>.from(e['wordPronunciationCorrect']),
-            wordPronunciationAttempts: Map<String, int>.from(e['wordPronunciationAttempts']),
-            failedSentenceWordIds: Set<String>.from(e['failedSentenceWordIds']),
-            overallScore: (e['overallScore'] as num).toDouble(),
+            allWords: List<VocabularyWordModel>.from((e['allWords'] as List<dynamic>? ?? []).map((w) => VocabularyWordModel.fromJson(w as Map<String, dynamic>))),
+            wordPronunciationCorrect: Map<String, bool>.from(e['wordPronunciationCorrect'] ?? {}),
+            wordPronunciationAttempts: Map<String, int>.from(e['wordPronunciationAttempts'] ?? {}),
+            failedSentenceWordIds: Set<String>.from(e['failedSentenceWordIds'] ?? {}),
+            overallScore: (e['overallScore'] as num? ?? 0.0).toDouble(),
             isSandbox: e['isSandbox'] as bool? ?? false,
             masteredCount: e['masteredCount'] as int?,
             needsReviewWords: e['needsReviewWords'] != null ? List<String>.from(e['needsReviewWords']) : null,
+            isPerfectFirstAttempt: e['isPerfectFirstAttempt'] as bool? ?? false,
           );
         },
       ),
@@ -212,6 +213,7 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>?;
           return CumulativeMixedReviewScreen(
             sessionId: s.pathParameters['sessionId']!,
+            lessonId: e?['lessonId']?.toString(),
             allWords: List<Map<String, dynamic>>.from(e?['allWords'] ?? const []),
             categoryId: e?['categoryId']?.toString() ?? '',
             isSandbox: e?['isSandbox'] as bool? ?? false,

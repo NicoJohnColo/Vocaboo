@@ -26,7 +26,7 @@ public class SessionSummaryService {
     private final LearnerMasteryRepository masteryRepository;
 
     @Transactional
-    public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId) {
+    public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId, Double reviewScore, Boolean isPerfectFirstAttempt) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
         Lesson lesson = lessonRepository.findById(lessonId)
@@ -51,60 +51,54 @@ public class SessionSummaryService {
         }
 
         BigDecimal accuracy = BigDecimal.ZERO;
-        if (attempts > 0) {
+        if (reviewScore != null) {
+            accuracy = BigDecimal.valueOf(reviewScore).setScale(2, RoundingMode.HALF_UP);
+        } else if (attempts > 0) {
             accuracy = BigDecimal.valueOf((double) correct / attempts * 100.0)
                     .setScale(2, RoundingMode.HALF_UP);
         }
 
         int demerits = incorrect * 2;
 
-        // Calculate session-level points and bonuses
         List<PracticeResult> results = resultRepository.findBySessionSessionId(sessionId);
         int basePoints = results.stream().mapToInt(PracticeResult::getPoints).sum();
 
-        long sessionIncorrectCount = results.stream().filter(r -> !r.getIsCorrect()).count();
-        long sessionTotalAttempts = results.size();
-        
-        BigDecimal sessionAccuracy = BigDecimal.ZERO;
-        if (sessionTotalAttempts > 0) {
-            long sessionCorrectCount = results.stream().filter(PracticeResult::getIsCorrect).count();
-            sessionAccuracy = BigDecimal.valueOf(sessionCorrectCount * 100.0 / sessionTotalAttempts)
-                    .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal sessionAccuracy = accuracy;
+        int bonusPoints = 0;
+
+        int completionBonus = 0;
+        if (sessionAccuracy.compareTo(BigDecimal.valueOf(90.0)) >= 0) {
+            completionBonus = 100;
+        } else if (sessionAccuracy.compareTo(BigDecimal.valueOf(80.0)) >= 0) {
+            completionBonus = 50;
         }
 
-        int bonusPoints = 0;
-        if (sessionTotalAttempts > 0) {
-            int completionBonus = 0;
-            if (sessionAccuracy.compareTo(BigDecimal.valueOf(90.0)) >= 0) {
-                completionBonus = 100;
-            } else if (sessionAccuracy.compareTo(BigDecimal.valueOf(80.0)) >= 0) {
-                completionBonus = 50;
-            }
+        if (completionBonus > 0) {
+            bonusPoints += completionBonus;
+            PointTransaction tx = PointTransaction.builder()
+                    .learner(learner)
+                    .actionType(PointActionType.LESSON_COMPLETE)
+                    .pointsAwarded(completionBonus)
+                    .relatedSessionId(sessionId)
+                    .createdAt(OffsetDateTime.now())
+                    .build();
+            pointTransactionRepository.save(tx);
+        }
 
-            if (completionBonus > 0) {
-                bonusPoints += completionBonus;
-                PointTransaction tx = PointTransaction.builder()
-                        .learner(learner)
-                        .actionType(PointActionType.LESSON_COMPLETE)
-                        .pointsAwarded(completionBonus)
-                        .relatedSessionId(sessionId)
-                        .createdAt(OffsetDateTime.now())
-                        .build();
-                pointTransactionRepository.save(tx);
-            }
+        boolean isPerfect = (isPerfectFirstAttempt != null && isPerfectFirstAttempt) ||
+                (results.isEmpty() ? sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0 : (results.stream().noneMatch(r -> !r.getIsCorrect()) && sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0));
 
-            if (sessionIncorrectCount == 0 && sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0) {
-                bonusPoints += 100;
+        if (isPerfect) {
+            bonusPoints += 100;
 
-                PointTransaction tx = PointTransaction.builder()
-                        .learner(learner)
-                        .actionType(PointActionType.PERFECT_SESSION)
-                        .pointsAwarded(100)
-                        .relatedSessionId(sessionId)
-                        .createdAt(OffsetDateTime.now())
-                        .build();
-                pointTransactionRepository.save(tx);
-            }
+            PointTransaction tx = PointTransaction.builder()
+                    .learner(learner)
+                    .actionType(PointActionType.PERFECT_SESSION)
+                    .pointsAwarded(100)
+                    .relatedSessionId(sessionId)
+                    .createdAt(OffsetDateTime.now())
+                    .build();
+            pointTransactionRepository.save(tx);
         }
 
         // Update cached totalPoints in LearnerMastery by the total bonus points awarded
@@ -143,5 +137,10 @@ public class SessionSummaryService {
                 .build();
 
         return summaryRepository.save(summary);
+    }
+
+    @Transactional
+    public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId) {
+        return saveSessionSummary(learnerId, sessionId, lessonId, null, null);
     }
 }

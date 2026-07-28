@@ -14,14 +14,17 @@ public class MasteryReviewService {
     private final MasteryBadgeService badgeService;
 
     @Transactional
-    public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId) {
-        // Aggregate statistics and save session summary
-        SessionSummary summary = summaryService.saveSessionSummary(learnerId, sessionId, lessonId);
+    public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId, Double score, Boolean isPerfectFirstAttempt) {
+        SessionSummary summary = summaryService.saveSessionSummary(learnerId, sessionId, lessonId, score, isPerfectFirstAttempt);
 
-        // Compute and save reward badge based on session accuracy rate
-        double accuracy = summary.getAccuracyRate() != null ? summary.getAccuracyRate().doubleValue() : 0.0;
+        double accuracy = summary.getAccuracyRate() != null ? summary.getAccuracyRate().doubleValue() : (score != null ? score : 0.0);
         badgeService.calculateAndSaveBadge(learnerId, lessonId, accuracy);
 
         return summary;
+    }
+
+    @Transactional
+    public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId) {
+        return completeSession(learnerId, sessionId, lessonId, null, null);
     }
 }

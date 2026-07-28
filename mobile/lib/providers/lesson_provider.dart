@@ -540,6 +540,28 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
+  Future<List<Map<String, dynamic>>> loadModule4Review(String lessonId) async {
+    try {
+      final learnerId = _auth?.learner?.learnerId;
+      final uri = Uri.parse('$baseUrl/lessons/$lessonId/module4-review').replace(
+        queryParameters: {
+          if (learnerId != null && learnerId.isNotEmpty) 'learnerId': learnerId,
+        },
+      );
+
+      final response = await http.get(uri, headers: _headers);
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.loadModule4Review error: $e');
+    }
+    return [];
+  }
+
   double computeFinalScore({
     required double lesson1Score,
     required double lesson2Score,
@@ -908,12 +930,21 @@ class LessonProvider with ChangeNotifier {
   }
 
   /// Completes a mastery session on the backend, generating the summary and reward badge.
-  Future<Map<String, dynamic>?> completeMasterySession(String sessionId, String lessonId) async {
+  Future<Map<String, dynamic>?> completeMasterySession(
+    String sessionId,
+    String lessonId, {
+    double? score,
+    bool? isPerfectFirstAttempt,
+  }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/mastery/session/$sessionId/complete?lessonId=$lessonId'),
-        headers: _headers,
+      final uri = Uri.parse('$baseUrl/mastery/session/$sessionId/complete').replace(
+        queryParameters: {
+          'lessonId': lessonId,
+          if (score != null) 'score': score.toString(),
+          if (isPerfectFirstAttempt != null) 'isPerfectFirstAttempt': isPerfectFirstAttempt.toString(),
+        },
       );
+      final response = await http.post(uri, headers: _headers);
       if (response.statusCode == 200) {
         return json.decode(response.body) as Map<String, dynamic>;
       } else if (response.statusCode == 401) {

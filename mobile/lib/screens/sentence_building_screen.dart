@@ -592,8 +592,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       });
     }
 
-    // Navigate to lesson score screen
-    debugPrint('Navigating to next screen...');
+    debugPrint('Navigating to lesson score screen...');
     // ignore: use_build_context_synchronously
     navContext.go(
       '/session/${widget.sessionId}/lesson-score',

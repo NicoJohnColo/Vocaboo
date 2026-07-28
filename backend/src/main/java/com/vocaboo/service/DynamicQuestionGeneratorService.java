@@ -98,7 +98,8 @@ public class DynamicQuestionGeneratorService {
             case LEARNING: return "MULTIPLE_CHOICE";
             case FAMILIAR: return "MATCHING";
             case PROFICIENT: return "FILL_IN_BLANK";
-            case MASTERED: return "TYPE_WHAT_YOU_HEAR";
+            // TEMPORARY STOPGAP: LEVEL 4 / MASTERED defaults to FILL_IN_BLANK until full UC-3.7 Mastery tasks are wired
+            case MASTERED: return "FILL_IN_BLANK";
             default: return "MULTIPLE_CHOICE";
         }
     }

@@ -1,13 +1,13 @@
 package com.vocaboo.service;
 
+import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.request.LoginRequest;
 import com.vocaboo.dto.request.RegisterRequest;
-import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
-import com.vocaboo.entity.Learner;
-import com.vocaboo.repository.LearnerRepository;
 import com.vocaboo.entity.LanguageMedium;
+import com.vocaboo.entity.Learner;
+import com.vocaboo.entity.PracticeSession;
 import com.vocaboo.entity.ReviewSession;
 import com.vocaboo.entity.SandboxSession;
 import com.vocaboo.repository.*;
@@ -17,6 +17,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -37,6 +38,14 @@ public class LearnerService {
     private final SandboxSessionRepository sandboxSessionRepository;
     private final SandboxWordRepository sandboxWordRepository;
     private final SandboxWordProgressRepository sandboxWordProgressRepository;
+    private final SessionSummaryRepository summaryRepository;
+    private final PracticeResultRepository practiceResultRepository;
+    private final PracticeSessionRepository practiceSessionRepository;
+    private final WordPerformanceRepository performanceRepository;
+    private final LearnerMasteryRepository masteryRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
+    private final PointTransactionRepository pointTransactionRepository;
+    private final RewardDataRepository rewardDataRepository;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -44,7 +53,6 @@ public class LearnerService {
             throw new IllegalArgumentException("This name is already taken. Please choose another one.");
         }
 
-        // Enforce 12 strength BCrypt (done in SecurityConfig passwordEncoder bean config)
         String hashedPin = passwordEncoder.encode(request.getPin());
 
         Learner learner = Learner.builder()
@@ -52,7 +60,7 @@ public class LearnerService {
                 .age(request.getAge())
                 .pinHash(hashedPin)
                 .languagePreference(request.getLanguagePreference())
-                .onboardingComplete(true) // complete upon registration
+                .onboardingComplete(true)
                 .build();
 
         learner = learnerRepository.save(learner);
@@ -112,11 +120,12 @@ public class LearnerService {
                 .age(learner.getAge())
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
+                .masteryApplyImmediately(learner.getMasteryApplyImmediately())
                 .build();
     }
 
     @Transactional
-    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr) {
+    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr, Boolean masteryApplyImmediately) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner profile not found."));
 
@@ -139,6 +148,10 @@ public class LearnerService {
             }
         }
 
+        if (masteryApplyImmediately != null) {
+            learner.setMasteryApplyImmediately(masteryApplyImmediately);
+        }
+
         learner = learnerRepository.save(learner);
 
         return LearnerResponse.builder()
@@ -147,6 +160,7 @@ public class LearnerService {
                 .age(learner.getAge())
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
+                .masteryApplyImmediately(learner.getMasteryApplyImmediately())
                 .build();
     }
 
@@ -165,7 +179,6 @@ public class LearnerService {
 
     @Transactional
     public void resetProgress(UUID learnerId) {
-        // Fetch and purge sandbox session entities (sandbox_word_progress, sandbox_words, then sandbox_sessions)
         List<SandboxSession> sSessions = sandboxSessionRepository.findByLearnerLearnerIdOrderByCreatedAtDesc(learnerId);
         for (SandboxSession sSession : sSessions) {
             sandboxWordProgressRepository.deleteBySessionSessionId(sSession.getSessionId());
@@ -173,14 +186,25 @@ public class LearnerService {
         }
         sandboxSessionRepository.deleteByLearnerLearnerId(learnerId);
 
-        // Fetch and purge review sessions (review_items, then review_sessions)
         List<ReviewSession> rSessions = reviewSessionRepository.findByLearnerLearnerId(learnerId);
         for (ReviewSession rSession : rSessions) {
             reviewItemRepository.deleteBySessionSessionId(rSession.getSessionId());
         }
         reviewSessionRepository.deleteByLearnerLearnerId(learnerId);
 
-        // Purge standard diagnostic, pronunciation, progress, and lesson stats
+        List<PracticeSession> pSessions = practiceSessionRepository.findByLearnerLearnerId(learnerId);
+        for (PracticeSession pSession : pSessions) {
+            practiceResultRepository.deleteBySessionSessionId(pSession.getSessionId());
+        }
+        practiceSessionRepository.deleteByLearnerLearnerId(learnerId);
+
+        summaryRepository.deleteByLearnerLearnerId(learnerId);
+        performanceRepository.deleteByLearnerLearnerId(learnerId);
+        masteryRepository.deleteByLearnerLearnerId(learnerId);
+        difficultyProgressRepository.deleteByLearnerLearnerId(learnerId);
+        pointTransactionRepository.deleteByLearnerLearnerId(learnerId);
+        rewardDataRepository.deleteByLearnerLearnerId(learnerId);
+
         pronunciationAttemptRepository.deleteByLearnerLearnerId(learnerId);
         wordProgressRepository.deleteByLearnerLearnerId(learnerId);
         diagnosticResultRepository.deleteByLearnerLearnerId(learnerId);

@@ -87,20 +87,20 @@ public class GeminiService {
             + "Rules: use standard Cebuano orthography, make the Cebuano meaning a real translation, never reuse or transliterate the English word as the meaning, keep content age-appropriate, and ensure the matching set includes the target word plus related words.";
 
     public SandboxWordDto generateSandboxLesson(String userInput) {
-        String normalizedWord = requireSingleWord(userInput);
-        String responseBody = callSandboxGemini(normalizedWord);
+        String normalizedInput = validateSandboxInput(userInput);
+        String responseBody = callSandboxGemini(normalizedInput);
         SandboxWordDto dto = parseSandboxLesson(responseBody);
         if (dto == null) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini returned invalid sandbox JSON.");
         }
 
-        validateLesson(dto, normalizedWord);
+        validateLesson(dto, normalizedInput);
         return dto;
     }
 
-    private String callSandboxGemini(String englishWord) {
+    private String callSandboxGemini(String userInput) {
         try {
-            return callGeminiApi(SANDBOX_SYSTEM_PROMPT, buildPrompt(englishWord));
+            return callGeminiApi(SANDBOX_SYSTEM_PROMPT, buildPrompt(userInput));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Sandbox Gemini request failed.", e);
@@ -109,24 +109,28 @@ public class GeminiService {
         }
     }
 
-    private String buildPrompt(String englishWord) {
-        return "Generate a complete sandbox lesson for the single English word \"" + englishWord + "\". "
-                + "Return one JSON object only. Ensure the Cebuano meaning is a real Cebuano translation, not a reused English word. "
-                + "Provide one English example sentence, its Cebuano translation, three multiple-choice distractors, one fill-in-the-blank sentence, a matching set with the target word and related words, shuffled sentence arrangement tokens for the English example sentence, a sentence completion blank, and four completion options.";
+    private String buildPrompt(String userInput) {
+        boolean isSingleWord = userInput.trim().split("\\s+").length == 1;
+        if (isSingleWord) {
+            return "Generate a complete sandbox lesson for the single English word \"" + userInput + "\". "
+                    + "Return one JSON object only. Ensure the Cebuano meaning is a real Cebuano translation, not a reused English word. "
+                    + "Provide one English example sentence, its Cebuano translation, three multiple-choice distractors, one fill-in-the-blank sentence, a matching set with the target word and related words, shuffled sentence arrangement tokens for the English example sentence, a sentence completion blank, and four completion options.";
+        } else {
+            return "Generate a complete sandbox lesson for the topic, phrase, or word \"" + userInput + "\". "
+                    + "Choose one relevant single English word related to \"" + userInput + "\" as the main vocabulary word (set this chosen word as the \"english_word\" in the response). "
+                    + "Return one JSON object only. Ensure the Cebuano meaning is a real Cebuano translation, not a reused English word. "
+                    + "Provide one English example sentence, its Cebuano translation, three multiple-choice distractors, one fill-in-the-blank sentence, a matching set with the target word and related words, shuffled sentence arrangement tokens for the English example sentence, a sentence completion blank, and four completion options.";
+        }
     }
 
-    private String requireSingleWord(String input) {
+    private String validateSandboxInput(String input) {
         if (input == null || input.trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customWord is required.");
         }
 
         String trimmed = input.trim();
-        if (trimmed.chars().anyMatch(Character::isWhitespace) || trimmed.split("\\s+").length != 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox accepts exactly one English word.");
-        }
-
-        if (!trimmed.matches("[A-Za-z][A-Za-z'\\-]*")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox word must contain only English letters.");
+        if (!trimmed.matches("[A-Za-z0-9\\s'\\-\\,\\?\\!\\.]+")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox input contains invalid characters.");
         }
 
         return trimmed;
@@ -297,23 +301,26 @@ public class GeminiService {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini returned a sandbox lesson without an English word.");
         }
 
-        if (!dto.getEnglishWord().trim().equalsIgnoreCase(requestedWord)) {
+        String targetWord = dto.getEnglishWord().trim();
+
+        boolean isSingleWordRequest = requestedWord.trim().split("\\s+").length == 1;
+        if (isSingleWordRequest && !targetWord.equalsIgnoreCase(requestedWord.trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini returned the wrong sandbox word.");
         }
 
         // Provide fallback for missing Cebuano meaning
-        if (dto.getCebuanoMeaning() == null || dto.getCebuanoMeaning().trim().isEmpty() || looksLikeReusedEnglish(dto.getCebuanoMeaning(), requestedWord)) {
-            dto.setCebuanoMeaning(requestedWord + " (Cebuano)");
+        if (dto.getCebuanoMeaning() == null || dto.getCebuanoMeaning().trim().isEmpty() || looksLikeReusedEnglish(dto.getCebuanoMeaning(), targetWord)) {
+            dto.setCebuanoMeaning(targetWord + " (Cebuano)");
         }
 
         // Provide fallback for missing English example sentence
         if (dto.getExampleSentenceEnglish() == null || dto.getExampleSentenceEnglish().trim().isEmpty()) {
-            dto.setExampleSentenceEnglish("I use a " + requestedWord + ".");
+            dto.setExampleSentenceEnglish("I use a " + targetWord + ".");
         }
 
         // Provide fallback for missing Cebuano example sentence
         if (dto.getExampleSentenceCebuano() == null || dto.getExampleSentenceCebuano().trim().isEmpty()) {
-            dto.setExampleSentenceCebuano("Gigamit nako ang " + requestedWord + ".");
+            dto.setExampleSentenceCebuano("Gigamit nako ang " + targetWord + ".");
         }
 
         // Provide fallback for missing distractors
@@ -324,7 +331,7 @@ public class GeminiService {
         // Provide fallback for missing matching set
         if (dto.getMatchingSet() == null || dto.getMatchingSet().size() < 3) {
             dto.setMatchingSet(Arrays.asList(
-                MatchingEntryDto.builder().englishWord(requestedWord).cebuanoMeaning(requestedWord + " (Cebuano)").cebuanoTranslation(requestedWord + " (Cebuano)").build(),
+                MatchingEntryDto.builder().englishWord(targetWord).cebuanoMeaning(targetWord + " (Cebuano)").cebuanoTranslation(targetWord + " (Cebuano)").build(),
                 MatchingEntryDto.builder().englishWord("house").cebuanoMeaning("balay").cebuanoTranslation("balay").build(),
                 MatchingEntryDto.builder().englishWord("water").cebuanoMeaning("tubig").cebuanoTranslation("tubig").build(),
                 MatchingEntryDto.builder().englishWord("book").cebuanoMeaning("libro").cebuanoTranslation("libro").build()

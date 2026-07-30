@@ -16,12 +16,13 @@ import 'mastery_result_screen.dart';
 
 class CumulativeMixedReviewScreen extends StatefulWidget {
   final String sessionId;
+  final String? lessonId;
   final List<Map<String, dynamic>> allWords;
   final String categoryId;
   final bool isSandbox;
   final List<String>? lessonIds;
   final List<String>? priorityWordIds;
-  const CumulativeMixedReviewScreen({super.key, required this.sessionId, this.allWords = const [], required this.categoryId, this.isSandbox = false, this.lessonIds, this.priorityWordIds});
+  const CumulativeMixedReviewScreen({super.key, required this.sessionId, this.lessonId, this.allWords = const [], required this.categoryId, this.isSandbox = false, this.lessonIds, this.priorityWordIds});
 
   @override
   State<CumulativeMixedReviewScreen> createState() => _CumulativeMixedReviewScreenState();
@@ -36,14 +37,18 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   final Map<String, bool> _itemResults = {}; // key: wordId_activityFormat -> correctness
   final Set<String> _attemptedWordIds = <String>{};
   Map<String, dynamic>? _pendingSavedState;
+  bool _hasError = false;
   bool _showResumePrompt = false;
   bool _showFailurePrompt = false;
+  Map<String, String> _wordDifficulties = {};
   final List<Map<String, dynamic>> _retryQueue = [];
   int _firstPassCorrectCount = 0;
   double? _failedFinalScore;
   double _maxProgress = 0.0;
   double? _progressOverride;
-  List<String> _allWordIds = []; // ordered list of 10 word IDs
+  int _reviewAttemptCount = 0;
+  bool _isPerfectFirstAttempt = false;
+  List<String> _allWordIds = []; // ordered list of word IDs
   bool _inReinforcementPass = false;
   List<Map<String, dynamic>> _wordBreakdown = [];
 
@@ -132,22 +137,41 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_scramble'.hashCode));
     } else if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
       final correct = (item['word'] ?? '').toString();
+      final level = _wordDifficulties[(item['wordId'] ?? '').toString()] ?? 'LEARNING';
+      int distractorCount = 3;
+      if (level == 'LEARNING') {
+        distractorCount = 2;
+      } else if (level == 'FAMILIAR' || level == 'PROFICIENT') {
+        distractorCount = 3;
+      } else if (level == 'MASTERED') {
+        distractorCount = 4;
+      }
+
       final provided = [
         item['mcDistractor1'],
         item['mcDistractor2'],
         item['mcDistractor3'],
-      ].whereType<String>().where((value) => value.isNotEmpty).toList();
+      ].whereType<String>().where((value) => value.isNotEmpty && value != correct).toList();
 
-      final options = <String>[correct];
-      if (provided.isNotEmpty) {
-        options.addAll(provided.take(3));
-      } else {
-        final other = _reviewItems.map((e) => e['word']?.toString() ?? '').where((w) => w.isNotEmpty && w != correct).toList();
+      final distractors = <String>[...provided];
+      if (distractors.length < distractorCount) {
+        final other = _normalizedReviewItems
+            .map((e) => e['word']?.toString() ?? '')
+            .where((w) => w.isNotEmpty && w != correct && !distractors.contains(w))
+            .toList();
         other.shuffle();
-        for (var i = 0; i < min(3, other.length); i++) {
-          options.add(other[i]);
-        }
+        distractors.addAll(other);
       }
+      
+      if (distractors.length < distractorCount) {
+        final fallback = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog', 'sun', 'moon', 'star'];
+        final availableFallback = fallback
+            .where((w) => w != correct && !distractors.contains(w))
+            .toList()..shuffle();
+        distractors.addAll(availableFallback);
+      }
+
+      final options = <String>[correct, ...distractors.take(distractorCount)];
       options.shuffle(Random('${item['wordId'] ?? ''}_mc'.hashCode));
       _currentMcOptions = options;
     }
@@ -157,13 +181,12 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final explicit = (item['sentenceArrangementTokens'] as List<dynamic>?)?.map((token) => token.toString()).where((token) => token.trim().isNotEmpty).toList();
     if (explicit != null && explicit.length >= 2) return explicit;
 
-    final sentence = (item['sentenceCompletionSentence'] ?? item['example'] ?? '').toString().trim();
-    if (sentence.isEmpty) {
-      final word = (item['word'] ?? '').toString().trim();
-      return word.isEmpty ? const [] : [word];
+    final rawSentence = (item['exampleSentenceEnglish'] ?? item['example'] ?? '').toString().trim();
+    if (rawSentence.isEmpty || rawSentence.startsWith('Match the English') || rawSentence.startsWith('What is the Cebuano')) {
+      return const [];
     }
 
-    return sentence
+    return rawSentence
         .replaceAll(RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~(?)]'), '')
         .split(' ')
         .where((word) => word.trim().isNotEmpty)
@@ -225,12 +248,18 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
   Future<void> _fetchReviewItems() async {
     final savedState = await LocalStorageService.getCumulativeReviewState(widget.sessionId);
     if (savedState != null) {
-      setState(() {
-        _pendingSavedState = Map<String, dynamic>.from(savedState);
-        _showResumePrompt = true;
-        _loading = false;
-      });
-      return;
+      final savedQueue = savedState['queue'] as List<dynamic>?;
+      final savedItems = savedState['reviewItems'] as List<dynamic>?;
+      if ((savedQueue == null || savedQueue.isEmpty) && (savedItems == null || savedItems.isEmpty)) {
+        await LocalStorageService.clearCumulativeReviewState(widget.sessionId);
+      } else {
+        setState(() {
+          _pendingSavedState = Map<String, dynamic>.from(savedState);
+          _showResumePrompt = true;
+          _loading = false;
+        });
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -239,40 +268,46 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
 
     if (widget.allWords.isNotEmpty) {
       // Words passed in directly (e.g. from retry)
-      items = widget.allWords.take(10).toList();
+      items = widget.allWords.toList();
     } else {
-      // Sequential loading: fetch lesson 1 first, then lesson 2
-      final lessonIds = await _resolveLessonIds(lessons);
-      for (final lessonId in lessonIds) {
-        if (items.length >= 10) break;
-        final batch = await lessons.loadVocabulary(lessonId);
-        final mapped = batch.map((w) => w.toJson()).toList();
-        for (final word in mapped) {
-          if (items.length >= 10) break;
-          items.add(word);
-        }
+      String? targetLessonId = widget.lessonId;
+      if ((targetLessonId == null || targetLessonId.isEmpty) && widget.lessonIds != null && widget.lessonIds!.isNotEmpty) {
+        targetLessonId = widget.lessonIds!.first;
       }
-      if (items.isEmpty && widget.categoryId.isNotEmpty) {
-        final catItems = await lessons.loadCategoryActivity(widget.categoryId);
-        items = catItems.take(10).toList();
+
+      if (targetLessonId != null && targetLessonId.isNotEmpty) {
+        items = await lessons.loadModule4Review(targetLessonId);
+      }
+
+      if (items.isEmpty) {
+        final lessonIds = await _resolveLessonIds(lessons);
+        for (final lessonId in lessonIds) {
+          if (items.length >= 10) break;
+          final batch = await lessons.loadVocabulary(lessonId);
+          final mapped = batch.map((w) => w.toJson()).toList();
+          for (final word in mapped) {
+            if (items.length >= 10) break;
+            items.add(word);
+          }
+        }
+        if (items.isEmpty && widget.categoryId.isNotEmpty) {
+          final catItems = await lessons.loadCategoryActivity(widget.categoryId);
+          items = catItems.take(10).toList();
+        }
       }
     }
 
-    // Validate: we need exactly 10 words
+    // Validate: check non-empty
     if (items.isEmpty) {
       setState(() {
         _loading = false;
+        _hasError = true;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No vocabulary words found for review.')),
-        );
-      }
       return;
     }
 
     // Normalise items
-    final list = items.take(10).map((e) {
+    final list = items.map((e) {
       final item = Map<String, dynamic>.from(e);
       return <String, dynamic>{
         'wordId': item['wordId'] ?? item['id'] ?? item['vocabularyId'] ?? '',
@@ -289,8 +324,23 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         'matchingSet': item['matchingSet'],
         'sentenceArrangementTokens': item['sentenceArrangementTokens'],
         'imageAssetPath': item['imageAssetPath'],
+        'isRefresher': item['isRefresher'] ?? false,
       };
     }).where((it) => (it['wordId'] ?? '').toString().isNotEmpty).toList();
+
+    // Fetch difficulty levels in parallel
+    final List<Future<void>> diffFutures = [];
+    final Map<String, String> diffMap = {};
+    for (final item in list) {
+      final wid = item['wordId'].toString();
+      diffFutures.add(lessons.getWordDifficulty(wid).then((level) {
+        diffMap[wid] = level;
+      }));
+    }
+    await Future.wait(diffFutures);
+    setState(() {
+      _wordDifficulties = diffMap;
+    });
 
     // Build queue: exactly 3 fixed activities per word (or 1 if sandbox), in order
     _queue.clear();
@@ -503,6 +553,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
         : _reviewItems.map((it) => (it['wordId'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
     final cumulativeReviewScore = ScoringService.calculateCumulativeScore(_wordWrongAttempts, wordIds);
     _weightedScore = cumulativeReviewScore;
+    // NOTE: 70% is the mixed review mastery pass gate (UC-4.2).
+    // It is intentionally independent of the 80% gamification lesson-complete bonus threshold (UC-4.1).
     final passed = ScoringService.isPassing(cumulativeReviewScore);
 
     // Build per-word breakdown for storage
@@ -589,6 +641,8 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
       }
     }
 
+    _isPerfectFirstAttempt = (cumulativeReviewScore >= 70.0 && cumulativeReviewScore >= 100.0 && _reviewAttemptCount == 0);
+
     if (!passed) {
       if (!mounted) return;
       setState(() {
@@ -599,19 +653,38 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     }
 
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
-      builder: (_) => MasteryResultScreen(
-        sessionId: widget.sessionId,
-        categoryId: widget.categoryId,
-        isSandbox: widget.isSandbox,
-        totalItems: total,
-        masteredCount: mastered,
-        missedWordIds: missed,
-        allWords: _normalizedReviewItems,
-        masteryScore: _weightedScore,
-        wordBreakdown: _wordBreakdown,
-      ),
-    ));
+    context.go(
+      '/session/${widget.sessionId}/lesson-score',
+      extra: {
+        'sessionId': widget.sessionId,
+        'lessonId': widget.lessonId ?? '',
+        'categoryId': widget.categoryId,
+        'lessonTitle': 'Lesson Complete',
+        'allWords': _normalizedReviewItems,
+        'overallScore': cumulativeReviewScore,
+        'isPerfectFirstAttempt': _isPerfectFirstAttempt,
+        'reviewAttemptCount': _reviewAttemptCount,
+        'isSandbox': widget.isSandbox,
+      },
+    );
+  }
+
+  void _restartModule4() {
+    setState(() {
+      _reviewAttemptCount++;
+      _showFailurePrompt = false;
+      _failedFinalScore = null;
+      _wordWrongAttempts.clear();
+      _results.clear();
+      _itemResults.clear();
+      _attemptCounts.clear();
+      _currentIndex = 0;
+      _progressOverride = null;
+      _inReinforcementPass = false;
+      _checked = false;
+      _showFeedback = false;
+    });
+    _fetchReviewItems();
   }
 
   Widget _buildFailurePrompt(ThemeData theme) {
@@ -637,81 +710,29 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.replay_circle_filled_rounded, size: 72, color: Color(0xFFF59E0B)),
+                    const MascotVisual(type: MascotType.bibo, size: 90, isSad: true),
                     const SizedBox(height: 16),
                     const Text(
-                      'You are close, but not yet at mastery.',
+                      'Keep Trying!',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     Text(
-                      'Final score: ${(_failedFinalScore ?? _weightedScore ?? 0.0).toStringAsFixed(1)}%. Pass at 70.0%.',
+                      'Score: ${(_failedFinalScore ?? _weightedScore ?? 0.0).toStringAsFixed(1)}%. You need at least 70% to pass — let\'s try again!',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 14, color: Color(0xFF475569), height: 1.4),
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Retrying will rebuild the review queue and give you another full pass through the lesson content.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.45),
-                    ),
                     const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        final score = _failedFinalScore ?? _weightedScore;
-                        final missedIds = _reviewItems
-                            .where((it) => _results[(it['wordId'] ?? '').toString()] == false)
-                            .map((it) => (it['wordId'] ?? '').toString())
-                            .where((id) => id.isNotEmpty)
-                            .toList();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => MasteryResultScreen(
-                            sessionId: widget.sessionId,
-                            categoryId: widget.categoryId,
-                            isSandbox: widget.isSandbox,
-                            totalItems: _reviewItems.length,
-                            masteredCount: _firstPassCorrectCount,
-                            missedWordIds: missedIds,
-                            allWords: _normalizedReviewItems,
-                            masteryScore: score,
-                            wordBreakdown: _wordBreakdown,
-                          ),
-                        ));
-                      },
-                      icon: const Icon(Icons.visibility_rounded, size: 18),
-                      label: const Text('View Score'),
+                    ElevatedButton(
+                      onPressed: _restartModule4,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF06A6FF),
+                        backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
                         minimumSize: const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).maybePop(),
-                            child: const Text('Exit'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              await LocalStorageService.clearCumulativeReviewCompletion(widget.categoryId);
-                              await _startFresh();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF06A6FF),
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text('Retry Review'),
-                          ),
-                        ),
-                      ],
+                      child: const Text('Try Again', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -785,6 +806,50 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
     final item = _queue[_currentIndex];
     final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
 
+    String? getLearnerSentenceRestatement() {
+      String learnerAns = '';
+      if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
+        if (_selectedOptionIndex != null && _selectedOptionIndex! >= 0 && _selectedOptionIndex! < _currentMcOptions.length) {
+          learnerAns = _currentMcOptions[_selectedOptionIndex!];
+        }
+      } else if (fmt == 'FILL_IN_THE_BLANK' || fmt == 'LISTENING_TYPING') {
+        learnerAns = _typingController.text.trim();
+      } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
+        return _assembledWords.join(' ');
+      }
+
+      if (fmt == 'FILL_IN_THE_BLANK') {
+        final sentence = (item['fitbSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, learnerAns.isEmpty ? '___' : learnerAns);
+          }
+          return '$sentence (Answer: $learnerAns)';
+        }
+      }
+      return null;
+    }
+
+    String? getCorrectSentenceRestatement() {
+      if (fmt == 'SENTENCE_RECONSTRUCTION') {
+        final answerTokens = _sentenceTokens(item);
+        return answerTokens.join(' ');
+      }
+      if (fmt == 'FILL_IN_THE_BLANK') {
+        final sentence = (item['fitbSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
+        final correctAns = (item['fitbAnswer'] ?? item['word'] ?? '').toString();
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, correctAns);
+          }
+          return '$sentence (Answer: $correctAns)';
+        }
+      }
+      return null;
+    }
+
     bool isActionEnabled = false;
     if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
       isActionEnabled = _selectedOptionIndex != null;
@@ -856,24 +921,55 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isAnswerCorrect ? 'Nice!' : 'Incorrect',
+                      _isAnswerCorrect ? 'Correct (+10 pts)' : 'Incorrect',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
                     ),
-                    if (!_isAnswerCorrect) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Correct answer: $_lastCorrectAnswer',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: textColor.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
+                    () {
+                      final learnerSentence = getLearnerSentenceRestatement();
+                      final correctSentence = getCorrectSentenceRestatement();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (learnerSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Your sentence: "$learnerSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                          if (!_isAnswerCorrect && correctSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct sentence: "$correctSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ] else if (!_isAnswerCorrect && correctSentence == null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct answer: $_lastCorrectAnswer',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }(),
                   ],
                 ),
               ),
@@ -1068,7 +1164,7 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
 
   Widget _buildSentenceReconstruction(Map<String, dynamic> item) {
     final answerTokens = _sentenceTokens(item);
-    if (_scrambledWords.isEmpty) {
+    if (_scrambledWords.isEmpty && _assembledWords.isEmpty) {
       _scrambledWords.addAll(answerTokens);
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
     }
@@ -1137,7 +1233,15 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                       data: word,
                       feedback: Material(color: Colors.transparent, child: _wordChip(word, selected: true)),
                       childWhenDragging: Opacity(opacity: 0.35, child: _wordChip(word)),
-                      child: _wordChip(word),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _scrambledWords.remove(word);
+                            _assembledWords.add(word);
+                          });
+                        },
+                        child: _wordChip(word),
+                      ),
                     );
                   }).toList(),
                 );
@@ -1722,6 +1826,47 @@ class _CumulativeMixedReviewScreenState extends State<CumulativeMixedReviewScree
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_hasError || (!_loading && _queue.isEmpty && !_showResumePrompt)) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF7FBF7),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+          title: const Text('Cumulative Review'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
+            onPressed: () => context.go('/home'),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.warning_amber_rounded, size: 64, color: Color(0xFFF59E0B)),
+                const SizedBox(height: 16),
+                const Text('No Review Words Available', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                const SizedBox(height: 8),
+                const Text('Unable to load review words for this session. Please select a lesson from Home to try again.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64748B))),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => context.go('/home'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF06A6FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: const Text('Return to Home', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
             ),
           ),
         ),

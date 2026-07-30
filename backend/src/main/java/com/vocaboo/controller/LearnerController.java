@@ -1,8 +1,8 @@
 package com.vocaboo.controller;
 
+import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.request.LoginRequest;
 import com.vocaboo.dto.request.RegisterRequest;
-import com.vocaboo.dto.request.ChangePinRequest;
 import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
 import com.vocaboo.service.LearnerService;
@@ -10,9 +10,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.security.Principal;
-import java.util.UUID;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/learners")
@@ -47,12 +48,18 @@ public class LearnerController {
     public static class PreferencesRequest {
         private String displayName;
         private String languagePreference;
+        private Boolean masteryApplyImmediately;
     }
 
     @PatchMapping("/preferences")
     public ResponseEntity<LearnerResponse> updatePreferences(@RequestBody PreferencesRequest request, Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
-        LearnerResponse response = learnerService.updatePreferences(learnerId, request.getDisplayName(), request.getLanguagePreference());
+        LearnerResponse response = learnerService.updatePreferences(
+                learnerId, 
+                request.getDisplayName(), 
+                request.getLanguagePreference(), 
+                request.getMasteryApplyImmediately()
+        );
         return ResponseEntity.ok(response);
     }
 

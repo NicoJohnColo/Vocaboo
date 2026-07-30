@@ -20,6 +20,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
   String? _error;
   Map<String, dynamic>? _session;
   List<Map<String, dynamic>> _words = [];
+  bool _isOffline = false;
 
   @override
   void dispose() {
@@ -33,14 +34,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
 
     if (customWord.isEmpty) {
       setState(() {
-        _error = 'Enter one English word.';
-      });
-      return;
-    }
-
-    if (customWord.split(RegExp(r'\s+')).length != 1) {
-      setState(() {
-        _error = 'Sandbox accepts exactly one English word.';
+        _error = 'Please enter a topic, phrase, or word.';
       });
       return;
     }
@@ -52,6 +46,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
 
     Map<String, dynamic>? result;
     String? errorMessage;
+    bool isOfflineError = false;
     
     try {
       result = await provider.generateSandbox(customWord: customWord);
@@ -59,6 +54,17 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
       // Log error and capture the error message
       debugPrint('Sandbox generation error (may have fallback): $e');
       errorMessage = e.toString();
+      final msg = errorMessage.toLowerCase();
+      if (msg.contains('socketexception') ||
+          msg.contains('failed host lookup') ||
+          msg.contains('network is unreachable') ||
+          msg.contains('connection timed out') ||
+          msg.contains('connection refused') ||
+          msg.contains('httpclientexception') ||
+          msg.contains('handshake') ||
+          msg.contains('connection closed')) {
+        isOfflineError = true;
+      }
     }
 
     if (!mounted) return;
@@ -92,18 +98,23 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
       _session = session;
       _words = words;
       
-      // Only show error if we have no data at all
-      if (_session == null || _words.isEmpty) {
-        // Check if it's a rate limit error
-        if (errorMessage != null && 
-            (errorMessage.contains('429') || 
-             errorMessage.toLowerCase().contains('rate limit'))) {
-          _error = 'Rate limit reached. Please wait a moment and try again.';
-        } else {
-          _error = 'Could not generate lesson. Please try again.';
-        }
-      } else {
+      if (isOfflineError) {
+        _isOffline = true;
         _error = null;
+      } else {
+        // Only show error if we have no data at all
+        if (_session == null || _words.isEmpty) {
+          // Check if it's a rate limit error
+          if (errorMessage != null && 
+              (errorMessage.contains('429') || 
+               errorMessage.toLowerCase().contains('rate limit'))) {
+            _error = 'Rate limit reached. Please wait a moment and try again.';
+          } else {
+            _error = 'Could not generate lesson. Please try again.';
+          }
+        } else {
+          _error = null;
+        }
       }
     });
 
@@ -141,6 +152,98 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
   Widget build(BuildContext context) {
     final pref = Provider.of<AuthProvider>(context, listen: false).learner?.languagePreference;
 
+    if (_isOffline) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          title: Text(
+            LocalizationService.translate(pref, 'sandbox_mode'),
+            style: const TextStyle(
+              fontFamily: 'Outfit',
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          automaticallyImplyLeading: false,
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Spacer(),
+                const Icon(
+                  Icons.wifi_off_rounded,
+                  size: 80,
+                  color: Color(0xFF94A3B8),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'You are offline',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    fontFamily: 'Outfit',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Sandbox Mode requires an active internet connection to generate custom lessons using AI. Please check your connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF64748B),
+                    height: 1.5,
+                  ),
+                ),
+                const Spacer(),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _isOffline = false;
+                      _error = null;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF06A6FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'TRY AGAIN',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF64748B),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: const Text(
+                    'Back to Home',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -163,7 +266,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Enter one English word to generate a live sandbox lesson.',
+                'Enter a topic or word (e.g., weather, sports, colors) to generate a sandbox lesson.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15, color: Color(0xFF475569), fontWeight: FontWeight.w600),
               ),
@@ -171,7 +274,7 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
               TextField(
                 controller: _customWordController,
                 decoration: const InputDecoration(
-                  labelText: 'English word',
+                  labelText: 'Topic or Word',
                   hintText: 'Input',
                 ),
               ),

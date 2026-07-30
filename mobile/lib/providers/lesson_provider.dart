@@ -7,6 +7,10 @@ import '../models/category_model.dart';
 import '../models/lesson_model.dart';
 import '../models/vocabulary_word_model.dart';
 import '../models/diagnostic_result_model.dart';
+import '../models/learner_progress_model.dart';
+import '../models/learner_lesson_progress_model.dart';
+import '../models/learner_category_progress_model.dart';
+import '../models/recent_word_progress_model.dart';
 import '../services/scoring_service.dart';
 import '../services/local_storage_service.dart';
 import 'package:mobile/config/app_config.dart';
@@ -16,7 +20,7 @@ const double reviewWeight = ScoringService.reviewWeight;
 const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
-  final AuthProvider? _auth;
+  AuthProvider? _auth;
   static final String baseUrl = AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
@@ -32,6 +36,10 @@ class LessonProvider with ChangeNotifier {
   String? get error => _error;
 
   LessonProvider(this._auth);
+
+  void updateAuth(AuthProvider? auth) {
+    _auth = auth;
+  }
 
   // Expose auth provider for UI components that need learner preferences.
   AuthProvider? get authProvider => _auth;
@@ -101,14 +109,18 @@ class LessonProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<VocabularyWordModel>> loadVocabulary(String lessonId) async {
+  Future<List<VocabularyWordModel>> loadVocabulary(String lessonId, {String? partOfSpeech}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
+      final uri = (partOfSpeech != null && partOfSpeech.isNotEmpty)
+          ? Uri.parse('$baseUrl/lessons/$lessonId/vocabulary?partOfSpeech=${Uri.encodeComponent(partOfSpeech)}')
+          : Uri.parse('$baseUrl/lessons/$lessonId/vocabulary');
+
       final response = await http.get(
-        Uri.parse('$baseUrl/lessons/$lessonId/vocabulary'),
+        uri,
         headers: _headers,
       );
 
@@ -144,6 +156,22 @@ class LessonProvider with ChangeNotifier {
     _isLoading = false;
     notifyListeners();
     return [];
+  }
+
+  Future<String> getWordDifficulty(String wordId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/words/$wordId/difficulty'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['currentLevel'] ?? 'LEARNING';
+      }
+    } catch (e) {
+      debugPrint('Error getting word difficulty: $e');
+    }
+    return 'LEARNING';
   }
 
   Future<List<VocabularyWordModel>> loadLocalV3Activity(String lessonId) async {
@@ -237,6 +265,29 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
+  Future<String?> startPracticeSession(String lessonId, {int moduleNumber = 2}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/practice-sessions'),
+        headers: _headers,
+        body: json.encode({
+          'learnerId': _auth?.learner?.learnerId,
+          'lessonId': lessonId,
+          'moduleNumber': moduleNumber,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['sessionId'] as String?;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error starting practice session: $e');
+    }
+    return null;
+  }
+
   Future<void> updateWordProgress(
     String sessionId,
     String wordId,
@@ -264,6 +315,79 @@ class LessonProvider with ChangeNotifier {
       });
     } catch (e) {
       // Fail silently for fire-and-forget background sync
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadRetrievalQuestions(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/questions'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      } else {
+        debugPrint('Error loading retrieval questions. HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Error loading retrieval questions: $e\n$stackTrace');
+    }
+    return [];
+  }
+
+  Future<void> submitRetrievalAnswer(
+    String sessionId,
+    String wordId,
+    bool isCorrect, {
+    String? wrongAnswer,
+    String? activityFormat,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/submit'),
+        headers: _headers,
+        body: json.encode({
+          'wordId': wordId,
+          'correct': isCorrect,
+          if (wrongAnswer != null) 'wrongAnswer': wrongAnswer,
+          if (activityFormat != null) 'activityFormat': activityFormat,
+        }),
+      );
+      if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error submitting retrieval answer: $e');
+    }
+  }
+
+  Future<void> submitPracticeResult(
+    String sessionId,
+    String wordId,
+    bool isCorrect, {
+    String? activityType,
+    int? attemptNumber,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/practice-sessions/$sessionId/results'),
+        headers: _headers,
+        body: json.encode({
+          'wordId': wordId,
+          'isCorrect': isCorrect,
+          if (activityType != null) 'activityType': activityType,
+          if (attemptNumber != null) 'attemptNumber': attemptNumber,
+        }),
+      );
+      if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error submitting practice result: $e');
     }
   }
 
@@ -452,6 +576,28 @@ class LessonProvider with ChangeNotifier {
     }
 
     return null;
+  }
+
+  Future<List<Map<String, dynamic>>> loadModule4Review(String lessonId) async {
+    try {
+      final learnerId = _auth?.learner?.learnerId;
+      final uri = Uri.parse('$baseUrl/lessons/$lessonId/module4-review').replace(
+        queryParameters: {
+          if (learnerId != null && learnerId.isNotEmpty) 'learnerId': learnerId,
+        },
+      );
+
+      final response = await http.get(uri, headers: _headers);
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.loadModule4Review error: $e');
+    }
+    return [];
   }
 
   double computeFinalScore({
@@ -821,4 +967,144 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
+  /// Completes a mastery session on the backend, generating the summary and reward badge.
+  Future<Map<String, dynamic>?> completeMasterySession(
+    String sessionId,
+    String lessonId, {
+    double? score,
+    bool? isPerfectFirstAttempt,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/mastery/session/$sessionId/complete').replace(
+        queryParameters: {
+          'lessonId': lessonId,
+          if (score != null) 'score': score.toString(),
+          if (isPerfectFirstAttempt != null) 'isPerfectFirstAttempt': isPerfectFirstAttempt.toString(),
+        },
+      );
+      final response = await http.post(uri, headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      } else {
+        debugPrint('CRITICAL: LessonProvider.completeMasterySession failed with status ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('CRITICAL EXCEPTION: LessonProvider.completeMasterySession error: $e');
+    }
+    return null;
+  }
+
+  /// Retrieves the session summary for a completed practice session.
+  Future<Map<String, dynamic>?> fetchSessionSummary(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/mastery/session/$sessionId/summary'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchSessionSummary error: $e');
+    }
+    return null;
+  }
+
+  /// Retrieves all earned badges for a learner.
+  Future<List<Map<String, dynamic>>> fetchLearnerBadges(String learnerId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/mastery/learners/$learnerId/badges'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerBadges error: $e');
+    }
+    return [];
+  }
+
+  /// Retrieves full progress details for a learner.
+  Future<LearnerProgressModel?> fetchLearnerProgressDetails(String learnerId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/$learnerId/progress'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return LearnerProgressModel.fromJson(json.decode(response.body));
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerProgressDetails error: $e');
+    }
+    return null;
+  }
+
+  /// Retrieves per-lesson progress breakdown for a learner.
+  Future<List<LearnerLessonProgressModel>> fetchLearnerLessonProgress(String learnerId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/$learnerId/progress/lessons'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => LearnerLessonProgressModel.fromJson(e as Map<String, dynamic>)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerLessonProgress error: $e');
+    }
+    return [];
+  }
+
+  /// Retrieves per-category progress breakdown for a learner.
+  Future<List<LearnerCategoryProgressModel>> fetchLearnerCategoryProgress(String learnerId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/$learnerId/progress/categories'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => LearnerCategoryProgressModel.fromJson(e as Map<String, dynamic>)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerCategoryProgress error: $e');
+    }
+    return [];
+  }
+
+  /// Retrieves recently practiced words for a learner.
+  Future<List<RecentWordProgressModel>> fetchLearnerRecentWords(String learnerId, {int limit = 5}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/$learnerId/progress/recent-words?limit=$limit'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => RecentWordProgressModel.fromJson(e as Map<String, dynamic>)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerRecentWords error: $e');
+    }
+    return [];
+  }
 }

@@ -2,7 +2,6 @@ package com.vocaboo.service;
 
 import com.vocaboo.dto.request.MasteryRequest;
 import com.vocaboo.dto.response.CategoryResponse;
-import com.vocaboo.dto.response.CategoryReviewResponse;
 import com.vocaboo.dto.response.LessonWordActivityResponse;
 import com.vocaboo.dto.response.MatchingSetEntryResponse;
 import com.vocaboo.dto.response.LessonResponse;
@@ -28,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,8 +47,8 @@ public class LessonService {
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final LearnerRepository learnerRepository;
     private final ConfusableWordPairRepository confusableRepository;
-        private final JdbcTemplate jdbcTemplate;
-        private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
     public List<CategoryResponse> getCategories() {
         return categoryRepository.findAllByOrderBySortOrderAsc().stream()
@@ -83,23 +83,30 @@ public class LessonService {
             if (statusObj != null) {
                 status = statusObj.getStatus();
                 masteryScore = statusObj.getMasteryScore();
+                if (status == LessonStatus.LOCKED && (lesson.getLessonOrder() == 1 || previousCompleted)) {
+                    status = LessonStatus.UNLOCKED;
+                    statusObj.setStatus(LessonStatus.UNLOCKED);
+                    statusObj.setUnlockedAt(java.time.OffsetDateTime.now());
+                    lessonStatusRepository.save(statusObj);
+                }
             } else {
-                // If no row exists, determine if it should be UNLOCKED
                 if (lesson.getLessonOrder() == 1 || previousCompleted) {
                     status = LessonStatus.UNLOCKED;
                     
                     Learner learner = learnerRepository.findById(learnerId)
                             .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
                     
-                    // Create the default unlocked status in DB
                     LearnerLessonStatus newStatus = LearnerLessonStatus.builder()
                             .learner(learner)
                             .lesson(lesson)
                             .status(LessonStatus.UNLOCKED)
+                            .unlockedAt(java.time.OffsetDateTime.now())
                             .build();
                     lessonStatusRepository.save(newStatus);
                 }
             }
+
+            int actualWordCount = (int) wordRepository.countByLessonLessonIdAndIsDeletedFalse(lesson.getLessonId());
 
             responses.add(LessonResponse.builder()
                     .lessonId(lesson.getLessonId())
@@ -108,7 +115,7 @@ public class LessonService {
                     .lessonDescription(lesson.getLessonDescription())
                     .gradeLevel(lesson.getGradeLevel())
                     .lessonOrder(lesson.getLessonOrder())
-                    .totalWordCount(lesson.getTotalWordCount())
+                    .totalWordCount(actualWordCount > 0 ? actualWordCount : (lesson.getTotalWordCount() != null ? lesson.getTotalWordCount() : 0))
                     .status(status)
                     .masteryScore(masteryScore)
                     .lessonType(lesson.getLessonType() != null ? lesson.getLessonType().name() : "REGULAR")
@@ -116,7 +123,6 @@ public class LessonService {
                     .compositeReviewAfterLessonId(lesson.getCompositeReviewAfterLessonId())
                     .build());
 
-            // Track completion for subsequent lessons
             previousCompleted = (status == LessonStatus.COMPLETED);
         }
 
@@ -124,77 +130,138 @@ public class LessonService {
     }
 
     public List<VocabularyWordResponse> getVocabularyForLesson(UUID lessonId) {
-        Set<UUID> wordBIds = confusableRepository.findByLessonLessonId(lessonId).stream()
-                .map(pair -> pair.getWordB().getWordId())
-                .collect(Collectors.toSet());
-
-        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
-        return words.stream()
-                .filter(w -> !wordBIds.contains(w.getWordId()))
-                .map(this::mapToVocabularyWordResponse)
+        return wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId).stream()
+                .map(word -> VocabularyWordResponse.builder()
+                        .wordId(word.getWordId())
+                        .englishWord(word.getEnglishWord())
+                        .cebuanoMeaning(word.getCebuanoMeaning())
+                        .partOfSpeech(word.getPartOfSpeech())
+                        .imageAssetPath(word.getImageAssetPath())
+                        .audioAssetPath(word.getAudioAssetPath())
+                        .exampleSentenceEnglish(word.getExampleSentenceEnglish())
+                        .exampleSentenceCebuano(word.getExampleSentenceCebuano())
+                        .phonologicalTipKey(word.getPhonologicalTipKey())
+                        .build())
                 .collect(Collectors.toList());
     }
 
-        public List<LessonWordActivityResponse> getCategoryActivityForCategory(UUID categoryId) {
-                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(categoryId, "PUBLISHED");
-                
-                Set<UUID> wordBIds = lessons.stream()
-                        .flatMap(lesson -> confusableRepository.findByLessonLessonId(lesson.getLessonId()).stream())
-                        .map(pair -> pair.getWordB().getWordId())
-                        .collect(Collectors.toSet());
+    public List<LessonWordActivityResponse> getCategoryActivityForCategory(UUID categoryId) {
+        String sql = """
+            SELECT
+                vw.word_id,
+                vw.english_word,
+                vw.cebuano_meaning,
+                vw.part_of_speech,
+                vw.image_asset_path,
+                vw.audio_asset_path,
+                vw.example_sentence_english,
+                vw.example_sentence_cebuano,
+                vw.phonological_tip_key,
+                wfa.sentence_completion_sentence,
+                wfa.sentence_completion_answer,
+                wfa.sentence_completion_option1,
+                wfa.sentence_completion_option2,
+                wfa.sentence_completion_option3,
+                wfa.sentence_arrangement_tokens,
+                wfa.matching_set,
+                l.lesson_id,
+                vw.word_order
+            FROM vocabulary_words vw
+            JOIN lessons l ON l.lesson_id = vw.lesson_id
+            LEFT JOIN word_format_activities wfa ON wfa.word_id = vw.word_id
+            WHERE l.category_id = ?
+              AND l.content_status = 'PUBLISHED'
+              AND l.is_deleted = false
+              AND vw.is_deleted = false
+            ORDER BY l.lesson_order ASC, vw.word_order ASC
+            """;
 
-                List<VocabularyWord> words = lessons.stream()
-                                .flatMap(lesson -> wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lesson.getLessonId()).stream())
-                                .filter(w -> !wordBIds.contains(w.getWordId()))
-                                .collect(Collectors.toList());
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, categoryId);
+        List<LessonWordActivityResponse> responses = new ArrayList<>();
 
-                List<LessonWordActivityResponse> responses = new ArrayList<>();
-                for (VocabularyWord word : words) {
-                        responses.add(mapToLessonWordActivityResponse(word, null));
-                }
-                return responses;
+        for (Map<String, Object> row : rows) {
+            responses.add(LessonWordActivityResponse.builder()
+                    .wordId((UUID) row.get("word_id"))
+                    .lessonId((UUID) row.get("lesson_id"))
+                    .englishWord(readString(row, "english_word"))
+                    .cebuanoMeaning(readString(row, "cebuano_meaning"))
+                    .partOfSpeech(readString(row, "part_of_speech"))
+                    .imageAssetPath(readString(row, "image_asset_path"))
+                    .audioAssetPath(readString(row, "audio_asset_path"))
+                    .exampleSentenceEnglish(readString(row, "example_sentence_english"))
+                    .exampleSentenceCebuano(readString(row, "example_sentence_cebuano"))
+                    .phonologicalTipKey(readString(row, "phonological_tip_key"))
+                    .sentenceCompletionSentence(readString(row, "sentence_completion_sentence"))
+                    .sentenceCompletionAnswer(readString(row, "sentence_completion_answer"))
+                    .sentenceCompletionOption1(readString(row, "sentence_completion_option1"))
+                    .sentenceCompletionOption2(readString(row, "sentence_completion_option2"))
+                    .sentenceCompletionOption3(readString(row, "sentence_completion_option3"))
+                    .sentenceArrangementTokens(readStringList(row, "sentence_arrangement_tokens"))
+                    .matchingSet(readMatchingSet(row, "matching_set"))
+                    .build());
         }
 
-        public List<LessonWordActivityResponse> getLessonActivityForLesson(UUID lessonId) {
-                List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        return responses;
+    }
 
-                List<Map<String, Object>> activityRows = jdbcTemplate.queryForList("""
-                                SELECT wa.word_id,
-                                           wa.mc_distractor_1,
-                                           wa.mc_distractor_2,
-                                           wa.mc_distractor_3,
-                                           wa.fitb_sentence,
-                                           wa.fitb_answer,
-                                           wa.matching_set,
-                                           wa.sentence_arrangement_tokens,
-                                           wa.sentence_completion_sentence,
-                                           wa.sentence_completion_answer,
-                                           wa.sentence_completion_option_1,
-                                           wa.sentence_completion_option_2,
-                                           wa.sentence_completion_option_3
-                                FROM word_activity_data wa
-                                INNER JOIN vocabulary_words vw ON vw.word_id = wa.word_id
-                                WHERE vw.lesson_id = ?
-                                ORDER BY vw.word_order ASC
-                                """, lessonId);
+    public List<LessonWordActivityResponse> getLessonActivityForLesson(UUID lessonId) {
+        String sql = """
+            SELECT
+                vw.word_id,
+                vw.english_word,
+                vw.cebuano_meaning,
+                vw.part_of_speech,
+                vw.image_asset_path,
+                vw.audio_asset_path,
+                vw.example_sentence_english,
+                vw.example_sentence_cebuano,
+                vw.phonological_tip_key,
+                wfa.sentence_completion_sentence,
+                wfa.sentence_completion_answer,
+                wfa.sentence_completion_option1,
+                wfa.sentence_completion_option2,
+                wfa.sentence_completion_option3,
+                wfa.sentence_arrangement_tokens,
+                wfa.matching_set,
+                l.lesson_id,
+                vw.word_order
+            FROM vocabulary_words vw
+            JOIN lessons l ON l.lesson_id = vw.lesson_id
+            LEFT JOIN word_format_activities wfa ON wfa.word_id = vw.word_id
+            WHERE l.lesson_id = ?
+              AND l.content_status = 'PUBLISHED'
+              AND l.is_deleted = false
+              AND vw.is_deleted = false
+            ORDER BY vw.word_order ASC
+            """;
 
-                Map<UUID, Map<String, Object>> activityByWordId = new HashMap<>();
-                for (Map<String, Object> row : activityRows) {
-                        Object wordIdValue = row.get("word_id");
-                        if (wordIdValue != null) {
-                                activityByWordId.put(UUID.fromString(wordIdValue.toString()), row);
-                        }
-                }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, lessonId);
+        List<LessonWordActivityResponse> responses = new ArrayList<>();
 
-                Set<UUID> wordBIds = confusableRepository.findByLessonLessonId(lessonId).stream()
-                        .map(pair -> pair.getWordB().getWordId())
-                        .collect(Collectors.toSet());
-
-                return words.stream()
-                                .filter(w -> !wordBIds.contains(w.getWordId()))
-                                .map(word -> mapToLessonWordActivityResponse(word, activityByWordId.get(word.getWordId())))
-                                .collect(Collectors.toList());
+        for (Map<String, Object> row : rows) {
+            responses.add(LessonWordActivityResponse.builder()
+                    .wordId((UUID) row.get("word_id"))
+                    .lessonId((UUID) row.get("lesson_id"))
+                    .englishWord(readString(row, "english_word"))
+                    .cebuanoMeaning(readString(row, "cebuano_meaning"))
+                    .partOfSpeech(readString(row, "part_of_speech"))
+                    .imageAssetPath(readString(row, "image_asset_path"))
+                    .audioAssetPath(readString(row, "audio_asset_path"))
+                    .exampleSentenceEnglish(readString(row, "example_sentence_english"))
+                    .exampleSentenceCebuano(readString(row, "example_sentence_cebuano"))
+                    .phonologicalTipKey(readString(row, "phonological_tip_key"))
+                    .sentenceCompletionSentence(readString(row, "sentence_completion_sentence"))
+                    .sentenceCompletionAnswer(readString(row, "sentence_completion_answer"))
+                    .sentenceCompletionOption1(readString(row, "sentence_completion_option1"))
+                    .sentenceCompletionOption2(readString(row, "sentence_completion_option2"))
+                    .sentenceCompletionOption3(readString(row, "sentence_completion_option3"))
+                    .sentenceArrangementTokens(readStringList(row, "sentence_arrangement_tokens"))
+                    .matchingSet(readMatchingSet(row, "matching_set"))
+                    .build());
         }
+
+        return responses;
+    }
 
     public List<ConfusableWordPairResponse> getConfusablePairsForLesson(UUID lessonId) {
         List<ConfusableWordPair> pairs = confusableRepository.findByLessonLessonId(lessonId);
@@ -202,258 +269,175 @@ public class LessonService {
                 .map(pair -> ConfusableWordPairResponse.builder()
                         .pairId(pair.getPairId())
                         .lessonId(pair.getLesson().getLessonId())
-                        .wordA(mapToVocabularyWordResponse(pair.getWordA()))
-                        .wordB(mapToVocabularyWordResponse(pair.getWordB()))
+                        .wordA(VocabularyWordResponse.builder()
+                                .wordId(pair.getWordA().getWordId())
+                                .englishWord(pair.getWordA().getEnglishWord())
+                                .cebuanoMeaning(pair.getWordA().getCebuanoMeaning())
+                                .partOfSpeech(pair.getWordA().getPartOfSpeech())
+                                .imageAssetPath(pair.getWordA().getImageAssetPath())
+                                .audioAssetPath(pair.getWordA().getAudioAssetPath())
+                                .exampleSentenceEnglish(pair.getWordA().getExampleSentenceEnglish())
+                                .exampleSentenceCebuano(pair.getWordA().getExampleSentenceCebuano())
+                                .phonologicalTipKey(pair.getWordA().getPhonologicalTipKey())
+                                .build())
+                        .wordB(VocabularyWordResponse.builder()
+                                .wordId(pair.getWordB().getWordId())
+                                .englishWord(pair.getWordB().getEnglishWord())
+                                .cebuanoMeaning(pair.getWordB().getCebuanoMeaning())
+                                .partOfSpeech(pair.getWordB().getPartOfSpeech())
+                                .imageAssetPath(pair.getWordB().getImageAssetPath())
+                                .audioAssetPath(pair.getWordB().getAudioAssetPath())
+                                .exampleSentenceEnglish(pair.getWordB().getExampleSentenceEnglish())
+                                .exampleSentenceCebuano(pair.getWordB().getExampleSentenceCebuano())
+                                .phonologicalTipKey(pair.getWordB().getPhonologicalTipKey())
+                                .build())
                         .contrastiveSentenceA(pair.getContrastiveSentenceA())
                         .contrastiveSentenceB(pair.getContrastiveSentenceB())
                         .build())
                 .collect(Collectors.toList());
     }
 
-    private VocabularyWordResponse mapToVocabularyWordResponse(VocabularyWord word) {
-        return VocabularyWordResponse.builder()
-                .wordId(word.getWordId())
-                .lessonId(word.getLesson().getLessonId())
-                .englishWord(word.getEnglishWord())
-                .cebuanoMeaning(word.getCebuanoMeaning())
-                .exampleSentenceEnglish(word.getExampleSentenceEnglish())
-                .exampleSentenceCebuano(word.getExampleSentenceCebuano())
-                .audioAssetPath(word.getAudioAssetPath())
-                .imageAssetPath(word.getImageAssetPath())
-                .partOfSpeech(word.getPartOfSpeech())
-                .gradeLevel(word.getGradeLevel())
-                .wordOrder(word.getWordOrder())
-                .isConfusablePairMember(word.getIsConfusablePairMember())
-                .phonologicalTipKey(word.getPhonologicalTipKey())
+    private String readString(Map<String, Object> row, String key) {
+        if (row == null) {
+            return null;
+        }
+        Object value = row.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    private List<String> readStringList(Map<String, Object> row, String key) {
+        String raw = readString(row, key);
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            JsonNode node = objectMapper.readTree(raw);
+            List<String> values = new ArrayList<>();
+            if (node.isArray()) {
+                for (JsonNode entry : node) {
+                    values.add(entry.asText());
+                }
+            }
+            return values;
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
+    private List<MatchingSetEntryResponse> readMatchingSet(Map<String, Object> row, String key) {
+        String raw = readString(row, key);
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            JsonNode node = objectMapper.readTree(raw);
+            List<MatchingSetEntryResponse> values = new ArrayList<>();
+            if (node.isArray()) {
+                for (JsonNode entry : node) {
+                    values.add(MatchingSetEntryResponse.builder()
+                            .englishWord(entry.path("english_word").asText(""))
+                            .cebuanoMeaning(entry.path("cebuano_meaning").asText(""))
+                            .imageAssetPath(entry.path("image_asset_path").asText(""))
+                            .build());
+                }
+            }
+            return values;
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
+    @Transactional
+    public MasteryResponse submitMastery(MasteryRequest request, UUID learnerId) {
+        final double PASSING_THRESHOLD = 70.0;
+        
+        if (request.getCumulativeReviewScore() == null || request.getCumulativeReviewScore() < 0) {
+            return MasteryResponse.builder()
+                    .success(false)
+                    .message("Cumulative review must be completed before category can be passed")
+                    .finalScore(0.0)
+                    .passed(false)
+                    .totalItems(request.getTotalItems())
+                    .masteredCount(request.getMasteredCount())
+                    .missedWordIds(request.getMissedWordIds())
+                    .build();
+        }
+        
+        double serverFinalScore = (0.6 * request.getLessonScore()) + (0.4 * request.getCumulativeReviewScore());
+        boolean serverPassed = serverFinalScore >= PASSING_THRESHOLD;
+        
+        if (request.isPassed() && !serverPassed) {
+            return MasteryResponse.builder()
+                    .success(false)
+                    .message("Score validation failed: Server calculated score does not meet passing threshold")
+                    .finalScore(serverFinalScore)
+                    .passed(false)
+                    .totalItems(request.getTotalItems())
+                    .masteredCount(request.getMasteredCount())
+                    .missedWordIds(request.getMissedWordIds())
+                    .build();
+        }
+        
+        if (serverPassed && request.getLessonIds() != null) {
+            Learner learner = learnerRepository.findById(learnerId)
+                    .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
+            
+            for (UUID lessonId : request.getLessonIds()) {
+                Lesson lesson = lessonRepository.findById(lessonId)
+                        .orElseThrow(() -> new IllegalArgumentException("Lesson not found: " + lessonId));
+                
+                LearnerLessonStatus status = lessonStatusRepository
+                        .findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId)
+                        .orElseGet(() -> LearnerLessonStatus.builder()
+                                .learner(learner)
+                                .lesson(lesson)
+                                .attempts(0)
+                                .build());
+                
+                status.setAttempts(status.getAttempts() + 1);
+                status.setMasteryScore(BigDecimal.valueOf(serverFinalScore));
+                status.setStatus(LessonStatus.COMPLETED);
+                status.setCompletedAt(java.time.OffsetDateTime.now());
+                status.setUpdatedAt(java.time.OffsetDateTime.now());
+                lessonStatusRepository.save(status);
+                unlockNextLesson(lesson, learner);
+            }
+        }
+        
+        return MasteryResponse.builder()
+                .success(true)
+                .message(serverPassed ? "Mastery achieved" : "Review needed")
+                .finalScore(serverFinalScore)
+                .passed(serverPassed)
+                .totalItems(request.getTotalItems())
+                .masteredCount(request.getMasteredCount())
+                .missedWordIds(request.getMissedWordIds())
                 .build();
     }
 
-        private LessonWordActivityResponse mapToLessonWordActivityResponse(VocabularyWord word, Map<String, Object> activityRow) {
-                return LessonWordActivityResponse.builder()
-                                .wordId(word.getWordId())
-                                .lessonId(word.getLesson().getLessonId())
-                                .englishWord(word.getEnglishWord())
-                                .cebuanoMeaning(word.getCebuanoMeaning())
-                                .exampleSentenceEnglish(word.getExampleSentenceEnglish())
-                                .exampleSentenceCebuano(word.getExampleSentenceCebuano())
-                                .audioAssetPath(word.getAudioAssetPath())
-                                .imageAssetPath(word.getImageAssetPath())
-                                .partOfSpeech(word.getPartOfSpeech())
-                                .gradeLevel(word.getGradeLevel())
-                                .wordOrder(word.getWordOrder())
-                                .isConfusablePairMember(word.getIsConfusablePairMember())
-                                .phonologicalTipKey(word.getPhonologicalTipKey())
-                                .mcDistractor1(readString(activityRow, "mc_distractor_1"))
-                                .mcDistractor2(readString(activityRow, "mc_distractor_2"))
-                                .mcDistractor3(readString(activityRow, "mc_distractor_3"))
-                                .fitbSentence(readString(activityRow, "fitb_sentence"))
-                                .fitbAnswer(readString(activityRow, "fitb_answer"))
-                                .matchingSet(readMatchingSet(activityRow, "matching_set"))
-                                .sentenceArrangementTokens(readStringList(activityRow, "sentence_arrangement_tokens"))
-                                .sentenceCompletionSentence(readString(activityRow, "sentence_completion_sentence"))
-                                .sentenceCompletionAnswer(readString(activityRow, "sentence_completion_answer"))
-                                .sentenceCompletionOption1(readString(activityRow, "sentence_completion_option_1"))
-                                .sentenceCompletionOption2(readString(activityRow, "sentence_completion_option_2"))
-                                .sentenceCompletionOption3(readString(activityRow, "sentence_completion_option_3"))
-                                .build();
-        }
+    private void unlockNextLesson(Lesson completedLesson, Learner learner) {
+        List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(completedLesson.getCategory().getCategoryId());
+        int nextOrder = completedLesson.getLessonOrder() + 1;
+        lessons.stream()
+                .filter(l -> l.getLessonOrder() == nextOrder)
+                .findFirst()
+                .ifPresent(nextLesson -> {
+                    LearnerLessonStatus nextStatus = lessonStatusRepository
+                            .findByLearnerLearnerIdAndLessonLessonId(learner.getLearnerId(), nextLesson.getLessonId())
+                            .orElseGet(() -> LearnerLessonStatus.builder()
+                                    .learner(learner)
+                                    .lesson(nextLesson)
+                                    .status(LessonStatus.LOCKED)
+                                    .attempts(0)
+                                    .build());
 
-        public CategoryReviewResponse completeCategoryReview(UUID learnerId, UUID categoryId, Double score) {
-                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(categoryId, "PUBLISHED");
-                if (lessons.isEmpty()) {
-                        throw new IllegalArgumentException("Category not found");
-                }
-
-                Learner learner = learnerRepository.findById(learnerId)
-                                .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
-
-                boolean passed = score != null && score >= 70.0;
-                for (Lesson lesson : lessons) {
-                        LearnerLessonStatus status = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lesson.getLessonId())
-                                        .orElseGet(() -> LearnerLessonStatus.builder()
-                                                        .learner(learner)
-                                                        .lesson(lesson)
-                                                        .attempts(0)
-                                                        .build());
-
-                        status.setAttempts(status.getAttempts() + 1);
-                        status.setMasteryScore(BigDecimal.valueOf(score != null ? score : 0.0));
-                        status.setUpdatedAt(java.time.OffsetDateTime.now());
-                        if (passed) {
-                                status.setStatus(LessonStatus.COMPLETED);
-                                status.setCompletedAt(java.time.OffsetDateTime.now());
-                        } else if (status.getStatus() != LessonStatus.COMPLETED) {
-                                status.setStatus(LessonStatus.UNLOCKED);
-                        }
-                        lessonStatusRepository.save(status);
-                }
-
-                UUID nextCategoryId = unlockNextCategory(categoryId, learnerId, learner);
-                return CategoryReviewResponse.builder()
-                                .categoryId(categoryId)
-                                .score(score)
-                                .passed(passed)
-                                .nextCategoryId(nextCategoryId)
-                                .build();
-        }
-
-        private UUID unlockNextCategory(UUID categoryId, UUID learnerId, Learner learner) {
-                List<VocabularyCategory> categories = categoryRepository.findAllByOrderBySortOrderAsc();
-                int currentIndex = -1;
-                for (int i = 0; i < categories.size(); i++) {
-                        if (categories.get(i).getCategoryId().equals(categoryId)) {
-                                currentIndex = i;
-                                break;
-                        }
-                }
-
-                if (currentIndex == -1 || currentIndex + 1 >= categories.size()) {
-                        return null;
-                }
-
-                VocabularyCategory nextCategory = categories.get(currentIndex + 1);
-                List<Lesson> nextLessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(nextCategory.getCategoryId(), "PUBLISHED");
-                if (nextLessons.isEmpty()) {
-                        return nextCategory.getCategoryId();
-                }
-
-                Lesson firstLesson = nextLessons.get(0);
-                LearnerLessonStatus firstStatus = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, firstLesson.getLessonId())
-                                .orElseGet(() -> LearnerLessonStatus.builder()
-                                                .learner(learner)
-                                                .lesson(firstLesson)
-                                                .attempts(0)
-                                                .build());
-
-                if (firstStatus.getStatus() == LessonStatus.LOCKED) {
-                        firstStatus.setStatus(LessonStatus.UNLOCKED);
-                        firstStatus.setUnlockedAt(java.time.OffsetDateTime.now());
-                }
-                lessonStatusRepository.save(firstStatus);
-                return nextCategory.getCategoryId();
-        }
-
-        private String readString(Map<String, Object> row, String key) {
-                if (row == null) {
-                        return null;
-                }
-                Object value = row.get(key);
-                return value == null ? null : value.toString();
-        }
-
-        private List<String> readStringList(Map<String, Object> row, String key) {
-                String raw = readString(row, key);
-                if (raw == null || raw.isBlank()) {
-                        return List.of();
-                }
-
-                try {
-                        JsonNode node = objectMapper.readTree(raw);
-                        List<String> values = new ArrayList<>();
-                        if (node.isArray()) {
-                                for (JsonNode entry : node) {
-                                        values.add(entry.asText());
-                                }
-                        }
-                        return values;
-                } catch (Exception ex) {
-                        return List.of();
-                }
-        }
-
-        private List<MatchingSetEntryResponse> readMatchingSet(Map<String, Object> row, String key) {
-                String raw = readString(row, key);
-                if (raw == null || raw.isBlank()) {
-                        return List.of();
-                }
-
-                try {
-                        JsonNode node = objectMapper.readTree(raw);
-                        List<MatchingSetEntryResponse> values = new ArrayList<>();
-                        if (node.isArray()) {
-                                for (JsonNode entry : node) {
-                                        values.add(MatchingSetEntryResponse.builder()
-                                                        .englishWord(entry.path("english_word").asText(""))
-                                                        .cebuanoMeaning(entry.path("cebuano_meaning").asText(""))
-                                                        .imageAssetPath(entry.path("image_asset_path").asText(""))
-                                                        .build());
-                                }
-                        }
-                        return values;
-                } catch (Exception ex) {
-                        return List.of();
-                }
-        }
-
-        @Transactional
-        public MasteryResponse submitMastery(MasteryRequest request, UUID learnerId) {
-                // Server-side validation: verify the score meets the passing threshold
-                final double PASSING_THRESHOLD = 70.0;
-                
-                // Check if cumulative review has been completed
-                if (request.getCumulativeReviewScore() == null || request.getCumulativeReviewScore() < 0) {
-                        return MasteryResponse.builder()
-                                .success(false)
-                                .message("Cumulative review must be completed before category can be passed")
-                                .finalScore(0.0)
-                                .passed(false)
-                                .totalItems(request.getTotalItems())
-                                .masteredCount(request.getMasteredCount())
-                                .missedWordIds(request.getMissedWordIds())
-                                .build();
-                }
-                
-                // Recalculate final score server-side to prevent client spoofing
-                double serverFinalScore = (0.6 * request.getLessonScore()) + (0.4 * request.getCumulativeReviewScore());
-                boolean serverPassed = serverFinalScore >= PASSING_THRESHOLD;
-                
-                // If client claims pass but server calculation disagrees, reject
-                if (request.isPassed() && !serverPassed) {
-                        return MasteryResponse.builder()
-                                .success(false)
-                                .message("Score validation failed: Server calculated score does not meet passing threshold")
-                                .finalScore(serverFinalScore)
-                                .passed(false)
-                                .totalItems(request.getTotalItems())
-                                .masteredCount(request.getMasteredCount())
-                                .missedWordIds(request.getMissedWordIds())
-                                .build();
-                }
-                
-                // If server validates pass, update lesson statuses
-                if (serverPassed && request.getLessonIds() != null) {
-                        Learner learner = learnerRepository.findById(learnerId)
-                                        .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
-                        
-                        for (UUID lessonId : request.getLessonIds()) {
-                                Lesson lesson = lessonRepository.findById(lessonId)
-                                                .orElseThrow(() -> new IllegalArgumentException("Lesson not found: " + lessonId));
-                                
-                                LearnerLessonStatus status = lessonStatusRepository
-                                                .findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId)
-                                                .orElseGet(() -> LearnerLessonStatus.builder()
-                                                                .learner(learner)
-                                                                .lesson(lesson)
-                                                                .attempts(0)
-                                                                .build());
-                                
-                                status.setAttempts(status.getAttempts() + 1);
-                                status.setMasteryScore(BigDecimal.valueOf(serverFinalScore));
-                                status.setStatus(LessonStatus.COMPLETED);
-                                status.setCompletedAt(java.time.OffsetDateTime.now());
-                                status.setUpdatedAt(java.time.OffsetDateTime.now());
-                                lessonStatusRepository.save(status);
-                        }
-                }
-                
-                return MasteryResponse.builder()
-                                .success(true)
-                                .message(serverPassed ? "Mastery achieved" : "Review needed")
-                                .finalScore(serverFinalScore)
-                                .passed(serverPassed)
-                                .totalItems(request.getTotalItems())
-                                .masteredCount(request.getMasteredCount())
-                                .missedWordIds(request.getMissedWordIds())
-                                .build();
-        }
+                    if (nextStatus.getStatus() == LessonStatus.LOCKED) {
+                        nextStatus.setStatus(LessonStatus.UNLOCKED);
+                        nextStatus.setUnlockedAt(java.time.OffsetDateTime.now());
+                        lessonStatusRepository.save(nextStatus);
+                    }
+                });
+    }
 }

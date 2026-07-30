@@ -111,6 +111,7 @@ class AuthProvider with ChangeNotifier {
           age: age,
           languagePreference: body['languagePreference'],
           onboardingComplete: body['onboardingComplete'] ?? true,
+          masteryApplyImmediately: body['masteryApplyImmediately'] ?? true,
         );
 
         await _storage.write(key: 'jwt_token', value: _token);
@@ -159,6 +160,7 @@ class AuthProvider with ChangeNotifier {
           age: 9, // Fallback, will be refreshed
           languagePreference: body['languagePreference'],
           onboardingComplete: body['onboardingComplete'] ?? true,
+          masteryApplyImmediately: body['masteryApplyImmediately'] ?? true,
         );
 
         await _storage.write(key: 'jwt_token', value: _token);
@@ -233,6 +235,80 @@ class AuthProvider with ChangeNotifier {
       } else {
         final body = json.decode(response.body);
         _error = body['message'] ?? 'Failed to update profile.';
+      }
+    } catch (e) {
+      _error = 'Connection error. Please check your internet connection.';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> updateMasteryApplyMode(bool applyImmediately) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/learners/preferences'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'masteryApplyImmediately': applyImmediately,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        await fetchProfile();
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        final body = json.decode(response.body);
+        _error = body['message'] ?? 'Failed to update preferences.';
+      }
+    } catch (e) {
+      _error = 'Connection error. Please check your internet connection.';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> updatePosFocus(String posFocus) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/learners/preferences'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'posFocus': posFocus,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        await fetchProfile();
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        final body = json.decode(response.body);
+        _error = body['message'] ?? 'Failed to update focus preference.';
       }
     } catch (e) {
       _error = 'Connection error. Please check your internet connection.';

@@ -2,9 +2,8 @@ package com.vocaboo.controller;
 
 import com.vocaboo.dto.request.MasteryRequest;
 import com.vocaboo.dto.response.CategoryResponse;
-import com.vocaboo.dto.response.CategoryReviewResponse;
-import com.vocaboo.dto.response.LessonWordActivityResponse;
 import com.vocaboo.dto.response.LessonResponse;
+import com.vocaboo.dto.response.LessonWordActivityResponse;
 import com.vocaboo.dto.response.MasteryResponse;
 import com.vocaboo.dto.response.VocabularyWordResponse;
 import com.vocaboo.dto.response.ConfusableWordPairResponse;
@@ -12,6 +11,7 @@ import com.vocaboo.service.LessonService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.security.Principal;
 import java.util.List;
 import java.util.UUID;

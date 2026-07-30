@@ -56,7 +56,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   bool _checked = false;
   bool _isAnswerCorrect = false;
   bool _showFeedback = false;
-  String? _lastCorrectAnswer;
 
   // Matching Activity Temporary States
   String? _selectedCebuano;
@@ -90,36 +89,22 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // Session Completed State
   final bool _isCompleted = false;
+  bool _isNavigating = false;
 
   // Timer Variables
-  late DateTime _sessionStartTime;
-  Duration _elapsedDuration = Duration.zero;
-  Timer? _elapsedTimerInstance;
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes.toString().padLeft(2, '0');
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
+  Timer? _questionTimer;
+  int _secondsRemaining = 0;
 
   @override
   void initState() {
     super.initState();
     _words = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
-    _sessionStartTime = DateTime.now();
-    _elapsedTimerInstance = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _elapsedDuration = DateTime.now().difference(_sessionStartTime);
-        });
-      }
-    });
     _initializeSession();
   }
 
   @override
   void dispose() {
-    _elapsedTimerInstance?.cancel();
+    _questionTimer?.cancel();
     _typingController.dispose();
     super.dispose();
   }
@@ -145,7 +130,81 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
     } else {
       // Build new session queue
-      _buildPracticeQueue();
+      if (widget.isSandbox) {
+        _buildPracticeQueue();
+      } else {
+        if (!mounted) return;
+        final provider = Provider.of<LessonProvider>(context, listen: false);
+        final backendQuestions = await provider.loadRetrievalQuestions(widget.sessionId);
+        if (!mounted) return;
+        _practiceQueue = backendQuestions.map((q) {
+          final formatStr = q['activityFormat'] as String? ?? 'MULTIPLE_CHOICE';
+          ActivityFormat format;
+          switch (formatStr) {
+            case 'MULTIPLE_CHOICE':
+              format = ActivityFormat.multipleChoice;
+              break;
+            case 'FILL_IN_BLANK':
+              format = ActivityFormat.fillInTheBlank;
+              break;
+            case 'MATCHING':
+              format = ActivityFormat.matching;
+              break;
+            case 'TYPE_WHAT_YOU_HEAR':
+              format = ActivityFormat.listeningTyping;
+              break;
+            case 'SENTENCE_ARRANGEMENT':
+              format = ActivityFormat.rearrangement;
+              break;
+            default:
+              format = ActivityFormat.multipleChoice;
+          }
+
+          final options = List<String>.from(q['options'] ?? []);
+          final correctAnswer = q['correctAnswer'] as String? ?? '';
+          final distractors = options.where((o) => o != correctAnswer).toList();
+          final scrambledTokens = List<String>.from(q['scrambledTokens'] ?? []);
+
+          List<Map<String, dynamic>>? matchingSet;
+          if (q['matchingPairs'] != null) {
+            matchingSet = (q['matchingPairs'] as List<dynamic>)
+                .map((e) => {
+                      'englishWord': e['english'],
+                      'cebuanoMeaning': e['cebuano'],
+                    })
+                .toList();
+          }
+
+          final rawExample = (q['exampleSentenceEnglish'] as String?)?.trim();
+          final exampleSentence = (rawExample != null && rawExample.isNotEmpty) ? rawExample : '';
+
+          final rawQuestionText = (q['questionText'] as String?)?.trim();
+          final fitbSentence = (format == ActivityFormat.fillInTheBlank && rawQuestionText != null && rawQuestionText.contains('_'))
+              ? rawQuestionText
+              : null;
+
+          return PracticeItemModel(
+            wordId: q['wordId'],
+            englishWord: q['englishWord'] ?? '',
+            cebuanoMeaning: q['cebuanoMeaning'] ?? '',
+            exampleSentenceEnglish: exampleSentence,
+            exampleSentenceCebuano: q['exampleSentenceCebuano'] ?? q['cebuanoMeaning'],
+            activityFormat: format,
+            distractors: distractors,
+            mcDistractor1: distractors.isNotEmpty ? distractors[0] : null,
+            mcDistractor2: distractors.length > 1 ? distractors[1] : null,
+            mcDistractor3: distractors.length > 2 ? distractors[2] : null,
+            fitbSentence: fitbSentence,
+            fitbAnswer: correctAnswer,
+            matchingSet: matchingSet,
+            sentenceArrangementTokens: scrambledTokens,
+            imageAssetPath: q['imageAssetPath'],
+            timeLimitSeconds: q['timeLimitSeconds'] as int?,
+            difficultyLevel: q['difficultyLevel'] as String? ?? 'LEARNING',
+          );
+        }).toList();
+      }
+      
       _currentIndex = 0;
       _completedScreens = 0;
       _plannedScreens = _practiceQueue.length;
@@ -172,32 +231,28 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         _practiceQueue.add(_createPracticeItem(word, ActivityFormat.fillInTheBlank));
       }
     } else {
-      // Non-sandbox mode: fixed selection from all formats in a stable order.
-      // Remove rearrangement from Active Practice (handled in Sentence Building module)
-      final allowedFormats = ActivityFormat.values.where((f) => f != ActivityFormat.rearrangement).toList();
+      // Non-sandbox mode: fixed selection from the 4 core retrieval formats.
+      final allowedFormats = [
+        ActivityFormat.multipleChoice,
+        ActivityFormat.fillInTheBlank,
+        ActivityFormat.matching,
+        ActivityFormat.listeningTyping,
+      ];
       
       // Build queue sequentially per word: for each word, add two exercises back-to-back
-      // This ensures order: word1 -> exerciseA, word1 -> exerciseB, word2 -> exerciseA, ...
+      final random = Random();
       for (var index = 0; index < _words.length; index++) {
         final word = _words[index];
 
-        var format1 = allowedFormats[index % allowedFormats.length];
-        if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && index % 3 == 0) {
+        var format1 = allowedFormats[random.nextInt(allowedFormats.length)];
+        if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty && random.nextDouble() < 0.3) {
           format1 = ActivityFormat.imageMatching;
-        }
-        if (format1 == ActivityFormat.rearrangement && _rearrangementTokenCount(word) < 2) {
-          format1 = ActivityFormat.fillInTheBlank;
         }
         _practiceQueue.add(_createPracticeItem(word, format1));
 
-        // Second exercise: pick the next format in order, ensuring it differs from the first.
-        var format2 = allowedFormats[(index + 1) % allowedFormats.length];
-        if (format2 == format1) {
-          format2 = allowedFormats[(index + 2) % allowedFormats.length];
-        }
-        if (format2 == ActivityFormat.rearrangement && _rearrangementTokenCount(word) < 2) {
-          format2 = ActivityFormat.fillInTheBlank;
-        }
+        // Second exercise: pick a random format ensuring it differs from the first format
+        final remainingFormats = allowedFormats.where((f) => f != format1).toList();
+        var format2 = remainingFormats[random.nextInt(remainingFormats.length)];
         _practiceQueue.add(_createPracticeItem(word, format2));
       }
     }
@@ -231,6 +286,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       sentenceCompletionOption1: word.sentenceCompletionOption1,
       sentenceCompletionOption2: word.sentenceCompletionOption2,
       sentenceCompletionOption3: word.sentenceCompletionOption3,
+      difficultyLevel: 'LEARNING',
     );
   }
 
@@ -369,6 +425,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   void _loadCurrentItemState() {
+    _questionTimer?.cancel();
+    _secondsRemaining = 0;
     _checked = false;
     _showFeedback = false;
     _selectedOptionIndex = -1;
@@ -381,77 +439,60 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     if (_currentIndex >= _practiceQueue.length) return;
     final item = _practiceQueue[_currentIndex];
 
-        if (item.activityFormat == ActivityFormat.multipleChoice ||
-            item.activityFormat == ActivityFormat.imageMatching) {
-          final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
-          
-          // Ensure correct answer is a single word, not a sentence
-          var correctAnswer = item.englishWord;
-          if (correctAnswer.split(RegExp(r'\s+')).length > 2 || correctAnswer.contains('__') || correctAnswer.contains('.')) {
-            // Backend sent a sentence - extract first word as fallback
-            correctAnswer = correctAnswer.split(RegExp(r'\s+'))[0].replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
-            debugPrint('WARNING: Correct answer was sentence, using first word: $correctAnswer');
-          }
-          
-          debugPrint('MC: correctAnswer="$correctAnswer", distractors=$distractors');
-          _options = [correctAnswer, ...distractors];
-          
-          // FINAL FILTER: Remove any sentences that slipped through
-          _options = _options.where((opt) {
-            final wordCount = opt.trim().split(RegExp(r'\s+')).length;
-            final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
-            if (isSentence) {
-              debugPrint('FINAL FILTER: Removing sentence from options: "$opt"');
-            }
-            return !isSentence;
-          }).toList();
-          
-          // Ensure we have 4 options - pad with fallbacks if needed
-          if (_options.length < 4) {
-            final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
-            final needed = 4 - _options.length;
-            final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
-            _options.addAll(available.take(needed));
-            debugPrint('Padded options with $needed fallbacks');
-          }
-          
-          _options.shuffle(Random(item.wordId.hashCode)); // consistent shuffle for this word
-          debugPrint('MC options before render: $_options');
-    } else if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+    if (item.activityFormat == ActivityFormat.multipleChoice ||
+        item.activityFormat == ActivityFormat.imageMatching) {
       final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
       
-      // Use fitbAnswer as the correct option if available, otherwise fall back to englishWord
-      var correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
-          ? item.fitbAnswer!
-          : item.englishWord;
-      
       // Ensure correct answer is a single word, not a sentence
-      if (correctOption.split(RegExp(r'\s+')).length > 2 || correctOption.contains('__') || correctOption.contains('.')) {
-        // Backend sent a sentence - use the target vocabulary word instead
-        correctOption = item.englishWord;
-        debugPrint('FITB: backend sent sentence, using target word as correct answer: $correctOption');
+      var correctAnswer = item.englishWord;
+      if (correctAnswer.split(RegExp(r'\s+')).length > 2 || correctAnswer.contains('__') || correctAnswer.contains('.')) {
+        correctAnswer = correctAnswer.split(RegExp(r'\s+'))[0].replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+        debugPrint('WARNING: Correct answer was sentence, using first word: $correctAnswer');
       }
       
-      debugPrint('FITB: correctAnswer="$correctOption", distractors=$distractors');
-      _options = [correctOption, ...distractors];
+      debugPrint('MC: correctAnswer="$correctAnswer", distractors=$distractors');
+      _options = [correctAnswer, ...distractors];
       
-      // FINAL FILTER: Remove any sentences that slipped through
       _options = _options.where((opt) {
         final wordCount = opt.trim().split(RegExp(r'\s+')).length;
         final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
-        if (isSentence) {
-          debugPrint('FINAL FILTER: Removing sentence from FITB options: "$opt"');
-        }
         return !isSentence;
       }).toList();
       
-      // Ensure we have 4 options - pad with fallbacks if needed
       if (_options.length < 4) {
         final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
         final needed = 4 - _options.length;
         final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
         _options.addAll(available.take(needed));
-        debugPrint('Padded FITB options with $needed fallbacks');
+      }
+      
+      _options.shuffle(Random(item.wordId.hashCode));
+      debugPrint('MC options before render: $_options');
+    } else if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+      final distractors = item.distractors.isNotEmpty ? item.distractors : _resolveDistractors(_words.firstWhere((w) => w.wordId == item.wordId));
+      
+      var correctOption = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+          ? item.fitbAnswer!
+          : item.englishWord;
+      
+      if (correctOption.split(RegExp(r'\s+')).length > 2 || correctOption.contains('__') || correctOption.contains('.')) {
+        correctOption = item.englishWord;
+      }
+      
+      debugPrint('FITB: correctAnswer="$correctOption", distractors=$distractors');
+      _options = [correctOption, ...distractors];
+      
+      _options = _options.where((opt) {
+        final wordCount = opt.trim().split(RegExp(r'\s+')).length;
+        final isSentence = wordCount > 2 || opt.contains('__') || opt.contains('.');
+        return !isSentence;
+      }).toList();
+      
+      if (_options.length < 4) {
+        final fallbacks = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big', 'cat', 'dog'];
+        final needed = 4 - _options.length;
+        final available = fallbacks.where((f) => !_options.contains(f)).toList()..shuffle();
+        _options.addAll(available.take(needed));
       }
       
       _options.shuffle(Random(item.wordId.hashCode));
@@ -470,6 +511,37 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
       _assembledTokens = [];
     }
+
+    if (item.timeLimitSeconds != null && item.timeLimitSeconds! > 0) {
+      _startQuestionTimer(item.timeLimitSeconds!);
+    }
+  }
+
+  void _startQuestionTimer(int seconds) {
+    _questionTimer?.cancel();
+    _secondsRemaining = seconds;
+    _questionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_secondsRemaining > 1) {
+          _secondsRemaining--;
+        } else {
+          _secondsRemaining = 0;
+          _questionTimer?.cancel();
+          _handleTimeout();
+        }
+      });
+    });
+  }
+
+  void _handleTimeout() {
+    if (_checked) return;
+    setState(() {
+      _selectedOptionIndex = -1;
+      _checked = true;
+      _isAnswerCorrect = false;
+      _showFeedback = true;
+    });
   }
 
   Future<void> _saveCurrentState() async {
@@ -510,22 +582,27 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   String _getListeningTypingAudioText(PracticeItemModel item) {
-    // Prefer a single-word answer for audio. If fitbAnswer is a single token, use it.
-    final fitb = item.fitbAnswer?.trim();
-    if (fitb != null && fitb.isNotEmpty) {
-      final tokens = fitb.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
-      if (tokens.length == 1) return tokens.first;
+    final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+    if (lvl == 'LEARNING') {
+      return item.englishWord;
+    } else if (lvl == 'FAMILIAR') {
+      return _extractPhrase(item.exampleSentenceEnglish, item.englishWord);
+    } else {
+      return item.exampleSentenceEnglish;
     }
+  }
 
-    // Fallback to the vocabulary word if it's a single token
-    final word = item.englishWord.trim();
-    if (word.isNotEmpty && word.split(RegExp(r'\s+')).length == 1) return word;
-
-    // Otherwise return the example sentence so the instructor can read the context
-    final example = item.exampleSentenceEnglish.trim();
-    if (example.isNotEmpty) return example;
-
-    return fitb ?? word;
+  String _extractPhrase(String sentence, String word) {
+    final clean = sentence.replaceAll(RegExp(r'[.,!?;:]'), '');
+    final wordsList = clean.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+    int targetIndex = wordsList.indexWhere((w) => w.toLowerCase().contains(word.toLowerCase()));
+    if (targetIndex == -1) return word;
+    
+    int start = (targetIndex - 1).clamp(0, wordsList.length - 1);
+    int end = (targetIndex + 1).clamp(0, wordsList.length - 1);
+    
+    if (start == targetIndex && end == targetIndex) return word;
+    return wordsList.sublist(start, end + 1).join(' ');
   }
 
   // --- Handlers ---
@@ -575,7 +652,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     String correctAns = item.englishWord;
 
     if (item.activityFormat == ActivityFormat.multipleChoice ||
-        item.activityFormat == ActivityFormat.fillInTheBlank ||
+        (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isNotEmpty) ||
         item.activityFormat == ActivityFormat.imageMatching) {
       if (_selectedOptionIndex == -1) return;
       if (_selectedOptionIndex < 0 || _selectedOptionIndex >= _options.length) {
@@ -602,7 +679,35 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       
       debugPrint('FITB check: selected="$learnerAns", comparing against="$fitbCorrect"');
       correct = (learnerAns.toLowerCase() == fitbCorrect.toLowerCase());
+      correctAns = fitbCorrect;
     } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+      learnerAns = _typingController.text.trim();
+      final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+      String correctTarget;
+      if (lvl == 'LEARNING') {
+        correctTarget = item.englishWord;
+      } else if (lvl == 'FAMILIAR') {
+        correctTarget = _getListeningTypingAudioText(item);
+      } else {
+        correctTarget = item.exampleSentenceEnglish;
+      }
+
+      if (lvl == 'PROFICIENT') {
+        final cleanLearner = _cleanStringForCompare(learnerAns);
+        final cleanCorrect = _cleanStringForCompare(correctTarget);
+        final dist = _levenshtein(cleanLearner, cleanCorrect);
+        correct = (cleanCorrect.length >= 4) ? (dist <= 1) : (dist == 0);
+      } else if (lvl == 'MASTERED') {
+        final cleanLearner = learnerAns.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+        final cleanCorrect = correctTarget.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+        correct = cleanLearner == cleanCorrect;
+      } else {
+        final cleanLearner = _cleanStringForCompare(learnerAns);
+        final cleanCorrect = _cleanStringForCompare(correctTarget);
+        correct = cleanLearner == cleanCorrect;
+      }
+      correctAns = correctTarget;
+    } else if (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty) {
       learnerAns = _typingController.text.trim();
       // Use single-word target for comparison. If fitbAnswer is multi-word, fall back to englishWord.
       String correctTarget = (item.fitbAnswer ?? '').trim();
@@ -678,10 +783,41 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       evaluatedAt: DateTime.now(),
       isReinforcementAttempt: (_wordWrongAttempts[item.wordId] ?? 0) > 0 ? 1 : 0,
     );
-    // keep the evaluated correct answer for display in the feedback panel
-    _lastCorrectAnswer = correctAns;
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+
     debugPrint('CHECK_ANS item=${item.wordId} format=${item.activityFormat} assembled=${_assembledTokens.join(' ')} target="$correctAns" normalizedCorrect=$correct');
+    _questionTimer?.cancel();
     await LocalStorageService.saveEvaluationResult(widget.sessionId, result);
+
+    if (!widget.isSandbox) {
+      String formatName;
+      switch (item.activityFormat) {
+        case ActivityFormat.multipleChoice:
+          formatName = 'MULTIPLE_CHOICE';
+          break;
+        case ActivityFormat.fillInTheBlank:
+          formatName = 'FILL_IN_BLANK';
+          break;
+        case ActivityFormat.matching:
+          formatName = 'MATCHING';
+          break;
+        case ActivityFormat.listeningTyping:
+          formatName = 'TYPE_WHAT_YOU_HEAR';
+          break;
+        case ActivityFormat.rearrangement:
+          formatName = 'WORD_TILE_ARRANGEMENT';
+          break;
+        default:
+          formatName = 'MULTIPLE_CHOICE';
+      }
+      await provider.submitRetrievalAnswer(
+        widget.sessionId,
+        item.wordId,
+        correct,
+        wrongAnswer: correct ? null : _assembledTokens.join(' '),
+        activityFormat: formatName,
+      );
+    }
 
     if (correct) {
       if ((_wordWrongAttempts[item.wordId] ?? 0) > 0) {
@@ -729,29 +865,55 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         await provider.updateWordProgress(widget.sessionId, item.wordId, 'FULL', 0, 'NEEDS_PRONUNCIATION_REVIEW');
       }
 
-      // Continuous Reinforcement: immediately append failed exercise to the end of the active queue
-      final failedItem = PracticeItemModel(
+      // Continuous Reinforcement: generate a varied format exercise for the failed word and append to queue
+      final allowedFormats = [
+        ActivityFormat.multipleChoice,
+        ActivityFormat.fillInTheBlank,
+        ActivityFormat.matching,
+        ActivityFormat.listeningTyping,
+        ActivityFormat.rearrangement,
+      ];
+      final remaining = allowedFormats.where((f) => f != item.activityFormat).toList();
+      final nextFormat = remaining[Random().nextInt(remaining.length)];
+
+      bool isInstructionText(String? text) {
+        if (text == null || text.trim().isEmpty) return false;
+        final lower = text.toLowerCase().trim();
+        return lower.startsWith('match') ||
+            lower.startsWith('what is') ||
+            lower.startsWith('listen to') ||
+            lower.startsWith('complete the sentence');
+      }
+
+      final cleanExampleEnglish = isInstructionText(item.exampleSentenceEnglish)
+          ? ''
+          : item.exampleSentenceEnglish;
+
+      final cleanFitbSentence = isInstructionText(item.fitbSentence) ||
+              (item.fitbSentence != null && !item.fitbSentence!.contains('_'))
+          ? null
+          : item.fitbSentence;
+
+      final wordModel = VocabularyWordModel(
         wordId: item.wordId,
+        lessonId: widget.lessonId,
         englishWord: item.englishWord,
         cebuanoMeaning: item.cebuanoMeaning,
-        exampleSentenceEnglish: item.exampleSentenceEnglish,
+        exampleSentenceEnglish: cleanExampleEnglish,
         exampleSentenceCebuano: item.exampleSentenceCebuano,
-        activityFormat: item.activityFormat,
-        distractors: item.distractors,
+        gradeLevel: '',
+        wordOrder: 0,
+        isConfusablePairMember: false,
+        imageAssetPath: item.imageAssetPath,
         mcDistractor1: item.mcDistractor1,
         mcDistractor2: item.mcDistractor2,
         mcDistractor3: item.mcDistractor3,
-        fitbSentence: item.fitbSentence,
+        fitbSentence: cleanFitbSentence,
         fitbAnswer: item.fitbAnswer,
         matchingSet: item.matchingSet,
         sentenceArrangementTokens: item.sentenceArrangementTokens,
-        sentenceCompletionSentence: item.sentenceCompletionSentence,
-        sentenceCompletionAnswer: item.sentenceCompletionAnswer,
-        sentenceCompletionOption1: item.sentenceCompletionOption1,
-        sentenceCompletionOption2: item.sentenceCompletionOption2,
-        sentenceCompletionOption3: item.sentenceCompletionOption3,
-        imageAssetPath: item.imageAssetPath,
       );
+      final failedItem = _createPracticeItem(wordModel, nextFormat);
       _practiceQueue.add(failedItem);
       _plannedScreens++;
 
@@ -781,6 +943,17 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _completeModuleAndAdvance() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // Strict guard: ensure all practice queue items are completed before advancing
+    if (_currentIndex < _practiceQueue.length) {
+      setState(() {
+        _loadCurrentItemState();
+      });
+      return;
+    }
+
     setState(() {
       _progressOverride = 1.0;
     });
@@ -791,7 +964,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     final denom = uniqueWordCount == 0 ? 1 : uniqueWordCount;
     var moduleScore = ( _scorePoints / denom ) * 100.0;
     if (moduleScore.isNaN || moduleScore.isInfinite) moduleScore = 0.0;
-    moduleScore = moduleScore.clamp(0.0, 100.0);
+    if (!mounted) return;
     final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
@@ -959,7 +1132,48 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                       isSad: _checked && !_isAnswerCorrect,
                       isCelebrating: _checked && _isAnswerCorrect,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    if (item.timeLimitSeconds != null && item.timeLimitSeconds! > 0 && !_checked) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Time Remaining:',
+                                  style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                Text(
+                                  '${_secondsRemaining}s',
+                                  style: TextStyle(
+                                    color: _secondsRemaining <= 5 ? Colors.redAccent : const Color(0xFF06A6FF),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: item.timeLimitSeconds! > 0 ? (_secondsRemaining / item.timeLimitSeconds!) : 0.0,
+                                backgroundColor: const Color(0xFFE2E8F0),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  _secondsRemaining <= 5 ? Colors.redAccent : const Color(0xFF06A6FF),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                    ],
                     
                     // Main Activity Body
                     _buildActivityBody(item),
@@ -1325,29 +1539,52 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     Color blankColor = const Color(0xFF94A3B8);
     Color blankBgColor = const Color(0xFFF1F5F9);
 
-    if (_selectedOptionIndex != -1) {
-      if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
-        blankText = _options[_selectedOptionIndex];
-      } else {
-        blankText = '_______';
+    if (_options.isNotEmpty) {
+      if (_selectedOptionIndex != -1) {
+        if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
+          blankText = _options[_selectedOptionIndex];
+        } else {
+          blankText = '_______';
+        }
+        blankColor = const Color(0xFF3B82F6);
+        blankBgColor = const Color(0xFFEFF6FF);
       }
-      blankColor = const Color(0xFF3B82F6);
-      blankBgColor = const Color(0xFFEFF6FF);
-    }
 
-    if (_checked) {
-      if (!(_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length)) {
-        // invalid selected index; treat as not selected for coloring
-      } else {
-        final selectedOption = _options[_selectedOptionIndex];
-        // Use the same sentence-detection logic as answer checking
+      if (_checked) {
+        if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
+          final selectedOption = _options[_selectedOptionIndex];
+          String targetForColor = target;
+          if (targetForColor.split(RegExp(r'\s+')).length > 2 || 
+              targetForColor.contains('__') || 
+              targetForColor.contains('.')) {
+            targetForColor = item.englishWord;
+          }
+          final isCorrect = selectedOption.toLowerCase() == targetForColor.toLowerCase();
+          if (isCorrect) {
+            blankColor = const Color(0xFF22C55E);
+            blankBgColor = const Color(0xFFF0FDF4);
+          } else {
+            blankColor = const Color(0xFFEF4444);
+            blankBgColor = const Color(0xFFFEF2F2);
+          }
+        }
+      }
+    } else {
+      if (_typingController.text.trim().isNotEmpty) {
+        blankText = _typingController.text.trim();
+        blankColor = const Color(0xFF3B82F6);
+        blankBgColor = const Color(0xFFEFF6FF);
+      }
+
+      if (_checked) {
+        final typedText = _typingController.text.trim();
         String targetForColor = target;
         if (targetForColor.split(RegExp(r'\s+')).length > 2 || 
             targetForColor.contains('__') || 
             targetForColor.contains('.')) {
           targetForColor = item.englishWord;
         }
-        final isCorrect = selectedOption.toLowerCase() == targetForColor.toLowerCase();
+        final isCorrect = typedText.toLowerCase() == targetForColor.toLowerCase();
         if (isCorrect) {
           blankColor = const Color(0xFF22C55E);
           blankBgColor = const Color(0xFFF0FDF4);
@@ -1416,35 +1653,63 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        // Options List
-        ...List.generate(_options.length, (index) {
-          final option = _options[index];
-          final isSelected = _selectedOptionIndex == index;
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: OutlinedButton(
-              onPressed: _checked ? null : () => _selectMcOption(index),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: isSelected ? const Color(0xFF3B82F6) : Colors.white,
-                side: BorderSide(
-                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
-                  width: 2,
+        // Options List or Typing Input
+        if (_options.isEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: TextField(
+              controller: _typingController,
+              enabled: !_checked,
+              onChanged: (val) {
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: 'Type the missing word here...',
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Text(
-                option,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
                 ),
               ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
             ),
-          );
-        }),
+          ),
+        ] else ...[
+          ...List.generate(_options.length, (index) {
+            final option = _options[index];
+            final isSelected = _selectedOptionIndex == index;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: OutlinedButton(
+                onPressed: _checked ? null : () => _selectMcOption(index),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: isSelected ? const Color(0xFF3B82F6) : Colors.white,
+                  side: BorderSide(
+                    color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                    width: 2,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  option,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? Colors.white : const Color(0xFF334155),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
       ],
     );
   }
@@ -1633,12 +1898,16 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Widget _buildListeningTyping(PracticeItemModel item) {
-    // Hide English prompt from the UI (the learner must listen); show Bisaya hint instead
-    final bisayaHint = (item.exampleSentenceCebuano?.trim().isNotEmpty ?? false)
-        ? item.exampleSentenceCebuano!.trim()
-        : item.cebuanoMeaning.trim();
-    final answer = (item.fitbAnswer ?? item.englishWord).trim();
-
+    final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+    final showCebuano = (lvl == 'LEARNING' || lvl == 'FAMILIAR');
+    
+    // Hide English prompt from the UI (the learner must listen); show Bisaya hint instead if enabled
+    final bisayaHint = showCebuano 
+        ? ((item.exampleSentenceCebuano?.trim().isNotEmpty ?? false)
+            ? item.exampleSentenceCebuano!.trim()
+            : item.cebuanoMeaning.trim())
+        : '';
+ 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1714,16 +1983,66 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
       return item.englishWord;
     }
+
+    String? getLearnerSentenceRestatement() {
+      String learnerAns = '';
+      if (item.activityFormat == ActivityFormat.multipleChoice ||
+          (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isNotEmpty) ||
+          item.activityFormat == ActivityFormat.imageMatching) {
+        if (_selectedOptionIndex >= 0 && _selectedOptionIndex < _options.length) {
+          learnerAns = _options[_selectedOptionIndex];
+        }
+      } else if (item.activityFormat == ActivityFormat.listeningTyping ||
+                 (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty)) {
+        learnerAns = _typingController.text.trim();
+      } else if (item.activityFormat == ActivityFormat.rearrangement) {
+        return _assembledTokens.join(' ');
+      }
+
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        final sentence = item.fitbSentence ?? item.sentenceCompletionSentence ?? '';
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, learnerAns.isEmpty ? '___' : learnerAns);
+          }
+          return '$sentence (Answer: $learnerAns)';
+        }
+      }
+      return null;
+    }
+
+    String? getCorrectSentenceRestatement() {
+      if (item.activityFormat == ActivityFormat.rearrangement) {
+        final tokens = item.sentenceArrangementTokens ?? item.exampleSentenceEnglish.split(RegExp(r'\s+'));
+        return tokens.map((t) => t.toString().trim()).where((t) => t.isNotEmpty).join(' ').trim();
+      }
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        final sentence = item.fitbSentence ?? item.sentenceCompletionSentence ?? '';
+        final correctAns = (item.fitbAnswer != null && item.fitbAnswer!.trim().isNotEmpty)
+            ? item.fitbAnswer!
+            : item.englishWord;
+        if (sentence.isNotEmpty) {
+          final blankRegex = RegExp(r'_{2,}|-{2,}|\[_\]');
+          if (sentence.contains(blankRegex)) {
+            return sentence.replaceFirst(blankRegex, correctAns);
+          }
+          return '$sentence (Answer: $correctAns)';
+        }
+      }
+      return null;
+    }
     
     // Determine button enabling
     bool isActionEnabled = false;
     if (item.activityFormat == ActivityFormat.multipleChoice ||
-        item.activityFormat == ActivityFormat.fillInTheBlank ||
+        (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isNotEmpty) ||
         item.activityFormat == ActivityFormat.imageMatching) {
       isActionEnabled = _selectedOptionIndex != -1;
     } else if (item.activityFormat == ActivityFormat.matching || item.activityFormat == ActivityFormat.translationMatching) {
       isActionEnabled = _currentMatches.length == _matchingCebuanoList.length;
-    } else if (item.activityFormat == ActivityFormat.listeningTyping) {
+    } else if (item.activityFormat == ActivityFormat.listeningTyping ||
+               (item.activityFormat == ActivityFormat.fillInTheBlank && _options.isEmpty)) {
       isActionEnabled = _typingController.text.trim().isNotEmpty;
     } else if (item.activityFormat == ActivityFormat.flashcardRecall) {
       isActionEnabled = _flashcardFlipped;
@@ -1787,24 +2106,55 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isAnswerCorrect ? 'Nice!' : 'Incorrect. Review and continue.',
+                      _isAnswerCorrect ? 'Correct (+10 pts)' : 'Incorrect. Review and continue.',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
                     ),
-                    if (!_isAnswerCorrect) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Correct answer: ${correctAnswerText()}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: textColor.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
+                    () {
+                      final learnerSentence = getLearnerSentenceRestatement();
+                      final correctSentence = getCorrectSentenceRestatement();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (learnerSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Your sentence: "$learnerSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                          if (!_isAnswerCorrect && correctSentence != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct sentence: "$correctSentence"',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ] else if (!_isAnswerCorrect && correctSentence == null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Correct answer: ${correctAnswerText()}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: textColor.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }(),
                   ],
                 ),
               ),
@@ -2009,5 +2359,41 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         ),
       ],
     );
+  }
+
+  int _levenshtein(String s, String t) {
+    if (s == t) return 0;
+    if (s.isEmpty) return t.length;
+    if (t.isEmpty) return s.length;
+
+    List<int> v0 = List<int>.generate(t.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(t.length + 1, 0);
+
+    for (int i = 0; i < s.length; i++) {
+      v1[0] = i + 1;
+      for (int j = 0; j < t.length; j++) {
+        int cost = (s[i] == t[j]) ? 0 : 1;
+        v1[j + 1] = _min3(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+      }
+      for (int j = 0; j <= t.length; j++) {
+        v0[j] = v1[j];
+      }
+    }
+    return v0[t.length];
+  }
+
+  int _min3(int a, int b, int c) {
+    int m = a;
+    if (b < m) m = b;
+    if (c < m) m = c;
+    return m;
+  }
+
+  String _cleanStringForCompare(String input) {
+    return input
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[.,!?;:]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 }

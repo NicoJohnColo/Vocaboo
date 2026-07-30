@@ -5,124 +5,33 @@ import com.vocaboo.dto.response.PronunciationAttemptResponse;
 import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.time.Duration;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class PronunciationService {
 
+    private static final Logger log = LoggerFactory.getLogger(PronunciationService.class);
+
     private final PronunciationAttemptRepository attemptRepository;
     private final IntroductionSessionRepository sessionRepository;
     private final VocabularyWordRepository wordRepository;
     private final LearnerRepository learnerRepository;
 
-    @Value("${huggingface.api.token:}")
-    private String hfToken;
+    private final DeepgramSpeechService deepgramSpeechService;
+    private final PronunciationEvaluationService pronunciationEvaluationService;
+    private final PhoneticFeedbackService phoneticFeedbackService;
 
-    @Value("${huggingface.api.url:https://api-inference.huggingface.co/models/openai/whisper-small}")
-    private String hfApiUrl;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private String transcribeAudioWithHuggingFace(byte[] audioBytes, String detectedContentType) {
-        try {
-            if (hfToken == null || hfToken.trim().isEmpty()) {
-                System.err.println("Hugging Face API Token is not configured. Fallback to simulation.");
-                return null;
-            }
-
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
-
-            Set<String> contentTypes = new LinkedHashSet<>();
-            if (detectedContentType != null && !detectedContentType.isBlank()) {
-                contentTypes.add(detectedContentType);
-            }
-            contentTypes.add("audio/mp4");
-            contentTypes.add("audio/m4a");
-            contentTypes.add("audio/wav");
-            contentTypes.add("application/octet-stream");
-
-            for (String contentType : contentTypes) {
-                URI requestUri = URI.create(hfApiUrl + (hfApiUrl.contains("?") ? "&" : "?") + "wait_for_model=true");
-
-                HttpRequest request = HttpRequest.newBuilder()
-                    .uri(requestUri)
-                        .timeout(Duration.ofSeconds(30))
-                        .header("Authorization", "Bearer " + hfToken)
-                        .header("Content-Type", contentType)
-                        .POST(HttpRequest.BodyPublishers.ofByteArray(audioBytes))
-                        .build();
-
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                int status = response.statusCode();
-                String body = response.body();
-
-                if (status == 200) {
-                    String transcript = parseTranscript(body);
-                    if (transcript != null && !transcript.isBlank()) {
-                        return transcript;
-                    }
-                    System.err.println("Hugging Face response had no transcript. contentType=" + contentType + " body=" + body);
-                } else {
-                    System.err.println("Hugging Face API returned error status=" + status + " contentType=" + contentType + " body=" + body);
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.err.println("Error calling Hugging Face API: InterruptedException: " + e.getMessage());
-        } catch (IOException e) {
-            System.err.println("Error calling Hugging Face API: IOException: " + e.getMessage());
-        } catch (Exception e) {
-            System.err.println("Error calling Hugging Face API: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        return null;
-    }
-
-    private String parseTranscript(String body) {
-        try {
-            if (body == null || body.isBlank()) {
-                return null;
-            }
-            JsonNode root = objectMapper.readTree(body);
-            if (root.hasNonNull("text")) {
-                return root.get("text").asText();
-            }
-            if (root.isArray() && !root.isEmpty() && root.get(0).hasNonNull("text")) {
-                return root.get(0).get("text").asText();
-            }
-            if (root.has("results") && root.get("results").isArray() && !root.get("results").isEmpty()) {
-                JsonNode first = root.get("results").get(0);
-                if (first.hasNonNull("text")) {
-                    return first.get("text").asText();
-                }
-            }
-        } catch (Exception ex) {
-            System.err.println("Failed to parse Hugging Face response JSON: " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
-        }
-        return null;
-    }
-
-    private String detectContentType(String audioBase64) {
+    String detectContentType(String audioBase64) {
         if (audioBase64 == null) {
             return null;
         }
@@ -137,7 +46,7 @@ public class PronunciationService {
         return normalized.substring(5, semicolonIndex);
     }
 
-    private String normalizeAudioBase64(String audioBase64) {
+    String normalizeAudioBase64(String audioBase64) {
         if (audioBase64 == null) {
             return null;
         }
@@ -237,72 +146,52 @@ public class PronunciationService {
                     .build();
         }
 
-        // Hugging Face Speech-to-Text Integration
+        // Deepgram Speech-to-Text Integration
         boolean isCorrect = false;
-        boolean isUsingHuggingFace = false;
+        double similarityScore = 0.0;
+        String transcript = null;
+        Double confidence = null;
+        String apiError = null;
+        boolean isInconclusive = false;
+        long startTime = System.currentTimeMillis();
 
-        String transcript = transcribeAudioWithHuggingFace(decodedAudio, detectedContentType);
-        if (transcript != null) {
-            isUsingHuggingFace = true;
-            
-            if (!transcript.isEmpty()) {
-                String cleanTarget = cleanWord(request.getTargetWord());
-                String cleanTranscript = cleanWord(transcript);
-                System.out.println("Hugging Face evaluation completed for target: '" + request.getTargetWord() + "' -> clean: '" + cleanTarget + "'");
-                System.out.println("Target: '" + request.getTargetWord() + "' -> clean: '" + cleanTarget + "'");
+        try {
+            DeepgramSpeechService.DeepgramResult deepgramResult = deepgramSpeechService.uploadAudioToDeepgram(decodedAudio, detectedContentType);
+            if (deepgramResult != null) {
+                transcript = deepgramResult.getTranscript();
+                confidence = deepgramResult.getConfidence();
 
-                // Direct contains checks
-                if (cleanTranscript.contains(cleanTarget) || cleanTarget.contains(cleanTranscript)) {
-                    isCorrect = true;
-                } else {
-                    // Token-level checks: if any token in transcript is similar enough to target
-                    String[] tokens = cleanTranscript.split("\\s+");
-                    boolean tokenMatch = false;
-                    for (String t : tokens) {
-                        double sim = normalizedSimilarity(t, cleanTarget);
-                        if (sim >= 0.75) {
-                            tokenMatch = true;
-                            System.out.println("Token similarity match: token='" + t + "' sim=" + sim);
-                            break;
-                        }
-                    }
-                    if (tokenMatch) {
-                        isCorrect = true;
-                    } else {
-                        // Overall similarity (Levenshtein-based)
-                        double sim = normalizedSimilarity(cleanTranscript, cleanTarget);
-                        System.out.println("Overall similarity: " + sim);
-                        if (sim >= 0.6) {
-                            isCorrect = true;
-                        } else {
-                            isCorrect = false;
-                        }
-                    }
-                }
-                System.out.println("isCorrect decision: " + isCorrect);
+                PronunciationEvaluationService.EvaluationResult evalResult = pronunciationEvaluationService.evaluatePronunciation(
+                        request.getTargetWord(), transcript, request.getAttemptNumber());
+                isCorrect = evalResult.isCorrect();
+                similarityScore = evalResult.getSimilarityScore();
+                System.out.println("Deepgram evaluation completed for target: '" + request.getTargetWord() + "' -> clean transcript: '" + transcript + "', isCorrect=" + isCorrect);
             } else {
-                isCorrect = false;
+                isInconclusive = true;
             }
-        }
-
-        // Fallback to strict error reporting if Hugging Face is not configured or failed
-        if (!isUsingHuggingFace) {
-            System.err.println("Evaluation failed: Hugging Face API was not used or failed.");
-            return PronunciationAttemptResponse.builder()
-                    .isCorrect(false)
-                    .phoneticTarget(PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), ""))
-                    .attemptNumber(request.getAttemptNumber())
-                    .isInconclusive(true) // Marks the attempt as inconclusive rather than incorrect
-                    .build();
+        } catch (Exception e) {
+            apiError = e.getClass().getSimpleName() + ": " + e.getMessage();
+            isInconclusive = true;
+            log.warn("Deepgram Speech-to-Text ASR failed gracefully: {}", apiError);
+        } finally {
+            long responseTimeMs = System.currentTimeMillis() - startTime;
+            logAttempt(learner.getLearnerId(), request.getTargetWord(), transcript, confidence, similarityScore, isCorrect, responseTimeMs, apiError);
         }
 
         String phoneticTarget = PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), "");
         String phonologicalTip = null;
 
         if (!isCorrect && word.getPhonologicalTipKey() != null) {
-            Map<LanguageMedium, String> tipsByLang = TIPS_MAP.get(word.getPhonologicalTipKey());
-            if (tipsByLang != null) {
-                phonologicalTip = tipsByLang.getOrDefault(learner.getLanguagePreference(), tipsByLang.get(LanguageMedium.FULL_ENGLISH));
+            // First check the dynamic tip service
+            if (phoneticFeedbackService != null) {
+                phonologicalTip = phoneticFeedbackService.getTip(word.getPhonologicalTipKey(), learner.getLanguagePreference());
+            }
+            // Fall back to static map if tip is not found in DB
+            if (phonologicalTip == null) {
+                Map<LanguageMedium, String> tipsByLang = TIPS_MAP.get(word.getPhonologicalTipKey());
+                if (tipsByLang != null) {
+                    phonologicalTip = tipsByLang.getOrDefault(learner.getLanguagePreference(), tipsByLang.get(LanguageMedium.FULL_ENGLISH));
+                }
             }
         }
 
@@ -313,71 +202,49 @@ public class PronunciationService {
                 .word(word)
                 .lesson(session.getLesson())
                 .moduleNumber(request.getModuleNumber())
-                .transcribedText(null)
+                .transcribedText(transcript)
                 .targetWord(request.getTargetWord())
                 .isCorrect(isCorrect)
                 .attemptNumber(request.getAttemptNumber())
-                .isInconclusive(false)
+                .isInconclusive(isInconclusive)
                 .build();
 
         // Adjust column mapping for standard targetWord if JPA generated it
         attempt.setTargetWord(request.getTargetWord());
         attemptRepository.save(attempt);
 
+        boolean manualTeacherFallback = !isCorrect && (request.getAttemptNumber() >= 3);
+
         return PronunciationAttemptResponse.builder()
                 .attemptId(attempt.getAttemptId())
                 .isCorrect(isCorrect)
-                .transcribedText(null)
+                .transcribedText(transcript)
                 .phoneticTarget(phoneticTarget)
                 .phonologicalTip(phonologicalTip)
                 .attemptNumber(request.getAttemptNumber())
-                .isInconclusive(false)
+                .isInconclusive(isInconclusive)
+                .similarityScore(similarityScore)
+                .manualTeacherFallback(manualTeacherFallback)
                 .build();
     }
 
-    private String mutateWord(String word) {
-        String lower = word.toLowerCase();
-        if (lower.equals("father")) return "pader";
-        if (lower.equals("brother")) return "brader";
-        if (lower.equals("pencil")) return "pensil";
-        if (lower.equals("mother")) return "mader";
-        if (lower.equals("fish")) return "pish";
-        if (lower.equals("church")) return "tsarts";
-        if (lower.equals("water")) return "wader";
-        if (lower.equals("apple")) return "apel";
-        return lower + "h"; // default fallback mutation
+    private void logAttempt(UUID learnerId, String targetWord, String transcript, Double confidence, double similarityScore, boolean isCorrect, long responseTimeMs, String apiError) {
+        String timestamp = java.time.Instant.now().toString();
+        String safeTranscript = transcript != null ? transcript.replace("\"", "\\\"") : "";
+        String safeApiError = apiError != null ? apiError.replace("\"", "\\\"").replace("\n", " ").replace("\r", " ") : "";
+
+        log.info("[DIAGNOSTIC] {\"timestamp\":\"{}\", \"learnerId\":\"{}\", \"targetWord\":\"{}\", \"transcript\":\"{}\", \"confidenceScore\":{}, \"similarityScore\":{}, \"pronunciationResult\":{}, \"responseTimeMs\":{}, \"apiError\":\"{}\"}",
+                timestamp,
+                learnerId != null ? learnerId.toString() : "",
+                targetWord != null ? targetWord.replace("\"", "\\\"") : "",
+                safeTranscript,
+                confidence != null ? String.format(java.util.Locale.US, "%.4f", confidence) : "null",
+                String.format(java.util.Locale.US, "%.4f", similarityScore),
+                isCorrect,
+                responseTimeMs,
+                safeApiError
+        );
     }
 
-    private String cleanWord(String word) {
-        if (word == null) return "";
-        return word.toLowerCase()
-                .replaceAll("[^a-zA-Z0-9\\s]", "")
-                .trim();
-    }
 
-    private double normalizedSimilarity(String a, String b) {
-        if (a == null || b == null) return 0.0;
-        a = a.trim();
-        b = b.trim();
-        if (a.isEmpty() || b.isEmpty()) return 0.0;
-        int longest = Math.max(a.length(), b.length());
-        if (longest == 0) return 0.0;
-        int distance = levenshteinDistance(a, b);
-        return 1.0 - ((double) distance / (double) longest);
-    }
-
-    private int levenshteinDistance(String a, String b) {
-        int la = a.length();
-        int lb = b.length();
-        int[][] dp = new int[la + 1][lb + 1];
-        for (int i = 0; i <= la; i++) dp[i][0] = i;
-        for (int j = 0; j <= lb; j++) dp[0][j] = j;
-        for (int i = 1; i <= la; i++) {
-            for (int j = 1; j <= lb; j++) {
-                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
-                dp[i][j] = Math.min(Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1), dp[i - 1][j - 1] + cost);
-            }
-        }
-        return dp[la][lb];
-    }
 }

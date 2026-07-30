@@ -22,11 +22,11 @@ class PronunciationMatcher {
     final longestCommonSubstringRatio =
         longestCommonSubstring(normalizedTranscript, normalizedTarget) /
             (normalizedTarget.isNotEmpty ? normalizedTarget.length : 1);
-    if (longestCommonSubstringRatio >= 0.6) {
+    if (longestCommonSubstringRatio >= 0.80) {
       return true;
     }
 
-    return normalizedSimilarity(normalizedTranscript, normalizedTarget) >= 0.55;
+    return normalizedSimilarity(normalizedTranscript, normalizedTarget) >= 0.80;
   }
 
   static double normalizedSimilarity(String a, String b) {

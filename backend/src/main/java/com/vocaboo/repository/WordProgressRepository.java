@@ -9,5 +9,6 @@ import java.util.UUID;
 @Repository
 public interface WordProgressRepository extends JpaRepository<WordProgress, UUID> {
     Optional<WordProgress> findBySessionSessionIdAndWordWordIdAndModuleNumber(UUID sessionId, UUID wordId, Integer moduleNumber);
+    java.util.List<WordProgress> findByLearnerLearnerId(UUID learnerId);
     void deleteByLearnerLearnerId(UUID learnerId);
 }

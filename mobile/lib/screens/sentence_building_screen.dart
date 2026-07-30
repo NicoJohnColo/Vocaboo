@@ -252,15 +252,26 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   String _activitySentence(VocabularyWordModel word) {
-    return (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
+    final raw = (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
         ? word.sentenceCompletionSentence!.trim()
         : word.exampleSentenceEnglish;
+    return raw.replaceAll(RegExp(r'^Complete the sentence:\s*', caseSensitive: false), '');
   }
 
   String _activityAnswer(VocabularyWordModel word) {
     return (word.sentenceCompletionAnswer?.trim().isNotEmpty ?? false)
         ? word.sentenceCompletionAnswer!.trim()
         : word.englishWord;
+  }
+
+  void _speakFullSentence() {
+    final sentence = _activitySentence(_currentWord);
+    String textToSpeak = sentence;
+    if (sentence.contains('___')) {
+      final answer = _activityAnswer(_currentWord);
+      textToSpeak = sentence.replaceAll('___', answer);
+    }
+    _ttsService.speak(textToSpeak);
   }
 
   List<Map<String, dynamic>> _buildFallbackConfusablePairs(List<VocabularyWordModel> words) {
@@ -316,21 +327,41 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   List<String> _activityArrangementTokens(VocabularyWordModel word) {
-    if (word.sentenceArrangementTokens != null && word.sentenceArrangementTokens!.isNotEmpty) {
+    final sentence = word.exampleSentenceEnglish.trim().isEmpty
+        ? word.englishWord
+        : word.exampleSentenceEnglish;
+    final sentenceTokens = _tokensFromSentence(sentence);
+
+    if (word.sentenceArrangementTokens != null &&
+        word.sentenceArrangementTokens!.isNotEmpty) {
       final provided = word.sentenceArrangementTokens!
           .map((token) => token.trim())
           .where((token) => token.isNotEmpty)
           .toList();
-      final sentence = word.exampleSentenceEnglish.trim().isEmpty ? word.englishWord : word.exampleSentenceEnglish;
-      final normalizedProvided = _normalizeSentenceText(provided.join(' '));
-      final normalizedSentence = _normalizeSentenceText(sentence);
-      if (provided.length >= 2 && normalizedProvided == normalizedSentence) {
-        return provided;
+
+      if (provided.length >= 2) {
+        // Only accept DB tokens if they contain exactly the same words as
+        // the sentence (same multiset, case-insensitive). This prevents
+        // distractor words from other sentences polluting the word bank.
+        final lowerProvided = provided.map((t) => t.toLowerCase()).toList()
+          ..sort();
+        final lowerSentence = sentenceTokens.map((t) => t.toLowerCase()).toList()
+          ..sort();
+
+        if (lowerProvided.join(' ') == lowerSentence.join(' ')) {
+          // Exact same words as the sentence — use DB tokens (may have
+          // different capitalisation that the author intended).
+          return provided;
+        }
+
+        debugPrint(
+            'SentenceBuilding: DB tokens differ from sentence words; '
+            'using sentence tokens only. '
+            'DB: $provided | Sentence: $sentenceTokens');
       }
     }
 
-    final sentence = word.exampleSentenceEnglish.trim().isEmpty ? word.englishWord : word.exampleSentenceEnglish;
-    return _tokensFromSentence(sentence);
+    return sentenceTokens;
   }
 
   List<String> _tokensFromSentence(String sentence) {
@@ -377,11 +408,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _isChecked = false;
     _isCorrect = false;
     _selectedCompletionWord = null;
-    _assembledWords = [];
-    _pronunciationAttempt = 1;
+    _assembledWords = []; // clear previous sentence's answer
+    final wordId = _currentWord.wordId;
+    final priorAttempts = _wordPronunciationAttempts[wordId] ?? 0;
+    _pronunciationAttempt = (priorAttempts + 1).clamp(1, 3);
     _attemptResult = null;
 
-    // Modules 2-4 use longer active-recall loops, so allow more pronunciation retries.
+    // Modules 2-4 use 3 pronunciation attempts per sentence word.
     _maxAttempts = _attemptLimitForModule();
 
     if (_currentFormat == ActivityFormat.completion) {
@@ -508,12 +541,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   Future<void> _completeModuleAndAdvance() async {
     final navContext = context;
 
+    final totalActivities = _totalUniqueWords * 2;
     try {
       await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
         widget.lessonId,
         widget.isSandbox ? null : 3,
-        _initialPassCorrectCount,
-        _totalUniqueWords,
+        _initialPassCompletedCount,
+        totalActivities > 0 ? totalActivities : _totalUniqueWords,
         isSandbox: widget.isSandbox,
         sessionId: widget.sessionId,
       );
@@ -527,13 +561,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     if (!mounted) return;
 
-    // Calculate overall score using completed word count (not activity count)
-    // Each word has 2 activities (completion + rearrangement), so use completedCount instead of correctCount
-    final overallScore = _totalUniqueWords > 0 
-        ? (_initialPassCompletedCount / _totalUniqueWords) * 100 
-        : 0.0;
+    // Calculate overall score using completed activities count against total activities
+    // Each word has 2 activities (tile arrangement + voice validation)
+    final overallScore = (totalActivities > 0 
+        ? (_initialPassCompletedCount / totalActivities) * 100 
+        : 0.0).clamp(0.0, 100.0);
     
-    debugPrint('Module 3 score: completedCount=$_initialPassCompletedCount, totalWords=$_totalUniqueWords, score=$overallScore%');
+    debugPrint('Module 3 score: completedCount=$_initialPassCompletedCount, totalActivities=$totalActivities, totalWords=$_totalUniqueWords, score=$overallScore%');
 
     // Get failed sentence word IDs
     final failedSentenceWordIds = _failedSentenceWords.map((w) => w.wordId).toSet();
@@ -559,8 +593,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       });
     }
 
-    // Navigate to lesson score screen
-    debugPrint('Navigating to next screen...');
+    debugPrint('Navigating to lesson score screen...');
     // ignore: use_build_context_synchronously
     navContext.go(
       '/session/${widget.sessionId}/lesson-score',
@@ -651,6 +684,22 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       }
     }
 
+    if (!widget.isSandbox) {
+      final provider = Provider.of<LessonProvider>(context, listen: false);
+      provider.submitPracticeResult(
+        widget.sessionId,
+        _currentWord.wordId,
+        _isCorrect,
+        activityType: 'WORD_TILE_ARRANGEMENT',
+      );
+      provider.submitReviewItem(
+        sessionId: widget.sessionId,
+        wordId: _currentWord.wordId,
+        isCorrect: _isCorrect,
+        confidence: 3,
+      );
+    }
+
     setState(() {
       _isChecked = true;
     });
@@ -709,46 +758,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Widget _buildModule3Header(ThemeData theme) {
-    final totalWords = _words.length;
-    final remainingWordIds = _queue.map((word) => word.wordId).toSet();
-    final completedWordsCount = _words.map((word) => word.wordId).toSet().difference(remainingWordIds).length;
-    final progress = totalWords > 0 ? (completedWordsCount / totalWords) : 0.0;
-
-    return Column(
-      children: [
-        // Progress indicator
-        Container(
-          margin: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: progress),
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.linear,
-                    builder: (context, value, _) {
-                      return LinearProgressIndicator(
-                        value: value,
-                        minHeight: 12,
-                        backgroundColor: const Color(0xFFE2E8F0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Text(
-                '$completedWordsCount/$totalWords',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   // Pronunciation flow
@@ -764,7 +774,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         _attemptResult = null;
       });
       await _recorderService.startRecording();
-      await _startStreamingRecognition(_currentWord.englishWord);
+      // NOTE: Streaming STT is intentionally disabled here.
+      // Starting local speech_to_text concurrently with AudioRecorder causes
+      // an Android microphone resource conflict: the OS terminates the
+      // recorder session early, producing a near-empty .m4a file (< 6 KB)
+      // that Deepgram cannot transcribe (returns empty transcript → 400).
+      // Audio is instead captured fully by AudioRecorder and evaluated via
+      // the Deepgram backend once recording completes.
+      // await _startStreamingRecognition(_currentWord.englishWord);
       _startAutoEvaluationMonitoring();
 
       if (!mounted) return;
@@ -874,6 +891,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       }
     });
     
+    _wordPronunciationAttempts[_currentWord.wordId] = _pronunciationAttempt;
+    if (_attemptResult != null && _attemptResult!.isCorrect) {
+      _wordPronunciationCorrect[_currentWord.wordId] = true;
+    }
+
     // Exit the recording/practice modal but stay in the module
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -1028,7 +1050,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       _isEvaluating = false;
     });
 
-    if (result.isCorrect) {
+    final bool isPassed = result.isCorrect && ((result.similarityScore ?? 1.0) >= 0.80);
+    if (isPassed) {
+      _recordingSessionActive = false;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    if (result.isInconclusive) {
       _recordingSessionActive = false;
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
@@ -1068,6 +1099,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   void _advancePronunciationPhase() async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
+    if (!widget.isSandbox) {
+      final isPassed = _attemptResult != null && _attemptResult!.isCorrect;
+      provider.submitPracticeResult(
+        widget.sessionId,
+        _currentWord.wordId,
+        isPassed,
+        activityType: 'VOICE_VALIDATION',
+        attemptNumber: _pronunciationAttempt,
+      );
+    }
     await provider.updateWordProgress(
       widget.sessionId,
       _currentWord.wordId,
@@ -1077,7 +1118,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       moduleNumber: widget.moduleNumber,
     );
 
-    _initialPassCompletedCount++;
+    if (_isReinforcementPass) {
+      _reinforcementCompletedCount++;
+    } else {
+      _initialPassCompletedCount++;
+    }
     setState(() {
       _currentPhase = Phase.sentenceActivity;
     });
@@ -1091,24 +1136,75 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     if (correct || reachedMaxAttempts) {
       _advancePronunciationPhase();
     } else {
-      // Try again (increment attempts)
+      // Try again (increment attempts only if not inconclusive)
       setState(() {
-        _pronunciationAttempt++;
+        if (_attemptResult?.isInconclusive != true) {
+          _pronunciationAttempt++;
+        }
         _attemptResult = null;
       });
     }
   }
 
   String _getPhonologicalTip(String? tipKey) {
-    if (tipKey == 'f_sound') {
-      return "Tip: Cebuano has no /f/ sound. Touch your upper teeth to your lower lip and blow air out: 'fff' (like Fish).";
-    } else if (tipKey == 'v_sound') {
-      return "Tip: Cebuano has no /v/ sound. Place your upper teeth on your lower lip and buzz like a bee: 'vvv' (like Very).";
-    } else if (tipKey == 'th_sound') {
-      return "Tip: Cebuano has no /θ/ sound. Put the tip of your tongue between your front teeth and blow gently (like Brother).";
+    switch (tipKey) {
+      case 'f_sound':
+        return "The /f/ sound doesn't exist in Cebuano. "
+            "Gently touch your upper front teeth to your lower lip and push air out — "
+            "like blowing out a candle slowly. Practice: 'fff-ish', 'fff-ather'.";
+      case 'v_sound':
+        return "The /v/ sound doesn't exist in Cebuano. "
+            "Touch your upper teeth to your lower lip and hum — feel the vibration. "
+            "It's like /f/ but with your voice on. Practice: 'vvv-ery', 'vvv-oice'.";
+      case 'th_sound':
+        return "The /θ/ (TH) sound doesn't exist in Cebuano. "
+            "Place the tip of your tongue lightly between your upper and lower front teeth, "
+            "then blow air out gently. Practice: 'th-ink', 'th-ree', 'th-ank'.";
+      case 'th_voiced':
+        return "The voiced /ð/ (TH) sound is like 'th' in 'the' or 'this'. "
+            "Put your tongue between your teeth and hum — feel the buzz. "
+            "Practice: 'th-is', 'th-at', 'broth-er'.";
+      case 'r_sound':
+        return "English /r/ is different from Cebuano. "
+            "Keep your tongue back and curved — don't roll it. "
+            "The tongue should not touch the roof of your mouth. Practice: 'rr-un', 'rr-ead'.";
+      case 'l_sound':
+        return "For English /l/, place the tip of your tongue on the ridge just behind "
+            "your upper front teeth and let air flow around the sides. "
+            "Practice: 'll-ight', 'll-ove', 'bell'.";
+      case 'short_i':
+        return "The short /ɪ/ sound (as in 'sit') is shorter and more relaxed than the long /iː/ in 'see'. "
+            "Relax your lips and say a quick 'ih'. Practice: 'f-ih-sh', 's-ih-t', 'th-ih-s'.";
+      case 'short_e':
+        return "The /ɛ/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
+            "It is between 'a' and 'ee'. Practice: 'b-eh-d', 'p-eh-n', 'h-eh-lp'.";
+      case 'schwa':
+        return "Many English unstressed syllables use the schwa /ə/ — a neutral, relaxed sound "
+            "like a quick 'uh'. The vowel in 'the', 'a', and the 2nd syllable of 'pencil' are schwa. "
+            "Practice: 'penc-uh-l', 'erase-uh-r'.";
+      default:
+        return "Speak slowly and clearly. Listen to the correct audio again, "
+            "then try to match the mouth shape and rhythm. "
+            "Focus on each syllable: say the word one part at a time.";
     }
-    return "Tip: Listen closely and copy the correct pronunciation.";
   }
+
+  /// Returns a score-aware failure coaching message.
+  String _buildFailureMessage(double? score) {
+    if (score == null) return 'Not quite — give it another try!';
+    final pct = (score * 100).round();
+    if (pct >= 70) {
+      return 'Very close ($pct%)! Small adjustment needed — try again.';
+    } else if (pct >= 50) {
+      return 'Getting there ($pct%). Focus on each syllable and try again.';
+    } else if (pct >= 30) {
+      return 'Not quite ($pct%). Listen to the audio and try to match the sound.';
+    } else {
+      return 'Keep practicing! Listen carefully and try to copy the pronunciation.';
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -1788,97 +1884,114 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                     ),
                     child: Column(
                       children: [
-                        if (_currentFormat == ActivityFormat.completion)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: completionHasBlank
-                                ? _buildCompletionBlankSentence(
-                                    parts: completionParts,
-                                    answer: _activityAnswer(_currentWord),
-                                  )
-                                : Text(
-                                    sentence,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w500,
-                                      color: Color(0xFF1E293B),
-                                      height: 1.5,
-                                    ),
-                                  ),
-                          )
-                        else
-                          // Rearrangement assembled area
-                          DragTarget<String>(
-                            onWillAcceptWithDetails: (_) => !_isChecked,
-                            onAcceptWithDetails: (details) {
-                              if (_isChecked) return;
-                              final word = details.data;
-                              if (_assembledWords.contains(word)) return;
-                              setState(() {
-                                _scrambledWords.remove(word);
-                                _assembledWords.add(word);
-                              });
-                            },
-                            builder: (context, candidateData, rejectedData) {
-                              return Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: candidateData.isNotEmpty ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: candidateData.isNotEmpty ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 8,
-                                  runSpacing: 10,
-                                  children: _assembledWords.isEmpty
-                                      ? [
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 16),
-                                            child: Text(
-                                              "Drop or tap words here",
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Opacity(
+                              opacity: 0,
+                              child: IconButton(
+                                icon: Icon(Icons.volume_up_rounded),
+                                onPressed: null,
+                              ),
+                            ),
+                            Expanded(
+                              child: _currentFormat == ActivityFormat.completion
+                                  ? Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                      child: completionHasBlank
+                                          ? _buildCompletionBlankSentence(
+                                              parts: completionParts,
+                                              answer: _activityAnswer(_currentWord),
+                                            )
+                                          : Text(
+                                              sentence,
                                               textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: Color(0xFF94A3B8),
-                                                fontSize: 15,
-                                                fontStyle: FontStyle.italic,
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w500,
+                                                color: Color(0xFF1E293B),
+                                                height: 1.5,
                                               ),
+                                            ),
+                                    )
+                                  : DragTarget<String>(
+                                      onWillAcceptWithDetails: (_) => !_isChecked,
+                                      onAcceptWithDetails: (details) {
+                                        if (_isChecked) return;
+                                        final word = details.data;
+                                        if (_assembledWords.contains(word)) return;
+                                        setState(() {
+                                          _scrambledWords.remove(word);
+                                          _assembledWords.add(word);
+                                        });
+                                      },
+                                      builder: (context, candidateData, rejectedData) {
+                                        return Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: candidateData.isNotEmpty ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(18),
+                                            border: Border.all(
+                                              color: candidateData.isNotEmpty ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
+                                              width: 1.5,
                                             ),
                                           ),
-                                        ]
-                                      : _assembledWords.map((word) {
-                                          return ActionChip(
-                                            label: Text(
-                                              word,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
-                                                color: Color(0xFF06A6FF),
-                                              ),
-                                            ),
-                                            backgroundColor: const Color(0xFFEFF6FF),
-                                            side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            onPressed: () {
-                                              if (_isChecked) return;
-                                              setState(() {
-                                                _assembledWords.remove(word);
-                                                _scrambledWords.add(word);
-                                              });
-                                            },
-                                          );
-                                        }).toList(),
-                                ),
-                              );
-                            },
-                          ),
+                                          child: Wrap(
+                                            alignment: WrapAlignment.center,
+                                            spacing: 8,
+                                            runSpacing: 10,
+                                            children: _assembledWords.isEmpty
+                                                ? [
+                                                    const Padding(
+                                                      padding: EdgeInsets.symmetric(vertical: 16),
+                                                      child: Text(
+                                                        "Drop or tap words here",
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(
+                                                          color: Color(0xFF94A3B8),
+                                                          fontSize: 15,
+                                                          fontStyle: FontStyle.italic,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ]
+                                                : _assembledWords.map((word) {
+                                                    return ActionChip(
+                                                      label: Text(
+                                                        word,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: Color(0xFF06A6FF),
+                                                        ),
+                                                      ),
+                                                      backgroundColor: const Color(0xFFEFF6FF),
+                                                      side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius: BorderRadius.circular(12),
+                                                      ),
+                                                      onPressed: () {
+                                                        if (_isChecked) return;
+                                                        setState(() {
+                                                          _assembledWords.remove(word);
+                                                          _scrambledWords.add(word);
+                                                        });
+                                                      },
+                                                    );
+                                                  }).toList(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
+                              onPressed: _speakFullSentence,
+                              tooltip: "Listen to full sentence",
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 24),
                         const Divider(color: Color(0xFFE2E8F0)),
                         const SizedBox(height: 12),
@@ -1905,8 +2018,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
-                              onPressed: () => _ttsService.speak(_currentWord.englishWord),
-                              tooltip: "Listen to vocabulary word",
+                              onPressed: () => _ttsService.speakCebuano(_currentWord.exampleSentenceCebuano ?? _currentWord.cebuanoMeaning),
+                              tooltip: "Listen to sentence translation",
                             ),
                           ],
                         ),
@@ -1994,12 +2107,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                 size: 28,
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                _isCorrect ? "Correct!" : "Let's review the correct structure:",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isCorrect ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                              Expanded(
+                                child: Text(
+                                  _isCorrect ? "Correct!" : "Let's review the correct structure:",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isCorrect ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                                  ),
                                 ),
                               ),
                             ],
@@ -2226,45 +2341,206 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                         if (_attemptResult != null) ...[
                           const SizedBox(height: 12),
                           if (_attemptResult!.isCorrect)
-                            const Column(
+                            Column(
                               children: [
-                                Text(
+                                const Text(
                                   'Excellent! You said it correctly.',
                                   style: TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
-                                SizedBox(height: 4),
-                                Text(
+                                const SizedBox(height: 4),
+                                const Text(
                                   '🎉',
                                   style: TextStyle(fontSize: 32),
-                                )
+                                ),
+                                if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF0FDF4),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          'You said: "${_attemptResult!.transcribedText}"',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontStyle: FontStyle.italic,
+                                            color: Color(0xFF166534),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        if (_attemptResult!.similarityScore != null) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Match score: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF22C55E),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ],
                             )
                           else ...[
-                            Text(
-                              _pronunciationAttempt >= 3
-                                  ? 'Incorrect. No attempts left. Moving on.'
-                                  : 'Incorrect. Try again.',
-                              style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.bold, fontSize: 15),
-                              textAlign: TextAlign.center,
+                            // --- Contextual failure headline ---
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 28),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    _attemptResult!.isInconclusive
+                                        ? "Couldn't hear you clearly. Please try again."
+                                        : _pronunciationAttempt >= 3
+                                            ? 'No attempts left — keep practicing!'
+                                            : _buildFailureMessage(_attemptResult!.similarityScore),
+                                    style: const TextStyle(
+                                      color: Color(0xFFB91C1C),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ],
                             ),
+                            if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEF2F2),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFFCA5A5)),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'You said: "${_attemptResult!.transcribedText}"',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontStyle: FontStyle.italic,
+                                        color: Color(0xFF991B1B),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    if (_attemptResult!.similarityScore != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% — need 80% to pass',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFEF4444),
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+
+                            // --- IPA phonetic target ---
+                            if (_attemptResult!.phoneticTarget != null &&
+                                _attemptResult!.phoneticTarget!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.record_voice_over_rounded, color: Color(0xFF7C3AED), size: 18),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'Target pronunciation:',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF6B7280),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _attemptResult!.phoneticTarget!,
+                                    style: const TextStyle(
+                                      fontFamily: 'Courier',
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7C3AED),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+
+                            // --- Phonological / articulation tip ---
                             const SizedBox(height: 16),
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFEF2F2),
+                                color: const Color(0xFFFFF7ED),
                                 borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFFED7AA)),
                               ),
-                              child: Text(
-                                widget.isSandbox && _currentWord.phonologicalTipKey != null
-                                    ? _currentWord.phonologicalTipKey!
-                                    : _getPhonologicalTip(_currentWord.phonologicalTipKey),
-                                style: const TextStyle(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.tips_and_updates_rounded, color: Color(0xFFD97706), size: 18),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'HOW TO IMPROVE',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF92400E),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    // Priority: use backend tip → fallback to local tip
+                                    (_attemptResult!.phonologicalTip != null &&
+                                            _attemptResult!.phonologicalTip!.trim().isNotEmpty)
+                                        ? _attemptResult!.phonologicalTip!
+                                        : _getPhonologicalTip(_currentWord.phonologicalTipKey),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF92400E),
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.5,
+                                    ),
+                                    textAlign: TextAlign.left,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // --- Listen again prompt ---
+                            const SizedBox(height: 10),
+                            TextButton.icon(
+                              onPressed: () => _ttsService.speak(target),
+                              icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF), size: 18),
+                              label: const Text(
+                                'Hear correct pronunciation',
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: Color(0xFFB91C1C),
+                                  color: Color(0xFF06A6FF),
                                   fontWeight: FontWeight.w600,
-                                  height: 1.4,
                                 ),
-                                textAlign: TextAlign.center,
                               ),
                             ),
                           ]
@@ -2422,50 +2698,74 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   stream: _recorderService.onAmplitudeChanged,
                   builder: (context, snapshot) {
                     final amplitude = (snapshot.data ?? 0.0).clamp(0.0, 1.0);
+                    final isSpeechActive = amplitude > 0.18;
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 120),
                       width: 132,
                       height: 132,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
+                        color: isSpeechActive 
+                            ? const Color(0xFF10B981).withValues(alpha: 0.15 + (amplitude * 0.15))
+                            : const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
                         border: Border.all(
-                          color: const Color(0xFF06A6FF),
-                          width: 3 + (amplitude * 7),
+                          color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+                          width: isSpeechActive ? 4 + (amplitude * 8) : 3 + (amplitude * 7),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
-                            blurRadius: 20,
-                            spreadRadius: 2,
+                            color: isSpeechActive 
+                                ? const Color(0xFF10B981).withValues(alpha: 0.25 + (amplitude * 0.20))
+                                : const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
+                            blurRadius: isSpeechActive ? 28 : 20,
+                            spreadRadius: isSpeechActive ? 4 : 2,
                           ),
                         ],
                       ),
                       child: Icon(
                         Icons.mic_rounded,
-                        size: 54 + (amplitude * 10),
-                        color: const Color(0xFF06A6FF),
+                        size: 54 + (amplitude * 12),
+                        color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
                       ),
                     );
                   },
                 ),
                 const SizedBox(height: 36),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _cancelRecordingSession,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06A6FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      elevation: 0,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _cancelRecordingSession,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        ),
+                        child: const Text(
+                          'CANCEL',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      'CANCEL',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _finishRecordingAndEvaluate,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF06A6FF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'DONE',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),

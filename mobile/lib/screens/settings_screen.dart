@@ -224,6 +224,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showPosFocusDialog(BuildContext context, AuthProvider auth, String? pref) {
+    String currentFocus = auth.learner?.posFocus ?? 'ALL';
+
+    final options = [
+      {'key': 'ALL', 'label': 'All Words', 'icon': Icons.apps_rounded, 'color': const Color(0xFF0EA5E9)},
+      {'key': 'NOUN', 'label': 'Nouns Only', 'icon': Icons.label_outline_rounded, 'color': const Color(0xFF8B5CF6)},
+      {'key': 'VERB', 'label': 'Verbs Only', 'icon': Icons.bolt_rounded, 'color': const Color(0xFFF59E0B)},
+      {'key': 'ADJECTIVE', 'label': 'Adjectives Only', 'icon': Icons.palette_outlined, 'color': const Color(0xFF10B981)},
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Part of Speech Focus',
+          style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w800),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options.map((opt) {
+            final key = opt['key'] as String;
+            final isSelected = currentFocus == key;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: isSelected ? (opt['color'] as Color).withValues(alpha: 0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? (opt['color'] as Color) : const Color(0xFFE2E8F0),
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: ListTile(
+                leading: Icon(opt['icon'] as IconData, color: opt['color'] as Color),
+                title: Text(
+                  opt['label'] as String,
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                trailing: isSelected ? Icon(Icons.check_circle, color: opt['color'] as Color) : null,
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  final success = await auth.updatePosFocus(key);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(success ? 'Part of speech focus saved to profile' : (auth.error ?? 'Error saving focus preference')),
+                      ),
+                    );
+                  }
+                },
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _sectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 24, bottom: 8),
@@ -371,6 +434,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: LocalizationService.translate(pref, 'language_preference'),
                 subtitle: pref != null ? LocalizationService.translate(pref, pref.toLowerCase()) : 'N/A',
                 onTap: () => GoRouter.of(context).push('/language-preference'),
+              ),
+              _settingsTile(
+                icon: Icons.category_outlined,
+                title: 'Part of Speech Focus',
+                subtitle: learner?.posFocus == 'NOUN'
+                    ? 'Nouns only'
+                    : learner?.posFocus == 'VERB'
+                        ? 'Verbs only'
+                        : learner?.posFocus == 'ADJECTIVE'
+                            ? 'Adjectives only'
+                            : 'All Words',
+                onTap: () => _showPosFocusDialog(context, auth, pref),
+              ),
+              _settingsTile(
+                icon: Icons.toggle_on_outlined,
+                title: LocalizationService.translate(pref, 'apply_immediately'),
+                subtitle: LocalizationService.translate(pref, 'apply_immediately_desc'),
+                trailing: Switch(
+                  value: learner?.masteryApplyImmediately ?? true,
+                  onChanged: (val) async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final success = await auth.updateMasteryApplyMode(val);
+                    if (!success) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text(auth.error ?? 'Error updating preference')),
+                      );
+                    }
+                  },
+                  activeThumbColor: const Color(0xFF0EA5E9),
+                ),
+              ),
+              _settingsTile(
+                icon: Icons.bar_chart_rounded,
+                title: LocalizationService.translate(pref, 'progress_summary'),
+                subtitle: LocalizationService.translate(pref, 'progress_summary_desc'),
+                onTap: () => GoRouter.of(context).push('/dashboard'),
+              ),
+              _settingsTile(
+                icon: Icons.science_outlined,
+                title: LocalizationService.translate(pref, 'sandbox_mode'),
+                subtitle: LocalizationService.translate(pref, 'sandbox_mode_desc'),
+                onTap: () => GoRouter.of(context).push('/sandbox'),
               ),
 
               const SizedBox(height: 24),

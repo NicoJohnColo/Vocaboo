@@ -41,11 +41,13 @@ public class JwtUtils {
         Map<String, Object> claims = new HashMap<>();
         claims.put("displayName", displayName);
         claims.put("role", "ROLE_LEARNER");
+        // Keep learner tokens valid for 30 days (2,592,000,000 ms) so they don't get kicked out or fail requests constantly.
+        long learnerExpirationMs = 30L * 24 * 60 * 60 * 1000;
         return Jwts.builder()
                 .subject(learnerId.toString())
                 .claims(claims)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + accessTokenExpirationMs))
+                .expiration(new Date(System.currentTimeMillis() + learnerExpirationMs))
                 .signWith(key)
                 .compact();
     }

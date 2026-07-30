@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/config/app_config.dart';
 
 class CustomImageViewer extends StatelessWidget {
   final String imagePath;
@@ -18,22 +19,11 @@ class CustomImageViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String path = imagePath.trim();
-    if (path.startsWith('http://localhost:')) {
-      path = path.replaceFirst('localhost', '10.0.2.2');
-    }
+    final path = AppConfig.sanitizeAssetPath(imagePath);
 
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return Image.network(
         path,
-        width: width,
-        height: height,
-        fit: fit,
-        errorBuilder: errorBuilder,
-      );
-    } else if (path.startsWith('/')) {
-      return Image.network(
-        'http://10.0.2.2:8080$path',
         width: width,
         height: height,
         fit: fit,

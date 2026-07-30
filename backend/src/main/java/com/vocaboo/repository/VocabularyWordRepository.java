@@ -28,5 +28,10 @@ public interface VocabularyWordRepository extends JpaRepository<VocabularyWord, 
 
     @Query("SELECT w FROM VocabularyWord w WHERE w.lesson.lessonId = :lessonId AND w.wordId IN :ids AND w.isDeleted = false")
     List<VocabularyWord> findByLessonIdAndWordIdIn(@Param("lessonId") UUID lessonId, @Param("ids") List<UUID> ids);
+
+    List<VocabularyWord> findByLessonLessonIdAndPartOfSpeechIgnoreCaseAndIsDeletedFalseOrderByWordOrderAsc(UUID lessonId, String partOfSpeech);
+
+    @Query("SELECT DISTINCT UPPER(w.partOfSpeech) FROM VocabularyWord w WHERE w.lesson.lessonId = :lessonId AND w.isDeleted = false AND w.partOfSpeech IS NOT NULL")
+    List<String> findDistinctPartsOfSpeechByLessonId(@Param("lessonId") UUID lessonId);
 }
 

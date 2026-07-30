@@ -80,6 +80,26 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, resolvedStatus);
     }
 
+    @ExceptionHandler(com.vocaboo.service.DeepgramSpeechService.EmptyTranscriptionException.class)
+    public ResponseEntity<ApiErrorResponse> handleEmptyTranscription(com.vocaboo.service.DeepgramSpeechService.EmptyTranscriptionException ex) {
+        ApiErrorResponse errorResponse = ApiErrorResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message("Speech couldn't be recognized. Please try again.")
+                .timestamp(OffsetDateTime.now())
+                .build();
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(com.vocaboo.service.DeepgramSpeechService.DeepgramSpeechException.class)
+    public ResponseEntity<ApiErrorResponse> handleDeepgramSpeech(com.vocaboo.service.DeepgramSpeechService.DeepgramSpeechException ex) {
+        ApiErrorResponse errorResponse = ApiErrorResponse.builder()
+                .status(HttpStatus.BAD_GATEWAY.value())
+                .message("Speech couldn't be recognized. Please try again.")
+                .timestamp(OffsetDateTime.now())
+                .build();
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_GATEWAY);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleGeneralException(Exception ex) {
         ApiErrorResponse errorResponse = ApiErrorResponse.builder()

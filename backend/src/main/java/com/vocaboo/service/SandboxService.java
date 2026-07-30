@@ -288,13 +288,7 @@ public class SandboxService {
         if (customWord == null || customWord.trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customWord is required.");
         }
-
-        String normalized = customWord.trim();
-        if (normalized.chars().anyMatch(Character::isWhitespace) || normalized.split("\\s+").length != 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sandbox accepts exactly one English word.");
-        }
-
-        return normalized;
+        return customWord.trim().replaceAll("\\s+", " ");
     }
 
     public List<SandboxSession> getHistory(UUID learnerId) {

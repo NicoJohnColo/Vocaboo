@@ -12,6 +12,7 @@ import CategoryManagementPage from './pages/CategoryManagementPage';
 import AdminAccountsPage from './pages/AdminAccountsPage';
 import SystemLogsPage from './pages/SystemLogsPage';
 import ConfusablePairsPage from './pages/ConfusablePairsPage';
+import WrongAnswersAnalysisPage from './pages/WrongAnswersAnalysisPage';
 
 import ForceChangePasswordPage from './pages/ForceChangePasswordPage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -52,6 +53,9 @@ export default function App() {
 
         <Route path="/logs"
           element={<ProtectedAdminRoute><SystemLogsPage /></ProtectedAdminRoute>} />
+
+        <Route path="/wrong-answers"
+          element={<ProtectedAdminRoute><WrongAnswersAnalysisPage /></ProtectedAdminRoute>} />
 
         {/* Fallback */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

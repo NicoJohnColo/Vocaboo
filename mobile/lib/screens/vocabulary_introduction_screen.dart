@@ -14,6 +14,7 @@ import '../models/pronunciation_attempt_model.dart';
 import '../services/localization_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../widgets/custom_image_viewer.dart';
+import '../config/app_config.dart';
 
 class VocabularyIntroductionScreen extends StatefulWidget {
   final String sessionId;
@@ -63,8 +64,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   int _currentWordIndex = 0;
   
   // Card learning state
-  int _currentStep = 0; // 0: Flashcard Recall, 1: Pronunciation Confirmation
-  bool _isFlipped = false;
+  int _currentStep = 0; // 0 to 4 (5-step introduction flow)
   final String _pathway = 'FULL'; // 'FULL' or 'ACCELERATED'
 
   // Speech evaluation state variables
@@ -73,7 +73,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   int _attemptNumber = 1;
   PronunciationAttemptModel? _attemptResult;
   late int _maxAttempts;
-  int _totalPronunciationAttempts = 0;
 
   @override
   void initState() {
@@ -141,7 +140,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     final currentWord = _words[_currentWordIndex];
     setState(() {
       _currentStep = 0;
-      _isFlipped = false;
       _attemptNumber = 1;
       _attemptResult = null;
       _isRecording = false;
@@ -151,8 +149,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     // Sandbox should allow a single attempt but not persist penalties.
     _maxAttempts = widget.isSandbox ? 1 : 3;
 
-    // Auto-speak English word on start
-    _playWordAudio(currentWord);
+    // UC-3.1 Cebuano-first: auto-speak the Cebuano meaning on word init (Step 0).
+    // English TTS is reserved for Step 1 (phonology/reveal step).
+    _playCebuanoAudio(currentWord.cebuanoMeaning);
   }
 
   Future<void> _playWordAudio(VocabularyWordModel word) async {
@@ -160,18 +159,18 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     if (mounted) setState(() => _isPlayingAudio = true);
 
     try {
-      await _ttsService.speak(word.englishWord);
+      final success = await _ttsService.speakEnglish(word.englishWord);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
       if (word.audioAssetPath != null && word.audioAssetPath!.trim().isNotEmpty) {
-        String path = word.audioAssetPath!.trim();
-        if (path.startsWith('http://localhost:')) {
-          path = path.replaceFirst('localhost', '10.0.2.2');
-        }
+        final path = AppConfig.sanitizeAssetPath(word.audioAssetPath!);
         
         Source source;
         if (path.startsWith('http://') || path.startsWith('https://')) {
           source = UrlSource(path);
-        } else if (path.startsWith('/')) {
-          source = UrlSource('http://10.0.2.2:8080$path');
         } else {
           source = AssetSource(path.startsWith('assets/') ? path.replaceFirst('assets/', '') : path);
         }
@@ -197,11 +196,48 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     _playWordAudio(_words[_currentWordIndex]);
   }
 
+  Future<void> _playCebuanoAudio(String text) async {
+    if (_isPlayingAudio) return;
+    if (mounted) setState(() => _isPlayingAudio = true);
+
+    try {
+      final success = await _ttsService.speakCebuano(text);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPlayingAudio = false);
+    }
+  }
+
   Future<void> _speakSentence() async {
     if (_isPlayingAudio) return;
     if (mounted) setState(() => _isPlayingAudio = true);
-    await _ttsService.speak(_words[_currentWordIndex].exampleSentenceEnglish);
-    if (mounted) setState(() => _isPlayingAudio = false);
+    
+    try {
+      final success = await _ttsService.speakEnglish(_words[_currentWordIndex].exampleSentenceEnglish);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio unavailable')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPlayingAudio = false);
+    }
   }
 
   void _stopAutoEvaluationMonitoring() {
@@ -231,8 +267,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       _liveTranscriptNotifier.value = '';
 
       if (wasActiveAttempt) {
-        _totalPronunciationAttempts++;
-
         if (shouldMarkFailure) {
           _attemptResult = PronunciationAttemptModel(
             attemptId: '',
@@ -257,78 +291,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     }
   }
 
-  Future<void> _startStreamingRecognition(String targetWord) async {
-    _liveTranscriptNotifier.value = '';
-
-    try {
-      await _streamingSttService.startListening(
-        localeId: 'en_US',
-        onResult: (transcript, isFinal) {
-          if (!mounted || !_recordingSessionActive || _attemptResult != null) {
-            return;
-          }
-
-          final t = transcript.trim();
-          _liveTranscriptNotifier.value = t;
-
-          if (t.isNotEmpty && PronunciationMatcher.matchesTranscript(t, targetWord)) {
-            _handleStreamingMatch(t);
-          }
-        },
-        onStatus: (status) {
-          if (!mounted || !_recordingSessionActive || _attemptResult != null) {
-            return;
-          }
-
-          if (status == 'done' || status == 'notListening') {
-            _liveTranscriptNotifier.value = _liveTranscriptNotifier.value.trim();
-          }
-        },
-        onError: (errorMsg) {
-          if (!mounted) return;
-          _liveTranscriptNotifier.value = _liveTranscriptNotifier.value.trim();
-        },
-      );
-    } catch (_) {
-      // If the device speech engine is unavailable, the recording fallback still works.
-    }
-  }
-
-  Future<void> _handleStreamingMatch(String transcript) async {
-    if (!_recordingSessionActive || _attemptResult != null || !_isRecording || _disposed) {
-      return;
-    }
-
-    _recordingSessionActive = false;
-    _stopAutoEvaluationMonitoring();
-    await _streamingSttService.stopListening();
-    await _recorderService.stopRecording();
-
-    if (_disposed || !mounted) {
-      return;
-    }
-
-    final currentWord = _words[_currentWordIndex];
-    setState(() {
-      _attemptResult = PronunciationAttemptModel(
-        attemptId: '',
-        isCorrect: true,
-        transcribedText: transcript,
-        phoneticTarget: null,
-        phonologicalTip: null,
-        attemptNumber: _attemptNumber,
-        isInconclusive: false,
-      );
-      _isRecording = false;
-      _isEvaluating = false;
-    });
-
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-
-    _playWordAudio(currentWord);
-  }
 
   void _startAutoEvaluationMonitoring() {
     _stopAutoEvaluationMonitoring();
@@ -415,6 +377,14 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       return;
     }
 
+    if (_attemptResult?.isInconclusive ?? false) {
+      _recordingSessionActive = false;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
     final shouldRetry = _recordingSessionActive && _attemptNumber < _maxAttempts;
     if (!shouldRetry) {
       _recordingSessionActive = false;
@@ -449,7 +419,14 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         _attemptResult = null;
       });
       await _recorderService.startRecording();
-      await _startStreamingRecognition(_words[_currentWordIndex].englishWord);
+      // NOTE: Streaming STT is intentionally disabled here.
+      // Starting local speech_to_text concurrently with AudioRecorder causes
+      // an Android microphone resource conflict: the OS terminates the
+      // recorder session early, producing a near-empty .m4a file (< 6 KB)
+      // that Deepgram cannot transcribe (returns empty transcript → 400).
+      // Audio is instead captured fully by AudioRecorder and evaluated via
+      // the Deepgram backend once recording completes.
+      // await _startStreamingRecognition(_words[_currentWordIndex].englishWord);
       _startAutoEvaluationMonitoring();
 
       // Show the recording visualizer modal
@@ -486,7 +463,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       if (_disposed || !mounted) return;
 
       if (path != null) {
-        _totalPronunciationAttempts++;
         final currentWord = _words[_currentWordIndex];
         final result = await _sttService.evaluatePronunciation(
           audioFilePath: path,
@@ -602,50 +578,74 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   stream: _recorderService.onAmplitudeChanged,
                   builder: (context, snapshot) {
                     final amplitude = (snapshot.data ?? 0.0).clamp(0.0, 1.0);
+                    final isSpeechActive = amplitude > 0.18;
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 120),
                       width: 132,
                       height: 132,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
+                        color: isSpeechActive 
+                            ? const Color(0xFF10B981).withValues(alpha: 0.15 + (amplitude * 0.15))
+                            : const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
                         border: Border.all(
-                          color: const Color(0xFF06A6FF),
-                          width: 3 + (amplitude * 7),
+                          color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+                          width: isSpeechActive ? 4 + (amplitude * 8) : 3 + (amplitude * 7),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
-                            blurRadius: 20,
-                            spreadRadius: 2,
+                            color: isSpeechActive 
+                                ? const Color(0xFF10B981).withValues(alpha: 0.25 + (amplitude * 0.20))
+                                : const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
+                            blurRadius: isSpeechActive ? 28 : 20,
+                            spreadRadius: isSpeechActive ? 4 : 2,
                           ),
                         ],
                       ),
                       child: Icon(
                         Icons.mic_rounded,
-                        size: 54 + (amplitude * 10),
-                        color: const Color(0xFF06A6FF),
+                        size: 54 + (amplitude * 12),
+                        color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
                       ),
                     );
                   },
                 ),
                 const SizedBox(height: 36),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _cancelRecordingSession,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06A6FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      elevation: 0,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _cancelRecordingSession,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        ),
+                        child: const Text(
+                          'CANCEL',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      'CANCEL',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _finishRecordingAndEvaluate,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF06A6FF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'DONE',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -659,18 +659,15 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     final currentWord = _words[_currentWordIndex];
     final provider = Provider.of<LessonProvider>(context, listen: false);
 
-    if (_currentStep == 0) {
-      if (!_isFlipped) return; // Must flip card first
+    if (_currentStep < 4) {
       setState(() {
-        _currentStep = 1;
+        _currentStep++;
       });
-      provider.updateWordProgress(widget.sessionId, currentWord.wordId, _pathway, 1, 'INTRODUCED');
-      _playWordAudio(currentWord);
-    } else if (_currentStep == 1) {
-      // Complete word learning and advance index
-      // Mic attempt and mic skip both advance session state identically with no score side effects
+      if (_currentStep == 1) _speakWord();
+      if (_currentStep == 2) _speakSentence();
+    } else {
+      // Step 5 Confirmation: Mark word as INTRODUCED in database and advance to next word or Module 2
       final finalStatus = 'INTRODUCED';
-      
       provider.updateWordProgress(widget.sessionId, currentWord.wordId, _pathway, 4, finalStatus);
 
       if (_currentWordIndex < _words.length - 1) {
@@ -700,7 +697,8 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   PronunciationAttemptModel _applyLocalBypassIfSpoken(PronunciationAttemptModel result, String target) {
     final trans = (result.transcribedText ?? '').trim();
     if (trans.isEmpty) return result;
-    if (PronunciationMatcher.matchesTranscript(trans, target)) {
+    final similarity = result.similarityScore ?? 0.0;
+    if (similarity >= 0.80 || PronunciationMatcher.matchesTranscript(trans, target)) {
       return PronunciationAttemptModel(
         attemptId: result.attemptId,
         isCorrect: true,
@@ -709,6 +707,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         phonologicalTip: result.phonologicalTip,
         attemptNumber: result.attemptNumber,
         isInconclusive: false,
+        similarityScore: result.similarityScore ?? 0.80,
       );
     }
 
@@ -718,8 +717,6 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final pref = auth.learner?.languagePreference;
     if (_words.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final word = _words[_currentWordIndex];
@@ -831,77 +828,57 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
     switch (_currentStep) {
       case 0:
-        return _buildFormAndMeaningCard(theme, word);
+        return _buildCebuanoStep(theme, word);
       case 1:
+        return _buildEnglishWordStep(theme, word);
+      case 2:
+        return _buildEnglishSentenceStep(theme, word);
+      case 3:
         return _buildPhonologyCard(theme, word);
+      case 4:
+        return _buildSummaryCard(theme, word);
       default:
         return const SizedBox.shrink();
     }
   }
 
-  Widget _buildFormAndMeaningCard(ThemeData theme, VocabularyWordModel word) {
-    if (!_isFlipped) {
-      // Front of Flashcard
-      return Card(
-        key: const ValueKey('front'),
-        color: Colors.white,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Guess the Cebuano meaning',
-                style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 0.5),
+  Widget _buildStepHeaderBadge(String stepText, String titleText, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.stars_rounded, color: color, size: 14),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '$stepText: $titleText',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: color,
+                letterSpacing: 0.3,
               ),
-              const SizedBox(height: 36),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    word.englishWord,
-                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
-                    onPressed: _isPlayingAudio ? null : _speakWord,
-                  ),
-                ],
-              ),
-              if (word.partOfSpeech != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '(${word.partOfSpeech})',
-                  style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
-                ),
-              ],
-              const SizedBox(height: 48),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _isFlipped = true;
-                  });
-                },
-                icon: const Icon(Icons.flip_to_back_rounded),
-                label: const Text('FLIP CARD'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      );
-    }
+        ],
+      ),
+    );
+  }
 
-    // Back of Flashcard
+  Widget _buildSummaryCard(ThemeData theme, VocabularyWordModel word) {
+    final ipaText = word.phonologicalTipKey != null ? getIPA(word.englishWord) : '/${word.englishWord.toLowerCase()}/';
+
     return Card(
-      key: const ValueKey('back'),
+      key: const ValueKey('summary_card'),
       color: Colors.white,
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -911,106 +888,452 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Show image if available
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'WORD SUMMARY',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF059669),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
               if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: CustomImageViewer(
                     imagePath: word.imageAssetPath!,
-                    width: 180,
-                    height: 180,
+                    width: 140,
+                    height: 140,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) => Container(
-                      width: 180,
-                      height: 180,
+                      width: 140,
+                      height: 140,
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
+                      child: const Center(
+                        child: Icon(Icons.broken_image, color: Color(0xFF94A3B8)),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    word.englishWord,
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B), size: 28),
-                    onPressed: _isPlayingAudio ? null : _speakWord,
-                  ),
-                ],
-              ),
-              if (word.partOfSpeech != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '(${word.partOfSpeech})',
-                  style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFDCFCE7)),
                 ),
-              ],
-              const SizedBox(height: 16),
-              const Divider(color: Color(0xFFE6E7EA)),
-              const SizedBox(height: 12),
-              Text(
-                LocalizationService.translate(_pref, 'cebuano_meaning'),
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                word.cebuanoMeaning,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: Color(0xFFE6E7EA)),
-              const SizedBox(height: 12),
-              Text(
-                LocalizationService.translate(_pref, 'english_example'),
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                word.exampleSentenceEnglish,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.4),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              IconButton(
-                icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFFF59E0B)),
-                onPressed: _isPlayingAudio ? null : _speakSentence,
-              ),
-              if (word.exampleSentenceCebuano != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  word.exampleSentenceCebuano!,
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF475569), fontStyle: FontStyle.italic),
-                  textAlign: TextAlign.center,
+                child: Column(
+                  children: [
+                    const Text(
+                      'CEBUANO',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF166534),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            word.cebuanoMeaning,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF15803D),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.volume_up_rounded,
+                            color: _isPlayingAudio ? Colors.grey : const Color(0xFF15803D),
+                            size: 24,
+                          ),
+                          onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
+                        ),
+                      ],
+                    ),
+                    if (word.exampleSentenceCebuano != null &&
+                        word.exampleSentenceCebuano!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        word.exampleSentenceCebuano!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                          color: Color(0xFF166534),
+                          height: 1.3,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _isFlipped = false;
-                  });
-                },
-                icon: const Icon(Icons.flip_to_front_rounded),
-                label: const Text('FLIP BACK'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF64748B),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+
+              const SizedBox(height: 16),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFEF3C7)),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'ENGLISH',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF92400E),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            word.englishWord,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFB45309),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.volume_up_rounded,
+                            color: _isPlayingAudio ? Colors.grey : const Color(0xFFB45309),
+                            size: 24,
+                          ),
+                          onPressed: _isPlayingAudio ? null : _speakWord,
+                        ),
+                      ],
+                    ),
+                    if (word.partOfSpeech != null) ...[
+                      Text(
+                        '(${word.partOfSpeech})',
+                        style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Color(0xFFB45309)),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    Text(
+                      word.exampleSentenceEnglish,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF78350F),
+                        height: 1.3,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    IconButton(
+                      icon: Icon(
+                        Icons.volume_up_rounded,
+                        color: _isPlayingAudio ? Colors.grey : const Color(0xFFB45309),
+                        size: 20,
+                      ),
+                      onPressed: _isPlayingAudio ? null : _speakSentence,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.graphic_eq_rounded, color: Color(0xFF10B981), size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      ipaText,
+                      style: const TextStyle(
+                        fontFamily: 'Courier',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF10B981),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      height: 16,
+                      width: 1,
+                      color: const Color(0xFFCBD5E1),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(
+                      _attemptResult?.isCorrect == true
+                          ? Icons.check_circle_rounded
+                          : Icons.task_alt_rounded,
+                      color: const Color(0xFF06A6FF),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _attemptResult?.isCorrect == true ? 'Pronounced' : 'Practiced',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCebuanoStep(ThemeData theme, VocabularyWordModel word) {
+    return Card(
+      key: const ValueKey('cebuano_step'),
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStepHeaderBadge('STEP 1 OF 5', 'CEBUANO WORD & SENTENCE', const Color(0xFF10B981)),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    word.cebuanoMeaning,
+                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.volume_up_rounded,
+                      color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 30),
+                  onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
+                ),
+              ],
+            ),
+            if (word.partOfSpeech != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                '(${word.partOfSpeech})',
+                style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF6B7280)),
+              ),
+            ],
+            if (word.exampleSentenceCebuano != null &&
+                word.exampleSentenceCebuano!.trim().isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const Divider(color: Color(0xFFE6E7EA)),
+              const SizedBox(height: 16),
+              const Text(
+                'CEBUANO EXAMPLE SENTENCE',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6B7280),
+                    letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                word.exampleSentenceCebuano!,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                    height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnglishWordStep(ThemeData theme, VocabularyWordModel word) {
+    return Card(
+      key: const ValueKey('english_word_step'),
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildStepHeaderBadge('STEP 2 OF 5', 'ENGLISH WORD', const Color(0xFF06A6FF)),
+              const SizedBox(height: 24),
+              if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: CustomImageViewer(
+                    imagePath: word.imageAssetPath!,
+                    width: 160,
+                    height: 160,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 160,
+                      height: 160,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: const Center(
+                          child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              const Text(
+                'In English, this is:',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF6B7280),
+                    letterSpacing: 0.4),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      word.englishWord,
+                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.volume_up_rounded,
+                        color: _isPlayingAudio ? Colors.grey : const Color(0xFF06A6FF), size: 30),
+                    onPressed: _isPlayingAudio ? null : _speakWord,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDCFCE7)),
+                ),
+                child: Text(
+                  'Cebuano: ${word.cebuanoMeaning}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF166534)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnglishSentenceStep(ThemeData theme, VocabularyWordModel word) {
+    return Card(
+      key: const ValueKey('english_sentence_step'),
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStepHeaderBadge('STEP 3 OF 5', 'ENGLISH EXAMPLE SENTENCE', const Color(0xFF8B5CF6)),
+            const SizedBox(height: 28),
+            Text(
+              word.englishWord,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    word.exampleSentenceEnglish,
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                        height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.volume_up_rounded,
+                      color: _isPlayingAudio ? Colors.grey : const Color(0xFF8B5CF6), size: 30),
+                  onPressed: _isPlayingAudio ? null : _speakSentence,
+                ),
+              ],
+            ),
+            if (word.exampleSentenceCebuano != null) ...[
+              const SizedBox(height: 24),
+              const Divider(color: Color(0xFFE2E8F0)),
+              const SizedBox(height: 12),
+              Text(
+                word.exampleSentenceCebuano!,
+                style: const TextStyle(fontSize: 15, color: Color(0xFF64748B), fontStyle: FontStyle.italic),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -1061,20 +1384,164 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               ),
               const SizedBox(height: 20),
               if (_attemptResult != null) ...[
-                Icon(
-                  _attemptResult!.isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                  color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : Colors.redAccent,
-                  size: 48,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _attemptResult!.isCorrect ? 'Sounds good!' : 'Try saying it again',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: _attemptResult!.isCorrect ? const Color(0xFF10B981) : Colors.redAccent,
+                if (_attemptResult!.isCorrect) ...[
+                  const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 48),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Sounds good! 🎉',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
                   ),
-                ),
+                  if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFBBF7D0)),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'You said: "${_attemptResult!.transcribedText}"',
+                            style: const TextStyle(
+                              fontSize: 14, fontStyle: FontStyle.italic,
+                              color: Color(0xFF166534), fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (_attemptResult!.similarityScore != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
+                              style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF10B981),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ] else ...[
+                  // Failure headline
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 28),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _attemptResult!.isInconclusive
+                              ? "Couldn't hear you clearly. Please try again."
+                              : _attemptNumber >= 3
+                                  ? 'No attempts left — keep practicing!'
+                                  : _buildFailureMessage(_attemptResult!.similarityScore),
+                          style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // What you said + match score
+                  if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFCA5A5)),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'You said: "${_attemptResult!.transcribedText}"',
+                            style: const TextStyle(
+                              fontSize: 14, fontStyle: FontStyle.italic,
+                              color: Color(0xFF991B1B), fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (_attemptResult!.similarityScore != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% — need 80% to pass',
+                              style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFEF4444),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                  // IPA phonetic target
+                  if (_attemptResult!.phoneticTarget != null && _attemptResult!.phoneticTarget!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.record_voice_over_rounded, color: Color(0xFF7C3AED), size: 16),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Target:',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _attemptResult!.phoneticTarget!,
+                          style: const TextStyle(
+                            fontFamily: 'Courier', fontSize: 16,
+                            fontWeight: FontWeight.bold, color: Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  // HOW TO IMPROVE tip box
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFFED7AA)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.tips_and_updates_rounded, color: Color(0xFFD97706), size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'HOW TO IMPROVE',
+                              style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.bold,
+                                color: Color(0xFF92400E), letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          (_attemptResult!.phonologicalTip != null && _attemptResult!.phonologicalTip!.trim().isNotEmpty)
+                              ? _attemptResult!.phonologicalTip!
+                              : _getPhonologicalTip(word.phonologicalTipKey),
+                          style: const TextStyle(
+                            fontSize: 13, color: Color(0xFF92400E),
+                            fontWeight: FontWeight.w600, height: 1.5,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ] else ...[
                 const Text(
                   'Want to try saying it? Tap the mic to practice your pronunciation — or just continue when you are ready.',
@@ -1123,14 +1590,61 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   }
 
   String _getPhonologicalTip(String? tipKey) {
-    if (tipKey == 'f_sound') {
-      return "Tip: Cebuano has no /f/ sound. Touch your upper teeth to your lower lip and blow air out: 'fff' (like Fish).";
-    } else if (tipKey == 'v_sound') {
-      return "Tip: Cebuano has no /v/ sound. Place your upper teeth on your lower lip and buzz like a bee: 'vvv' (like Very).";
-    } else if (tipKey == 'th_sound') {
-      return "Tip: Cebuano has no /θ/ sound. Put the tip of your tongue between your front teeth and blow gently (like Brother).";
+    switch (tipKey) {
+      case 'f_sound':
+        return "The /f/ sound doesn't exist in Cebuano. "
+            "Gently touch your upper front teeth to your lower lip and push air out — "
+            "like blowing out a candle slowly. Practice: 'fff-ish', 'fff-ather'.";
+      case 'v_sound':
+        return "The /v/ sound doesn't exist in Cebuano. "
+            "Touch your upper teeth to your lower lip and hum — feel the vibration. "
+            "It's like /f/ but with your voice on. Practice: 'vvv-ery', 'vvv-oice'.";
+      case 'th_sound':
+        return "The /θ/ (TH) sound doesn't exist in Cebuano. "
+            "Place the tip of your tongue lightly between your upper and lower front teeth, "
+            "then blow air out gently. Practice: 'th-ink', 'th-ree', 'th-ank'.";
+      case 'th_voiced':
+        return "The voiced /ð/ (TH) sound is like 'th' in 'the' or 'this'. "
+            "Put your tongue between your teeth and hum — feel the buzz. "
+            "Practice: 'th-is', 'th-at', 'broth-er'.";
+      case 'r_sound':
+        return "English /r/ is different from Cebuano. "
+            "Keep your tongue back and curved — don't roll it. "
+            "The tongue should not touch the roof of your mouth. Practice: 'rr-un', 'rr-ead'.";
+      case 'l_sound':
+        return "For English /l/, place the tip of your tongue on the ridge just behind "
+            "your upper front teeth and let air flow around the sides. "
+            "Practice: 'll-ight', 'll-ove', 'bell'.";
+      case 'short_i':
+        return "The short /ɪ/ sound (as in 'sit') is shorter and more relaxed than the long /iː/ in 'see'. "
+            "Relax your lips and say a quick 'ih'. Practice: 'f-ih-sh', 's-ih-t', 'th-ih-s'.";
+      case 'short_e':
+        return "The /ɛ/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
+            "It is between 'a' and 'ee'. Practice: 'b-eh-d', 'p-eh-n', 'h-eh-lp'.";
+      case 'schwa':
+        return "Many English unstressed syllables use the schwa /ə/ — a neutral, relaxed sound "
+            "like a quick 'uh'. The vowel in 'the', 'a', and the 2nd syllable of 'pencil' are schwa. "
+            "Practice: 'penc-uh-l', 'erase-uh-r'.";
+      default:
+        return "Speak slowly and clearly. Listen to the correct audio again, "
+            "then try to match the mouth shape and rhythm. "
+            "Focus on each syllable: say the word one part at a time.";
     }
-    return "Tip: Listen closely and copy the correct pronunciation.";
+  }
+
+  /// Returns a score-aware failure coaching message.
+  String _buildFailureMessage(double? score) {
+    if (score == null) return 'Not quite — give it another try!';
+    final pct = (score * 100).round();
+    if (pct >= 70) {
+      return 'Very close ($pct%)! Small adjustment needed — try again.';
+    } else if (pct >= 50) {
+      return 'Getting there ($pct%). Focus on each syllable and try again.';
+    } else if (pct >= 30) {
+      return 'Not quite ($pct%). Listen to the audio and try to match the sound.';
+    } else {
+      return 'Keep practicing! Listen carefully and try to copy the pronunciation.';
+    }
   }
 
   Widget _buildSandboxIntroCard(ThemeData theme, VocabularyWordModel word) {
@@ -1166,10 +1680,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.5),
               ),
               const SizedBox(height: 6),
-              Text(
-                word.cebuanoMeaning,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      word.cebuanoMeaning,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.volume_up_rounded, color: _isPlayingAudio ? Colors.grey : const Color(0xFF10B981), size: 26),
+                    onPressed: _isPlayingAudio ? null : () => _playCebuanoAudio(word.cebuanoMeaning),
+                  ),
+                ],
               ),
               const SizedBox(height: 18),
               Text(
@@ -1242,12 +1767,19 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       );
     }
 
-    String buttonText = 'FLIP CARD';
-    if (_currentStep == 0 && _isFlipped) buttonText = 'GOT IT';
-    if (_currentStep == 1) buttonText = 'CONTINUE';
-
-    // Allow continue at any time (mic is optional)
-    final bool canContinue = _currentStep == 0 ? _isFlipped : true;
+    String buttonText = 'NEXT: ENGLISH WORD';
+    if (_currentStep == 1) buttonText = 'NEXT: EXAMPLE SENTENCE';
+    if (_currentStep == 2) buttonText = 'NEXT: PRONUNCIATION';
+    if (_currentStep == 3) {
+      if (_attemptResult != null && _attemptResult!.isCorrect == false && _attemptNumber >= 3) {
+        buttonText = 'SKIP TO CONFIRMATION';
+      } else {
+        buttonText = 'NEXT: CONFIRMATION';
+      }
+    }
+    if (_currentStep == 4) {
+      buttonText = 'I UNDERSTAND THIS WORD';
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1255,33 +1787,21 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-          onPressed: canContinue
-              ? () {
-                  if (_currentStep == 0 && !_isFlipped) {
-                    setState(() {
-                      _isFlipped = true;
-                    });
-                  } else {
-                    _nextStep();
-                  }
-                }
-              : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF06A6FF),
-            disabledBackgroundColor: const Color(0xFFE2E8F0),
-            foregroundColor: Colors.white,
-            disabledForegroundColor: const Color(0xFF94A3B8),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+            onPressed: () => _nextStep(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _currentStep == 4 ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 6,
             ),
-            elevation: 6,
+            child: Text(
+              buttonText,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+            ),
           ),
-          child: Text(
-            buttonText,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
-          ),
-        ),
         ),
       ],
     );
@@ -1316,8 +1836,18 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
 
     if (!mounted) return;
     debugPrint(widget.isSandbox ? 'Navigating to sandbox review...' : 'Navigating to Module 2...');
+
+    String targetSessionId = widget.sessionId;
+    if (!widget.isSandbox) {
+      final practiceSessionId = await provider.startPracticeSession(widget.lessonId, moduleNumber: 2);
+      if (practiceSessionId != null && practiceSessionId.isNotEmpty) {
+        targetSessionId = practiceSessionId;
+      }
+    }
+
+    if (!mounted) return;
     context.go(
-      '/session/${widget.sessionId}/practice',
+      '/session/$targetSessionId/practice',
       extra: {
         'lessonId': widget.lessonId,
         'categoryId': widget.categoryId,

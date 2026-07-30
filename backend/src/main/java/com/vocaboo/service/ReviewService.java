@@ -9,9 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.RoundingMode;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 import com.vocaboo.dto.response.CategoryReviewResponse;
 
@@ -27,6 +25,8 @@ public class ReviewService {
         private final VocabularyCategoryRepository categoryRepository;
     private final LearnerRepository learnerRepository;
     private final VocabularyWordRepository wordRepository;
+    private final WordPerformanceRepository performanceRepository;
+    private final IntroductionSessionRepository introductionSessionRepository;
 
     @Transactional
     public ReviewSession startReview(UUID learnerId, UUID lessonId) {
@@ -47,8 +47,32 @@ public class ReviewService {
 
     @Transactional
     public ReviewItem saveReviewItem(UUID sessionId, UUID wordId, Boolean isCorrect) {
-        ReviewSession session = reviewSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Review session not found"));
+        Optional<ReviewSession> sessionOpt = reviewSessionRepository.findById(sessionId);
+        ReviewSession session;
+        if (sessionOpt.isPresent()) {
+            session = sessionOpt.get();
+        } else {
+            Optional<IntroductionSession> introOpt = introductionSessionRepository.findById(sessionId);
+            if (introOpt.isPresent()) {
+                IntroductionSession introSession = introOpt.get();
+                UUID learnerId = introSession.getLearner().getLearnerId();
+                UUID lessonId = introSession.getLesson().getLessonId();
+                List<ReviewSession> reviewSessions = reviewSessionRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
+                if (!reviewSessions.isEmpty()) {
+                    session = reviewSessions.get(0);
+                } else {
+                    session = ReviewSession.builder()
+                            .learner(introSession.getLearner())
+                            .lesson(introSession.getLesson())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
+                            .build();
+                    session = reviewSessionRepository.save(session);
+                }
+            } else {
+                throw new IllegalArgumentException("Session not found");
+            }
+        }
         VocabularyWord word = wordRepository.findById(wordId)
                 .orElseThrow(() -> new IllegalArgumentException("Word not found"));
 
@@ -58,8 +82,31 @@ public class ReviewService {
                 .isCorrect(isCorrect)
                 .createdAt(OffsetDateTime.now())
                 .build();
+        ReviewItem savedItem = reviewItemRepository.save(item);
 
-        return reviewItemRepository.save(item);
+        final Learner targetLearner = session != null ? session.getLearner() : null;
+
+        if (targetLearner != null) {
+            WordPerformance perf = performanceRepository
+                    .findByLearnerLearnerIdAndWordWordId(targetLearner.getLearnerId(), word.getWordId())
+                    .orElseGet(() -> WordPerformance.builder()
+                            .learner(targetLearner)
+                            .word(word)
+                            .build());
+
+            perf.setTotalAttempts(perf.getTotalAttempts() + 1);
+            if (Boolean.TRUE.equals(isCorrect)) {
+                perf.setCorrectCount(perf.getCorrectCount() + 1);
+            } else {
+                perf.setIncorrectCount(perf.getIncorrectCount() + 1);
+            }
+            double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
+            perf.setAccuracy(BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP));
+            perf.setLastPracticedAt(OffsetDateTime.now());
+            performanceRepository.save(perf);
+        }
+
+        return savedItem;
     }
 
     @Transactional
@@ -83,9 +130,11 @@ public class ReviewService {
                         .moduleNumber(moduleNumber)
                         .build());
 
+        BigDecimal bdScore = BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP);
         moduleScore.setCorrectCount(safeCorrectCount);
         moduleScore.setTotalCount(safeTotalCount);
-        moduleScore.setScore(BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP));
+        moduleScore.setScore(bdScore);
+        moduleScore.setStarsEarned(PracticeSessionService.calculateStars(bdScore));
         lessonModuleScoreRepository.save(moduleScore);
     }
 
@@ -117,7 +166,7 @@ public class ReviewService {
         status.setMasteryScore(BigDecimal.valueOf(score));
         status.setUpdatedAt(OffsetDateTime.now());
 
-        if (score >= 70.0) {
+        if (score >= 80.0) {
             status.setStatus(LessonStatus.COMPLETED);
             status.setCompletedAt(OffsetDateTime.now());
 
@@ -164,7 +213,7 @@ public class ReviewService {
                 Learner learner = learnerRepository.findById(learnerId)
                                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
 
-                boolean passed = score != null && score >= 70.0;
+                boolean passed = score != null && score >= 80.0;
 
                 for (Lesson lesson : lessons) {
                         LearnerLessonStatus status = lessonStatusRepository
@@ -238,4 +287,86 @@ public class ReviewService {
                 lessonStatusRepository.save(firstStatus);
                 return nextCategory.getCategoryId();
         }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> generateModule4ReviewPayload(UUID learnerId, UUID lessonId) {
+        List<VocabularyWord> currentWords = wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId);
+
+        List<VocabularyWord> weakWords = performanceRepository.findWeakVocabularyWords(learnerId, java.math.BigDecimal.valueOf(80.0));
+        List<VocabularyWord> refresherWords = new ArrayList<>();
+
+        if (weakWords != null) {
+            for (VocabularyWord w : weakWords) {
+                if (w != null && w.getLesson() != null && !w.getLesson().getLessonId().equals(lessonId) && !w.getIsDeleted()) {
+                    refresherWords.add(w);
+                    if (refresherWords.size() >= 3) break;
+                }
+            }
+        }
+
+        if (refresherWords.size() < 2) {
+            List<WordPerformance> allPerf = performanceRepository.findByLearnerLearnerId(learnerId);
+            if (allPerf != null && !allPerf.isEmpty()) {
+                List<WordPerformance> sortedPerf = new ArrayList<>(allPerf);
+                sortedPerf.sort(Comparator.comparing(p -> p.getAccuracy() != null ? p.getAccuracy() : java.math.BigDecimal.ZERO));
+                for (WordPerformance p : sortedPerf) {
+                    VocabularyWord w = p.getWord();
+                    if (w != null && w.getLesson() != null && !w.getLesson().getLessonId().equals(lessonId) && !Boolean.TRUE.equals(w.getIsDeleted())) {
+                        if (!refresherWords.contains(w)) {
+                            refresherWords.add(w);
+                            if (refresherWords.size() >= 3) break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // If learner has NO performance history at all (e.g. brand new learner), pull 2-3 words from other published lessons
+        if (refresherWords.size() < 2) {
+            List<VocabularyWord> otherWords = wordRepository.findAll();
+            for (VocabularyWord w : otherWords) {
+                if (w != null && w.getLesson() != null && !w.getLesson().getLessonId().equals(lessonId) && !Boolean.TRUE.equals(w.getIsDeleted())) {
+                    if (!refresherWords.contains(w)) {
+                        refresherWords.add(w);
+                        if (refresherWords.size() >= 3) break;
+                    }
+                }
+            }
+        }
+
+        List<VocabularyWord> allReviewWords = new ArrayList<>(currentWords);
+        allReviewWords.addAll(refresherWords);
+
+        List<String> formats = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "SENTENCE_RECONSTRUCTION");
+        List<String> bag = new ArrayList<>();
+        Random random = new Random();
+
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (VocabularyWord word : allReviewWords) {
+            if (bag.isEmpty()) {
+                bag.addAll(formats);
+                Collections.shuffle(bag, random);
+            }
+            String selectedFormat = bag.remove(0);
+            boolean isRefresher = !word.getLesson().getLessonId().equals(lessonId);
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("wordId", word.getWordId().toString());
+            map.put("word", word.getEnglishWord());
+            map.put("englishWord", word.getEnglishWord());
+            map.put("definition", word.getCebuanoMeaning());
+            map.put("cebuanoMeaning", word.getCebuanoMeaning());
+            map.put("example", word.getExampleSentenceEnglish());
+            map.put("exampleSentenceEnglish", word.getExampleSentenceEnglish());
+            map.put("exampleCebuano", word.getExampleSentenceCebuano());
+            map.put("imageAssetPath", word.getImageAssetPath());
+            map.put("activityFormat", selectedFormat);
+            map.put("isRefresher", isRefresher);
+
+            result.add(map);
+        }
+
+        return result;
+    }
 }

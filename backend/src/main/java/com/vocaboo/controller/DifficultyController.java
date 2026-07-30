@@ -2,10 +2,13 @@ package com.vocaboo.controller;
 
 import com.vocaboo.dto.request.DifficultyAdjustmentRequest;
 import com.vocaboo.dto.response.DifficultyProgressResponse;
+import com.vocaboo.dto.response.ReintroductionResponse;
 import com.vocaboo.service.DifficultyAdjustmentService;
+import com.vocaboo.service.ReintroductionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.security.Principal;
 import java.util.UUID;
 
@@ -15,6 +18,7 @@ import java.util.UUID;
 public class DifficultyController {
 
     private final DifficultyAdjustmentService difficultyService;
+    private final ReintroductionService reintroductionService;
 
     @GetMapping("/{id}/difficulty")
     public ResponseEntity<DifficultyProgressResponse> getDifficulty(
@@ -48,6 +52,24 @@ public class DifficultyController {
         }
 
         throw new IllegalArgumentException("Either action override or isCorrect result is required for adjustment");
+    }
+
+    @GetMapping("/{id}/reintroduction")
+    public ResponseEntity<ReintroductionResponse> getReintroductionPayload(
+            @PathVariable("id") UUID wordId,
+            @RequestParam(name = "learnerId", required = false) UUID learnerId,
+            Principal principal) {
+        UUID resolvedLearnerId = resolveLearnerId(learnerId, principal);
+        return ResponseEntity.ok(reintroductionService.buildPayload(resolvedLearnerId, wordId));
+    }
+
+    @PostMapping("/{id}/reintroduction/acknowledge")
+    public ResponseEntity<DifficultyProgressResponse> acknowledgeReintroduction(
+            @PathVariable("id") UUID wordId,
+            @RequestParam(name = "learnerId", required = false) UUID learnerId,
+            Principal principal) {
+        UUID resolvedLearnerId = resolveLearnerId(learnerId, principal);
+        return ResponseEntity.ok(reintroductionService.acknowledgeUnderstanding(resolvedLearnerId, wordId));
     }
 
     private UUID resolveLearnerId(UUID requestLearnerId, Principal principal) {

@@ -18,5 +18,9 @@ public class DifficultyProgressResponse {
     private String currentLevel;
     private Integer consecutiveCorrect;
     private Integer consecutiveIncorrect;
+    private Boolean needsReintroduction;
+    private Integer reintroductionCount;
+    private OffsetDateTime lastReintroducedAt;
+    private Boolean showHints;
     private OffsetDateTime lastAdjustedAt;
 }

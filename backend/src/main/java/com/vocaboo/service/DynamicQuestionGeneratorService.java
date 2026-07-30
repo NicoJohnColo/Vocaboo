@@ -27,13 +27,20 @@ public class DynamicQuestionGeneratorService {
         int optionCount = getOptionCountForLevel(learnerId, level);
         int timerLimit = getTimerLimitForLevel(learnerId, level);
 
+        boolean showHints = difficultyService.shouldOfferHints(learnerId, word.getWordId());
+
         Map<String, Object> q = new HashMap<>();
         q.put("wordId", word.getWordId().toString());
         q.put("englishWord", word.getEnglishWord());
-        q.put("cebuanoMeaning", word.getCebuanoMeaning());
+        if (level == DifficultyLevel.PROFICIENT || level == DifficultyLevel.MASTERED) {
+            q.put("cebuanoMeaning", null);
+        } else {
+            q.put("cebuanoMeaning", word.getCebuanoMeaning());
+        }
         q.put("imageAssetPath", word.getImageAssetPath());
         q.put("difficultyLevel", level.name());
         q.put("timeLimitSeconds", timerLimit);
+        q.put("showHints", showHints);
 
         String resolvedFormat = formatStr;
         if (resolvedFormat == null) {
@@ -124,7 +131,7 @@ public class DynamicQuestionGeneratorService {
 
         // Simple regex replace to insert blank
         String fitbSentence = sentence.replaceAll("(?i)" + target, "_______");
-        q.put("questionText", "Complete the sentence: " + fitbSentence);
+        q.put("questionText", fitbSentence);
         q.put("correctAnswer", target);
 
         // Proficient and Mastered levels require typing without options

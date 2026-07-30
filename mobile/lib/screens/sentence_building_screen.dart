@@ -252,9 +252,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   String _activitySentence(VocabularyWordModel word) {
-    return (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
+    final raw = (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
         ? word.sentenceCompletionSentence!.trim()
         : word.exampleSentenceEnglish;
+    return raw.replaceAll(RegExp(r'^Complete the sentence:\s*', caseSensitive: false), '');
   }
 
   String _activityAnswer(VocabularyWordModel word) {
@@ -685,6 +686,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     if (!widget.isSandbox) {
       final provider = Provider.of<LessonProvider>(context, listen: false);
+      provider.submitPracticeResult(
+        widget.sessionId,
+        _currentWord.wordId,
+        _isCorrect,
+        activityType: 'WORD_TILE_ARRANGEMENT',
+      );
       provider.submitReviewItem(
         sessionId: widget.sessionId,
         wordId: _currentWord.wordId,
@@ -1092,6 +1099,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   void _advancePronunciationPhase() async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
+    if (!widget.isSandbox) {
+      final isPassed = _attemptResult != null && _attemptResult!.isCorrect;
+      provider.submitPracticeResult(
+        widget.sessionId,
+        _currentWord.wordId,
+        isPassed,
+        activityType: 'VOICE_VALIDATION',
+        attemptNumber: _pronunciationAttempt,
+      );
+    }
     await provider.updateWordProgress(
       widget.sessionId,
       _currentWord.wordId,

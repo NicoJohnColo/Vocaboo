@@ -175,18 +175,26 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                 .toList();
           }
 
+          final rawExample = (q['exampleSentenceEnglish'] as String?)?.trim();
+          final exampleSentence = (rawExample != null && rawExample.isNotEmpty) ? rawExample : '';
+
+          final rawQuestionText = (q['questionText'] as String?)?.trim();
+          final fitbSentence = (format == ActivityFormat.fillInTheBlank && rawQuestionText != null && rawQuestionText.contains('_'))
+              ? rawQuestionText
+              : null;
+
           return PracticeItemModel(
             wordId: q['wordId'],
             englishWord: q['englishWord'] ?? '',
             cebuanoMeaning: q['cebuanoMeaning'] ?? '',
-            exampleSentenceEnglish: q['questionText'] ?? '',
-            exampleSentenceCebuano: q['cebuanoMeaning'],
+            exampleSentenceEnglish: exampleSentence,
+            exampleSentenceCebuano: q['exampleSentenceCebuano'] ?? q['cebuanoMeaning'],
             activityFormat: format,
             distractors: distractors,
             mcDistractor1: distractors.isNotEmpty ? distractors[0] : null,
             mcDistractor2: distractors.length > 1 ? distractors[1] : null,
             mcDistractor3: distractors.length > 2 ? distractors[2] : null,
-            fitbSentence: q['questionText'],
+            fitbSentence: fitbSentence,
             fitbAnswer: correctAnswer,
             matchingSet: matchingSet,
             sentenceArrangementTokens: scrambledTokens,
@@ -782,10 +790,32 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     await LocalStorageService.saveEvaluationResult(widget.sessionId, result);
 
     if (!widget.isSandbox) {
+      String formatName;
+      switch (item.activityFormat) {
+        case ActivityFormat.multipleChoice:
+          formatName = 'MULTIPLE_CHOICE';
+          break;
+        case ActivityFormat.fillInTheBlank:
+          formatName = 'FILL_IN_BLANK';
+          break;
+        case ActivityFormat.matching:
+          formatName = 'MATCHING';
+          break;
+        case ActivityFormat.listeningTyping:
+          formatName = 'TYPE_WHAT_YOU_HEAR';
+          break;
+        case ActivityFormat.rearrangement:
+          formatName = 'WORD_TILE_ARRANGEMENT';
+          break;
+        default:
+          formatName = 'MULTIPLE_CHOICE';
+      }
       await provider.submitRetrievalAnswer(
         widget.sessionId,
         item.wordId,
         correct,
+        wrongAnswer: correct ? null : _assembledTokens.join(' '),
+        activityFormat: formatName,
       );
     }
 
@@ -846,12 +876,30 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       final remaining = allowedFormats.where((f) => f != item.activityFormat).toList();
       final nextFormat = remaining[Random().nextInt(remaining.length)];
 
+      bool isInstructionText(String? text) {
+        if (text == null || text.trim().isEmpty) return false;
+        final lower = text.toLowerCase().trim();
+        return lower.startsWith('match') ||
+            lower.startsWith('what is') ||
+            lower.startsWith('listen to') ||
+            lower.startsWith('complete the sentence');
+      }
+
+      final cleanExampleEnglish = isInstructionText(item.exampleSentenceEnglish)
+          ? ''
+          : item.exampleSentenceEnglish;
+
+      final cleanFitbSentence = isInstructionText(item.fitbSentence) ||
+              (item.fitbSentence != null && !item.fitbSentence!.contains('_'))
+          ? null
+          : item.fitbSentence;
+
       final wordModel = VocabularyWordModel(
         wordId: item.wordId,
         lessonId: widget.lessonId,
         englishWord: item.englishWord,
         cebuanoMeaning: item.cebuanoMeaning,
-        exampleSentenceEnglish: item.exampleSentenceEnglish,
+        exampleSentenceEnglish: cleanExampleEnglish,
         exampleSentenceCebuano: item.exampleSentenceCebuano,
         gradeLevel: '',
         wordOrder: 0,
@@ -860,7 +908,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         mcDistractor1: item.mcDistractor1,
         mcDistractor2: item.mcDistractor2,
         mcDistractor3: item.mcDistractor3,
-        fitbSentence: item.fitbSentence,
+        fitbSentence: cleanFitbSentence,
         fitbAnswer: item.fitbAnswer,
         matchingSet: item.matchingSet,
         sentenceArrangementTokens: item.sentenceArrangementTokens,

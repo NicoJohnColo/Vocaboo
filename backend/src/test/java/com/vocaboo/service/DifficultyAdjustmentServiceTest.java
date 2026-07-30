@@ -61,7 +61,7 @@ class DifficultyAdjustmentServiceTest {
     }
 
     @Test
-    void calculateNext_correctResult_incrementsStreakAndUpgradesLevel() {
+    void calculateNext_learningLevel_oneCorrectAnswer_upgradesToFamiliar() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -71,7 +71,39 @@ class DifficultyAdjustmentServiceTest {
                 .learner(learner)
                 .word(word)
                 .currentLevel(DifficultyLevel.LEARNING)
-                .consecutiveCorrect(2) // 2 correct streak before this
+                .consecutiveCorrect(0)
+                .consecutiveIncorrect(0)
+                .build();
+
+        when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
+                .thenReturn(Optional.of(progress));
+        when(progressRepository.save(any(DifficultyProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, true);
+
+        assertNotNull(response);
+        assertEquals(DifficultyLevel.FAMILIAR.name(), response.getCurrentLevel());
+        assertEquals(0, response.getConsecutiveCorrect());
+
+        verify(auditLogRepository, times(1)).save(argThat(log ->
+                log.getOldLevel() == DifficultyLevel.LEARNING &&
+                log.getNewLevel() == DifficultyLevel.FAMILIAR &&
+                "CONSECUTIVE_CORRECT".equals(log.getReason())
+        ));
+    }
+
+    @Test
+    void calculateNext_proficientLevel_threeCorrectAnswers_upgradesToMasteredAndAwardsPoints() {
+        UUID learnerId = UUID.randomUUID();
+        UUID wordId = UUID.randomUUID();
+
+        Learner learner = Learner.builder().learnerId(learnerId).build();
+        VocabularyWord word = VocabularyWord.builder().wordId(wordId).build();
+        DifficultyProgress progress = DifficultyProgress.builder()
+                .learner(learner)
+                .word(word)
+                .currentLevel(DifficultyLevel.PROFICIENT)
+                .consecutiveCorrect(2)
                 .consecutiveIncorrect(0)
                 .build();
 
@@ -86,12 +118,12 @@ class DifficultyAdjustmentServiceTest {
         DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, true);
 
         assertNotNull(response);
-        assertEquals(DifficultyLevel.FAMILIAR.name(), response.getCurrentLevel());
-        assertEquals(0, response.getConsecutiveCorrect()); // reset after promotion
+        assertEquals(DifficultyLevel.MASTERED.name(), response.getCurrentLevel());
+        assertEquals(0, response.getConsecutiveCorrect());
 
         verify(auditLogRepository, times(1)).save(argThat(log ->
-                log.getOldLevel() == DifficultyLevel.LEARNING &&
-                log.getNewLevel() == DifficultyLevel.FAMILIAR &&
+                log.getOldLevel() == DifficultyLevel.PROFICIENT &&
+                log.getNewLevel() == DifficultyLevel.MASTERED &&
                 "CONSECUTIVE_CORRECT".equals(log.getReason())
         ));
         verify(pointTransactionRepository, times(1)).save(argThat(tx ->
@@ -101,7 +133,7 @@ class DifficultyAdjustmentServiceTest {
     }
 
     @Test
-    void calculateNext_correctResult_noUpgrade() {
+    void calculateNext_familiarLevel_singleIncorrect_downgradesToLearning() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -110,27 +142,31 @@ class DifficultyAdjustmentServiceTest {
         DifficultyProgress progress = DifficultyProgress.builder()
                 .learner(learner)
                 .word(word)
-                .currentLevel(DifficultyLevel.LEARNING)
-                .consecutiveCorrect(0)
-                .consecutiveIncorrect(1)
+                .currentLevel(DifficultyLevel.FAMILIAR)
+                .consecutiveCorrect(1)
+                .consecutiveIncorrect(0)
                 .build();
 
         when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
                 .thenReturn(Optional.of(progress));
         when(progressRepository.save(any(DifficultyProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, true);
+        DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, false);
 
         assertNotNull(response);
         assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
-        assertEquals(1, response.getConsecutiveCorrect());
-        assertEquals(0, response.getConsecutiveIncorrect()); // reset incorrect
+        assertEquals(0, response.getConsecutiveCorrect());
+        assertEquals(0, response.getConsecutiveIncorrect());
 
-        verifyNoInteractions(auditLogRepository);
+        verify(auditLogRepository, times(1)).save(argThat(log ->
+                log.getOldLevel() == DifficultyLevel.FAMILIAR &&
+                log.getNewLevel() == DifficultyLevel.LEARNING &&
+                "CONSECUTIVE_INCORRECT".equals(log.getReason())
+        ));
     }
 
     @Test
-    void calculateNext_incorrectResult_demotesLevel() {
+    void calculateNext_proficientLevel_singleIncorrect_downgradesToFamiliar() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -141,7 +177,7 @@ class DifficultyAdjustmentServiceTest {
                 .word(word)
                 .currentLevel(DifficultyLevel.PROFICIENT)
                 .consecutiveCorrect(2)
-                .consecutiveIncorrect(1) // already has 1 incorrect
+                .consecutiveIncorrect(0)
                 .build();
 
         when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
@@ -151,11 +187,11 @@ class DifficultyAdjustmentServiceTest {
         DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, false);
 
         assertNotNull(response);
-        assertEquals(DifficultyLevel.FAMILIAR.name(), response.getCurrentLevel()); // demoted
-        assertEquals(0, response.getConsecutiveCorrect()); // reset correct
-        assertEquals(0, response.getConsecutiveIncorrect()); // reset incorrect after demotion
+        assertEquals(DifficultyLevel.FAMILIAR.name(), response.getCurrentLevel());
+        assertEquals(0, response.getConsecutiveCorrect());
+        assertEquals(0, response.getConsecutiveIncorrect());
 
-        verify(auditLogRepository, times(1)).save(argThat(log -> 
+        verify(auditLogRepository, times(1)).save(argThat(log ->
                 log.getOldLevel() == DifficultyLevel.PROFICIENT &&
                 log.getNewLevel() == DifficultyLevel.FAMILIAR &&
                 "CONSECUTIVE_INCORRECT".equals(log.getReason())
@@ -163,7 +199,7 @@ class DifficultyAdjustmentServiceTest {
     }
 
     @Test
-    void calculateNext_threeConsecutiveIncorrect_resetsToLearning() {
+    void calculateNext_masteredLevel_singleIncorrect_downgradesToProficient() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -173,6 +209,39 @@ class DifficultyAdjustmentServiceTest {
                 .learner(learner)
                 .word(word)
                 .currentLevel(DifficultyLevel.MASTERED)
+                .consecutiveCorrect(0)
+                .consecutiveIncorrect(0)
+                .build();
+
+        when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
+                .thenReturn(Optional.of(progress));
+        when(progressRepository.save(any(DifficultyProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, false);
+
+        assertNotNull(response);
+        assertEquals(DifficultyLevel.PROFICIENT.name(), response.getCurrentLevel());
+        assertEquals(0, response.getConsecutiveCorrect());
+        assertEquals(0, response.getConsecutiveIncorrect());
+
+        verify(auditLogRepository, times(1)).save(argThat(log ->
+                log.getOldLevel() == DifficultyLevel.MASTERED &&
+                log.getNewLevel() == DifficultyLevel.PROFICIENT &&
+                "CONSECUTIVE_INCORRECT".equals(log.getReason())
+        ));
+    }
+
+    @Test
+    void calculateNext_learningLevel_threeIncorrect_offersHints() {
+        UUID learnerId = UUID.randomUUID();
+        UUID wordId = UUID.randomUUID();
+
+        Learner learner = Learner.builder().learnerId(learnerId).build();
+        VocabularyWord word = VocabularyWord.builder().wordId(wordId).build();
+        DifficultyProgress progress = DifficultyProgress.builder()
+                .learner(learner)
+                .word(word)
+                .currentLevel(DifficultyLevel.LEARNING)
                 .consecutiveCorrect(0)
                 .consecutiveIncorrect(2)
                 .build();
@@ -185,17 +254,12 @@ class DifficultyAdjustmentServiceTest {
 
         assertNotNull(response);
         assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
-        assertEquals(0, response.getConsecutiveIncorrect());
-
-        verify(auditLogRepository, times(1)).save(argThat(log -> 
-                log.getOldLevel() == DifficultyLevel.MASTERED &&
-                log.getNewLevel() == DifficultyLevel.LEARNING &&
-                "SEVERE_STRUGGLING_RESET".equals(log.getReason())
-        ));
+        assertEquals(3, response.getConsecutiveIncorrect());
+        assertTrue(response.getShowHints());
     }
 
     @Test
-    void calculateNext_incorrectResult_noDemotion() {
+    void calculateNext_learningLevel_fourIncorrect_triggersShortReintroduction() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -204,9 +268,11 @@ class DifficultyAdjustmentServiceTest {
         DifficultyProgress progress = DifficultyProgress.builder()
                 .learner(learner)
                 .word(word)
-                .currentLevel(DifficultyLevel.PROFICIENT)
-                .consecutiveCorrect(1)
-                .consecutiveIncorrect(0)
+                .currentLevel(DifficultyLevel.LEARNING)
+                .consecutiveCorrect(0)
+                .consecutiveIncorrect(3)
+                .reintroductionCount(0)
+                .needsReintroduction(false)
                 .build();
 
         when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
@@ -216,48 +282,21 @@ class DifficultyAdjustmentServiceTest {
         DifficultyProgressResponse response = service.calculateNext(learnerId, wordId, false);
 
         assertNotNull(response);
-        assertEquals(DifficultyLevel.PROFICIENT.name(), response.getCurrentLevel());
-        assertEquals(0, response.getConsecutiveCorrect()); // reset correct
-        assertEquals(1, response.getConsecutiveIncorrect()); // increment incorrect
-
-        verifyNoInteractions(auditLogRepository);
-    }
-
-    @Test
-    void increment_upgradesLevelDirectly() {
-        UUID learnerId = UUID.randomUUID();
-        UUID wordId = UUID.randomUUID();
-
-        Learner learner = Learner.builder().learnerId(learnerId).build();
-        VocabularyWord word = VocabularyWord.builder().wordId(wordId).build();
-        DifficultyProgress progress = DifficultyProgress.builder()
-                .learner(learner)
-                .word(word)
-                .currentLevel(DifficultyLevel.FAMILIAR)
-                .consecutiveCorrect(1)
-                .consecutiveIncorrect(1)
-                .build();
-
-        when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
-                .thenReturn(Optional.of(progress));
-        when(progressRepository.save(any(DifficultyProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        DifficultyProgressResponse response = service.increment(learnerId, wordId);
-
-        assertNotNull(response);
-        assertEquals(DifficultyLevel.PROFICIENT.name(), response.getCurrentLevel());
-        assertEquals(0, response.getConsecutiveCorrect());
+        assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
+        assertTrue(response.getNeedsReintroduction());
+        assertEquals(1, response.getReintroductionCount());
+        assertNotNull(response.getLastReintroducedAt());
         assertEquals(0, response.getConsecutiveIncorrect());
 
-        verify(auditLogRepository, times(1)).save(argThat(log -> 
-                log.getOldLevel() == DifficultyLevel.FAMILIAR &&
-                log.getNewLevel() == DifficultyLevel.PROFICIENT &&
-                "MANUAL_INCREMENT".equals(log.getReason())
+        verify(auditLogRepository, times(1)).save(argThat(log ->
+                log.getOldLevel() == DifficultyLevel.LEARNING &&
+                log.getNewLevel() == DifficultyLevel.LEARNING &&
+                "SHORT_REINTRODUCTION_TRIGGERED".equals(log.getReason())
         ));
     }
 
     @Test
-    void decrement_downgradesLevelDirectly() {
+    void completeReintroduction_resetsFlagsAndCounters() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -266,22 +305,26 @@ class DifficultyAdjustmentServiceTest {
         DifficultyProgress progress = DifficultyProgress.builder()
                 .learner(learner)
                 .word(word)
-                .currentLevel(DifficultyLevel.FAMILIAR)
+                .currentLevel(DifficultyLevel.LEARNING)
+                .needsReintroduction(true)
+                .reintroductionCount(1)
+                .consecutiveCorrect(0)
+                .consecutiveIncorrect(0)
                 .build();
 
         when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
                 .thenReturn(Optional.of(progress));
         when(progressRepository.save(any(DifficultyProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DifficultyProgressResponse response = service.decrement(learnerId, wordId);
+        DifficultyProgressResponse response = service.completeReintroduction(learnerId, wordId);
 
         assertNotNull(response);
-        assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
+        assertFalse(response.getNeedsReintroduction());
+        assertEquals(0, response.getConsecutiveCorrect());
+        assertEquals(0, response.getConsecutiveIncorrect());
 
-        verify(auditLogRepository, times(1)).save(argThat(log -> 
-                log.getOldLevel() == DifficultyLevel.FAMILIAR &&
-                log.getNewLevel() == DifficultyLevel.LEARNING &&
-                "MANUAL_DECREMENT".equals(log.getReason())
+        verify(auditLogRepository, times(1)).save(argThat(log ->
+                log.getReason().equals("REINTRODUCTION_COMPLETED")
         ));
     }
 }

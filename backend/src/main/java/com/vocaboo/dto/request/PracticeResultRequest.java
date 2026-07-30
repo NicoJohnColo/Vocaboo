@@ -17,4 +17,7 @@ public class PracticeResultRequest {
 
     @NotNull(message = "isCorrect is required")
     private Boolean isCorrect;
+
+    private Integer attemptNumber;
+    private String activityType;
 }

@@ -26,6 +26,7 @@ import 'screens/user_dashboard_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/lesson_score_screen.dart';
 import 'screens/wrong_answers_screen.dart';
+import 'screens/progress_screen.dart';
 
 class _AuthListenable extends ChangeNotifier {
   final AuthProvider _auth;
@@ -240,6 +241,7 @@ class AppRouter {
       GoRoute(path: '/dashboard', builder: (c, s) => const UserDashboardScreen()),
       GoRoute(path: '/settings', builder: (c, s) => const SettingsScreen()),
       GoRoute(path: '/wrong-answers', builder: (c, s) => const WrongAnswersScreen()),
+      GoRoute(path: '/progress', builder: (c, s) => const ProgressScreen()),
     ],
   );
 }

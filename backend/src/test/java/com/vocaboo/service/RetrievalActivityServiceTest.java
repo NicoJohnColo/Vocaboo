@@ -101,14 +101,14 @@ class RetrievalActivityServiceTest {
         // Submit correct answer
         service.submitAnswer(sessionId, wordId, true, null, null);
 
-        verify(practiceSessionService).record(sessionId, wordId, true);
+        verify(practiceSessionService).record(sessionId, wordId, true, null, null);
         verify(difficultyService).calculateNext(learnerId, wordId, true);
         verify(reinforcementEngine).resolve(learnerId, wordId);
 
         // Submit incorrect answer
         service.submitAnswer(sessionId, wordId, false, "pencil", "MULTIPLE_CHOICE");
 
-        verify(practiceSessionService).record(sessionId, wordId, false);
+        verify(practiceSessionService).record(sessionId, wordId, false, "MULTIPLE_CHOICE", null);
         verify(difficultyService).calculateNext(learnerId, wordId, false);
         verify(reinforcementEngine).enqueue(learnerId, wordId);
         verify(wrongAnswerTrackingService).trackWrongAnswer(learnerId, wordId, "pencil", "MULTIPLE_CHOICE");

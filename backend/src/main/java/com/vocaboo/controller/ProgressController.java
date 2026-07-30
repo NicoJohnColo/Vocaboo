@@ -38,7 +38,13 @@ public class ProgressController {
     public ResponseEntity<PracticeResultResponse> recordResult(
             @PathVariable("id") UUID sessionId,
             @Valid @RequestBody PracticeResultRequest request) {
-        return ResponseEntity.ok(practiceSessionService.record(sessionId, request.getWordId(), request.getIsCorrect()));
+        return ResponseEntity.ok(practiceSessionService.record(
+                sessionId,
+                request.getWordId(),
+                request.getIsCorrect(),
+                request.getActivityType(),
+                request.getAttemptNumber()
+        ));
     }
 
     @PostMapping("/practice-sessions/{id}/end")
@@ -49,5 +55,24 @@ public class ProgressController {
     @GetMapping("/learners/{id}/progress")
     public ResponseEntity<LearnerProgressResponse> getProgress(@PathVariable("id") UUID learnerId) {
         return ResponseEntity.ok(practiceSessionService.getProgress(learnerId));
+    }
+
+    @GetMapping("/learners/{id}/progress/lessons")
+    public ResponseEntity<java.util.List<com.vocaboo.dto.response.LearnerLessonProgressResponse>> getLessonProgress(
+            @PathVariable("id") UUID learnerId) {
+        return ResponseEntity.ok(practiceSessionService.getLessonProgress(learnerId));
+    }
+
+    @GetMapping("/learners/{id}/progress/categories")
+    public ResponseEntity<java.util.List<com.vocaboo.dto.response.LearnerCategoryProgressResponse>> getCategoryProgress(
+            @PathVariable("id") UUID learnerId) {
+        return ResponseEntity.ok(practiceSessionService.getCategoryProgress(learnerId));
+    }
+
+    @GetMapping("/learners/{id}/progress/recent-words")
+    public ResponseEntity<java.util.List<com.vocaboo.dto.response.RecentWordProgressResponse>> getRecentWords(
+            @PathVariable("id") UUID learnerId,
+            @RequestParam(value = "limit", defaultValue = "5") int limit) {
+        return ResponseEntity.ok(practiceSessionService.getRecentWords(learnerId, limit));
     }
 }

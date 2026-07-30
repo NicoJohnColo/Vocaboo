@@ -3,21 +3,17 @@ package com.vocaboo.service;
 import com.vocaboo.dto.response.DifficultyProgressResponse;
 import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class DifficultyAdjustmentService {
-
-    public static final int UPGRADE_THRESHOLD = 3;
-    public static final int DOWNGRADE_THRESHOLD = 2;
-    public static final int RESET_THRESHOLD = 3;
 
     private final DifficultyProgressRepository progressRepository;
     private final DifficultyAuditLogRepository auditLogRepository;
@@ -31,6 +27,16 @@ public class DifficultyAdjustmentService {
         return progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId)
                 .map(DifficultyProgress::getCurrentLevel)
                 .orElse(DifficultyLevel.LEARNING);
+    }
+
+    public boolean shouldOfferHints(int consecutiveIncorrect, DifficultyLevel level) {
+        return level == DifficultyLevel.LEARNING && consecutiveIncorrect >= 3;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean shouldOfferHints(UUID learnerId, UUID wordId) {
+        DifficultyProgress progress = getOrCreateProgress(learnerId, wordId);
+        return shouldOfferHints(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
     }
 
     @Transactional
@@ -49,64 +55,84 @@ public class DifficultyAdjustmentService {
             progress.setConsecutiveIncorrect(0);
             progress.setConsecutiveCorrect(progress.getConsecutiveCorrect() + 1);
 
-            if (progress.getConsecutiveCorrect() >= UPGRADE_THRESHOLD) {
-                // Word mastered! Record transaction
-                PointTransaction transaction = PointTransaction.builder()
-                        .learner(progress.getLearner())
-                        .actionType(PointActionType.WORD_MASTERED)
-                        .pointsAwarded(50)
-                        .relatedWord(progress.getWord())
-                        .createdAt(OffsetDateTime.now())
-                        .build();
-                pointTransactionRepository.save(transaction);
-
-                final Learner targetLearner = progress.getLearner();
-                // Update cached totalPoints in LearnerMastery
-                LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(targetLearner.getLearnerId())
-                        .orElseGet(() -> LearnerMastery.builder()
-                                .learner(targetLearner)
-                                .totalSessionsPlayed(0)
-                                .totalCorrectAnswers(0)
-                                .totalQuestionsAnswered(0)
-                                .overallAccuracy(BigDecimal.ZERO)
-                                .wordsMasteredCount(0)
-                                .totalPoints(0)
-                                .createdAt(OffsetDateTime.now())
-                                .build());
-                mastery.setTotalPoints(mastery.getTotalPoints() + 50);
-                masteryRepository.save(mastery);
-
+            int requiredStreak = getRequiredUpgradeStreak(oldLevel);
+            if (progress.getConsecutiveCorrect() >= requiredStreak && oldLevel != DifficultyLevel.MASTERED) {
                 newLevel = getNextHigher(oldLevel);
-                if (newLevel != oldLevel) {
-                    progress.setCurrentLevel(newLevel);
-                    logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_CORRECT");
-                }
+                progress.setCurrentLevel(newLevel);
                 progress.setConsecutiveCorrect(0);
+                logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_CORRECT");
+
+                if (newLevel == DifficultyLevel.MASTERED) {
+                    // Word mastered! Record transaction and award 50 points
+                    PointTransaction transaction = PointTransaction.builder()
+                            .learner(progress.getLearner())
+                            .actionType(PointActionType.WORD_MASTERED)
+                            .pointsAwarded(50)
+                            .relatedWord(progress.getWord())
+                            .createdAt(OffsetDateTime.now())
+                            .build();
+                    pointTransactionRepository.save(transaction);
+
+                    final Learner targetLearner = progress.getLearner();
+                    LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(targetLearner.getLearnerId())
+                            .orElseGet(() -> LearnerMastery.builder()
+                                    .learner(targetLearner)
+                                    .totalSessionsPlayed(0)
+                                    .totalCorrectAnswers(0)
+                                    .totalQuestionsAnswered(0)
+                                    .overallAccuracy(BigDecimal.ZERO)
+                                    .wordsMasteredCount(0)
+                                    .totalPoints(0)
+                                    .masteryLevel("LEARNING")
+                                    .createdAt(OffsetDateTime.now())
+                                    .build());
+                    mastery.setTotalPoints(mastery.getTotalPoints() + 50);
+                    masteryRepository.save(mastery);
+                }
             }
         } else {
             progress.setConsecutiveCorrect(0);
             int newIncorrect = progress.getConsecutiveIncorrect() + 1;
             progress.setConsecutiveIncorrect(newIncorrect);
 
-            if (newIncorrect >= RESET_THRESHOLD) {
-                newLevel = DifficultyLevel.LEARNING;
-                if (newLevel != oldLevel) {
-                    progress.setCurrentLevel(newLevel);
-                    logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "SEVERE_STRUGGLING_RESET");
-                }
-                progress.setConsecutiveIncorrect(0);
-            } else if (newIncorrect >= DOWNGRADE_THRESHOLD) {
+            if (oldLevel == DifficultyLevel.FAMILIAR || oldLevel == DifficultyLevel.PROFICIENT || oldLevel == DifficultyLevel.MASTERED) {
+                // Single error downgrades one level immediately
                 newLevel = getNextLower(oldLevel);
-                if (newLevel != oldLevel) {
-                    progress.setCurrentLevel(newLevel);
-                    logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_INCORRECT");
-                }
+                progress.setCurrentLevel(newLevel);
                 progress.setConsecutiveIncorrect(0);
+                logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_INCORRECT");
+            } else if (oldLevel == DifficultyLevel.LEARNING) {
+                // Floor level
+                if (newIncorrect >= 4) {
+                    progress.setNeedsReintroduction(true);
+                    progress.setReintroductionCount(progress.getReintroductionCount() + 1);
+                    progress.setLastReintroducedAt(OffsetDateTime.now());
+                    progress.setConsecutiveIncorrect(0);
+                    logTransition(progress.getLearner(), progress.getWord(), oldLevel, oldLevel, "SHORT_REINTRODUCTION_TRIGGERED");
+                }
             }
         }
 
         progress.setLastAdjustedAt(OffsetDateTime.now());
         progress.setUpdatedAt(OffsetDateTime.now());
+        progress = progressRepository.save(progress);
+
+        return toProgressResponse(progress);
+    }
+
+    @Transactional
+    public DifficultyProgressResponse completeReintroduction(UUID learnerId, UUID wordId) {
+        DifficultyProgress progress = getOrCreateProgress(learnerId, wordId);
+        DifficultyLevel oldLevel = progress.getCurrentLevel();
+
+        progress.setCurrentLevel(DifficultyLevel.LEARNING);
+        progress.setNeedsReintroduction(false);
+        progress.setConsecutiveCorrect(0);
+        progress.setConsecutiveIncorrect(0);
+        progress.setLastAdjustedAt(OffsetDateTime.now());
+        progress.setUpdatedAt(OffsetDateTime.now());
+
+        logTransition(progress.getLearner(), progress.getWord(), oldLevel, DifficultyLevel.LEARNING, "REINTRODUCTION_COMPLETED");
         progress = progressRepository.save(progress);
 
         return toProgressResponse(progress);
@@ -166,12 +192,27 @@ public class DifficultyAdjustmentService {
                             .currentLevel(DifficultyLevel.LEARNING)
                             .consecutiveCorrect(0)
                             .consecutiveIncorrect(0)
+                            .needsReintroduction(false)
+                            .reintroductionCount(0)
                             .createdAt(OffsetDateTime.now())
                             .updatedAt(OffsetDateTime.now())
                             .build();
 
                     return progressRepository.save(defaultProgress);
                 });
+    }
+
+    private int getRequiredUpgradeStreak(DifficultyLevel level) {
+        switch (level) {
+            case LEARNING:
+                return 1;
+            case FAMILIAR:
+                return 2;
+            case PROFICIENT:
+                return 3;
+            default:
+                return Integer.MAX_VALUE;
+        }
     }
 
     private DifficultyLevel getNextHigher(DifficultyLevel current) {
@@ -215,6 +256,7 @@ public class DifficultyAdjustmentService {
     }
 
     private DifficultyProgressResponse toProgressResponse(DifficultyProgress progress) {
+        boolean showHints = shouldOfferHints(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
         return DifficultyProgressResponse.builder()
                 .progressId(progress.getProgressId())
                 .learnerId(progress.getLearner().getLearnerId())
@@ -222,6 +264,10 @@ public class DifficultyAdjustmentService {
                 .currentLevel(progress.getCurrentLevel().name())
                 .consecutiveCorrect(progress.getConsecutiveCorrect())
                 .consecutiveIncorrect(progress.getConsecutiveIncorrect())
+                .needsReintroduction(progress.getNeedsReintroduction())
+                .reintroductionCount(progress.getReintroductionCount())
+                .lastReintroducedAt(progress.getLastReintroducedAt())
+                .showHints(showHints)
                 .lastAdjustedAt(progress.getLastAdjustedAt())
                 .build();
     }

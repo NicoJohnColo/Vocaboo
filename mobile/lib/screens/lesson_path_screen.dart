@@ -5,6 +5,7 @@ import '../models/lesson_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/local_storage_service.dart';
+import 'package:uuid/uuid.dart';
 import 'mastery_result_screen.dart';
 
 class LessonPathScreen extends StatefulWidget {
@@ -481,7 +482,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
     if (!mounted) return;
 
-    final sessionId = 'review_${lesson.lessonId}_${DateTime.now().millisecondsSinceEpoch}';
+    final sessionId = const Uuid().v4();
 
     // ignore: use_build_context_synchronously
     navContext.push(

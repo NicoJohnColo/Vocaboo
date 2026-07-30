@@ -9,5 +9,8 @@ import java.util.UUID;
 @Repository
 public interface PracticeResultRepository extends JpaRepository<PracticeResult, UUID> {
     List<PracticeResult> findBySessionSessionId(UUID sessionId);
+    List<PracticeResult> findBySessionSessionIdAndWordWordId(UUID sessionId, UUID wordId);
+    List<PracticeResult> findBySessionLearnerLearnerIdAndWordWordId(UUID learnerId, UUID wordId);
     List<PracticeResult> findBySessionSessionIdOrderByRecordedAtAsc(UUID sessionId);
+    void deleteBySessionSessionId(UUID sessionId);
 }

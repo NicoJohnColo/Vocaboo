@@ -223,7 +223,7 @@ class PracticeSessionServiceTest {
 
         verify(masteryRepository, times(1)).save(argThat(mastery -> 
                 mastery.getTotalSessionsPlayed() == 2 &&
-                mastery.getWordsMasteredCount() == 1
+                mastery.getWordsMasteredCount() == 2
         ));
     }
 

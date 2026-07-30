@@ -82,8 +82,31 @@ public class ReviewService {
                 .isCorrect(isCorrect)
                 .createdAt(OffsetDateTime.now())
                 .build();
+        ReviewItem savedItem = reviewItemRepository.save(item);
 
-        return reviewItemRepository.save(item);
+        final Learner targetLearner = session != null ? session.getLearner() : null;
+
+        if (targetLearner != null) {
+            WordPerformance perf = performanceRepository
+                    .findByLearnerLearnerIdAndWordWordId(targetLearner.getLearnerId(), word.getWordId())
+                    .orElseGet(() -> WordPerformance.builder()
+                            .learner(targetLearner)
+                            .word(word)
+                            .build());
+
+            perf.setTotalAttempts(perf.getTotalAttempts() + 1);
+            if (Boolean.TRUE.equals(isCorrect)) {
+                perf.setCorrectCount(perf.getCorrectCount() + 1);
+            } else {
+                perf.setIncorrectCount(perf.getIncorrectCount() + 1);
+            }
+            double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
+            perf.setAccuracy(BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP));
+            perf.setLastPracticedAt(OffsetDateTime.now());
+            performanceRepository.save(perf);
+        }
+
+        return savedItem;
     }
 
     @Transactional

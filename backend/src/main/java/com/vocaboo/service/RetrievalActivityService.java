@@ -126,7 +126,7 @@ public class RetrievalActivityService {
         UUID learnerId = session.getLearner().getLearnerId();
 
         // 1. Log the result via PracticeSessionService
-        practiceSessionService.record(sessionId, wordId, isCorrect);
+        practiceSessionService.record(sessionId, wordId, isCorrect, activityFormat, null);
 
         // 2. Update adaptive difficulty level via DifficultyAdjustmentService
         difficultyService.calculateNext(learnerId, wordId, isCorrect);

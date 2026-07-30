@@ -10,4 +10,5 @@ import java.util.UUID;
 public interface PracticeSessionRepository extends JpaRepository<PracticeSession, UUID> {
     List<PracticeSession> findByLearnerLearnerId(UUID learnerId);
     List<PracticeSession> findByLearnerLearnerIdOrderByCreatedAtDesc(UUID learnerId);
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

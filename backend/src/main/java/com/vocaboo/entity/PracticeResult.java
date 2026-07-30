@@ -30,6 +30,13 @@ public class PracticeResult {
     @Column(name = "is_correct", nullable = false)
     private Boolean isCorrect;
 
+    @Column(name = "attempt_number", nullable = false)
+    @Builder.Default
+    private Integer attemptNumber = 1;
+
+    @Column(name = "activity_type", length = 30)
+    private String activityType;
+
     @Column(name = "points", nullable = false)
     @Builder.Default
     private Integer points = 0;

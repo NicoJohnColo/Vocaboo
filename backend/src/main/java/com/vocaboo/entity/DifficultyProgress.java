@@ -45,6 +45,17 @@ public class DifficultyProgress {
     @Builder.Default
     private Integer consecutiveIncorrect = 0;
 
+    @Column(name = "needs_reintroduction", nullable = false)
+    @Builder.Default
+    private Boolean needsReintroduction = false;
+
+    @Column(name = "reintroduction_count", nullable = false)
+    @Builder.Default
+    private Integer reintroductionCount = 0;
+
+    @Column(name = "last_reintroduced_at")
+    private OffsetDateTime lastReintroducedAt;
+
     @Column(name = "last_adjusted_at", nullable = false)
     @Builder.Default
     private OffsetDateTime lastAdjustedAt = OffsetDateTime.now();

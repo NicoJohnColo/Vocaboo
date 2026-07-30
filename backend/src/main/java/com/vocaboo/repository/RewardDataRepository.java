@@ -12,4 +12,5 @@ public interface RewardDataRepository extends JpaRepository<RewardData, UUID> {
     List<RewardData> findByLearnerLearnerId(UUID learnerId);
     List<RewardData> findByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
     Optional<RewardData> findByLearnerLearnerIdAndLessonLessonIdAndBadgeType(UUID learnerId, UUID lessonId, String badgeType);
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

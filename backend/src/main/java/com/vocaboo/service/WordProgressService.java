@@ -23,6 +23,11 @@ public class WordProgressService {
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final PronunciationAttemptRepository pronunciationAttemptRepository;
     private final LessonRepository lessonRepository;
+    private final SessionSummaryRepository summaryRepository;
+    private final WordPerformanceRepository performanceRepository;
+    private final LearnerMasteryRepository masteryRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
+    private final PracticeResultRepository practiceResultRepository;
 
     @Transactional
     public ProgressResponse updateProgress(UUID sessionId, ProgressRequest request) {
@@ -126,9 +131,107 @@ public class WordProgressService {
             lessonStatus.setCompletedAt(OffsetDateTime.now());
             lessonStatusRepository.save(lessonStatus);
 
+            // Create/update SessionSummary
+            SessionSummary summary = summaryRepository.findBySessionId(session.getSessionId())
+                    .orElseGet(() -> SessionSummary.builder()
+                            .sessionId(session.getSessionId())
+                            .learner(session.getLearner())
+                            .lesson(session.getLesson())
+                            .build());
+
+            int stars = score.compareTo(BigDecimal.valueOf(90)) >= 0 ? 3 : (score.compareTo(BigDecimal.valueOf(70)) >= 0 ? 2 : (score.compareTo(BigDecimal.valueOf(50)) >= 0 ? 1 : 0));
+            int points = score.intValue() * 2;
+
+            summary.setTotalWordsReviewed(totalWordCount);
+            summary.setCorrectPronunciations((int) correctWordsCount);
+            summary.setIncorrectPronunciations(totalWordCount - (int) correctWordsCount);
+            summary.setTotalAttempts(totalWordCount);
+            summary.setAccuracyRate(score);
+            summary.setStarsEarned(stars);
+            summary.setPointsEarned(points);
+            summary.setDemeritPoints(0);
+            summary.setCompletedAt(OffsetDateTime.now());
+            summaryRepository.save(summary);
+
+            // Update WordPerformance
+            for (VocabularyWord word : totalWords) {
+                boolean correct = pronunciationAttemptRepository
+                        .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(session.getSessionId(), word.getWordId(), 3)
+                        .stream().anyMatch(a -> Boolean.TRUE.equals(a.getIsCorrect()));
+                if (!correct) {
+                    correct = pronunciationAttemptRepository
+                            .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(session.getSessionId(), word.getWordId(), 1)
+                            .stream().anyMatch(a -> Boolean.TRUE.equals(a.getIsCorrect()));
+                }
+                if (!correct) {
+                    correct = practiceResultRepository
+                            .findBySessionLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), word.getWordId())
+                            .stream().anyMatch(r -> Boolean.TRUE.equals(r.getIsCorrect()));
+                }
+
+                WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), word.getWordId())
+                        .orElseGet(() -> WordPerformance.builder()
+                                .learner(session.getLearner())
+                                .word(word)
+                                .build());
+
+                perf.setTotalAttempts(perf.getTotalAttempts() + 1);
+                if (correct) {
+                    perf.setCorrectCount(perf.getCorrectCount() + 1);
+                } else {
+                    perf.setIncorrectCount(perf.getIncorrectCount() + 1);
+                }
+                double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
+                perf.setAccuracy(BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP));
+                perf.setLastPracticedAt(OffsetDateTime.now());
+                performanceRepository.save(perf);
+            }
+
+            // Update LearnerMastery
+            LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(session.getLearner().getLearnerId())
+                    .orElseGet(() -> LearnerMastery.builder()
+                            .learner(session.getLearner())
+                            .totalSessionsPlayed(0)
+                            .totalCorrectAnswers(0)
+                            .totalQuestionsAnswered(0)
+                            .overallAccuracy(BigDecimal.ZERO)
+                            .wordsMasteredCount(0)
+                            .totalPoints(0)
+                            .build());
+
+            long completedSessionsCount = summaryRepository.findByLearnerLearnerId(session.getLearner().getLearnerId()).size();
+            mastery.setTotalSessionsPlayed((int) completedSessionsCount);
+            mastery.setTotalQuestionsAnswered(mastery.getTotalQuestionsAnswered() + totalWordCount);
+            mastery.setTotalCorrectAnswers(mastery.getTotalCorrectAnswers() + (int) correctWordsCount);
+
+            if (mastery.getTotalQuestionsAnswered() > 0) {
+                double overallAcc = (double) mastery.getTotalCorrectAnswers() / mastery.getTotalQuestionsAnswered() * 100.0;
+                mastery.setOverallAccuracy(BigDecimal.valueOf(overallAcc).setScale(2, RoundingMode.HALF_UP));
+            }
+
+            List<WordPerformance> allPerfs = performanceRepository.findByLearnerLearnerId(session.getLearner().getLearnerId());
+            long masteredCount = allPerfs.stream().filter(p -> {
+                var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), p.getWord().getWordId());
+                return dpOpt.map(dp -> dp.getCurrentLevel() == DifficultyLevel.MASTERED).orElseGet(() -> p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0);
+            }).count();
+
+            mastery.setWordsMasteredCount((int) masteredCount);
+            mastery.setTotalPoints(mastery.getTotalPoints() + points);
+            mastery.setMasteryLevel(calculateMasteryLevel(mastery.getOverallAccuracy()));
+            masteryRepository.save(mastery);
+
             // Unlock next lesson in category if exists
             unlockNextLesson(session.getLesson(), session.getLearner());
         }
+    }
+
+    private String calculateMasteryLevel(BigDecimal accuracy) {
+        if (accuracy == null) return "LEARNING";
+        double acc = accuracy.doubleValue();
+        if (acc >= 90.0) return "MASTERED";
+        if (acc >= 80.0) return "PROFICIENT";
+        if (acc >= 70.0) return "FAMILIAR";
+        return "LEARNING";
     }
 
     private void unlockNextLesson(Lesson completedLesson, Learner learner) {

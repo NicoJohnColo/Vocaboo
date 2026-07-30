@@ -7,6 +7,7 @@ import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
 import com.vocaboo.entity.LanguageMedium;
 import com.vocaboo.entity.Learner;
+import com.vocaboo.entity.PracticeSession;
 import com.vocaboo.entity.ReviewSession;
 import com.vocaboo.entity.SandboxSession;
 import com.vocaboo.repository.*;
@@ -37,6 +38,14 @@ public class LearnerService {
     private final SandboxSessionRepository sandboxSessionRepository;
     private final SandboxWordRepository sandboxWordRepository;
     private final SandboxWordProgressRepository sandboxWordProgressRepository;
+    private final SessionSummaryRepository summaryRepository;
+    private final PracticeResultRepository practiceResultRepository;
+    private final PracticeSessionRepository practiceSessionRepository;
+    private final WordPerformanceRepository performanceRepository;
+    private final LearnerMasteryRepository masteryRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
+    private final PointTransactionRepository pointTransactionRepository;
+    private final RewardDataRepository rewardDataRepository;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -182,6 +191,19 @@ public class LearnerService {
             reviewItemRepository.deleteBySessionSessionId(rSession.getSessionId());
         }
         reviewSessionRepository.deleteByLearnerLearnerId(learnerId);
+
+        List<PracticeSession> pSessions = practiceSessionRepository.findByLearnerLearnerId(learnerId);
+        for (PracticeSession pSession : pSessions) {
+            practiceResultRepository.deleteBySessionSessionId(pSession.getSessionId());
+        }
+        practiceSessionRepository.deleteByLearnerLearnerId(learnerId);
+
+        summaryRepository.deleteByLearnerLearnerId(learnerId);
+        performanceRepository.deleteByLearnerLearnerId(learnerId);
+        masteryRepository.deleteByLearnerLearnerId(learnerId);
+        difficultyProgressRepository.deleteByLearnerLearnerId(learnerId);
+        pointTransactionRepository.deleteByLearnerLearnerId(learnerId);
+        rewardDataRepository.deleteByLearnerLearnerId(learnerId);
 
         pronunciationAttemptRepository.deleteByLearnerLearnerId(learnerId);
         wordProgressRepository.deleteByLearnerLearnerId(learnerId);

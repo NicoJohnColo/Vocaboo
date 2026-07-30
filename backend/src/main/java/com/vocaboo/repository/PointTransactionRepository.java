@@ -14,4 +14,6 @@ public interface PointTransactionRepository extends JpaRepository<PointTransacti
 
     @Query("SELECT COALESCE(SUM(t.pointsAwarded), 0) FROM PointTransaction t WHERE t.learner.learnerId = :learnerId AND t.createdAt >= :afterDate")
     int sumPointsByLearnerAndDateAfter(@Param("learnerId") UUID learnerId, @Param("afterDate") OffsetDateTime afterDate);
+
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

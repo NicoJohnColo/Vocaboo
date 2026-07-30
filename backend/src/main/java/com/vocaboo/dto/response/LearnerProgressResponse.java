@@ -20,4 +20,5 @@ public class LearnerProgressResponse {
     private Integer wordsMasteredCount;
     private Integer totalPoints;
     private Integer pointsThisWeek;
+    private String masteryLevel;
 }

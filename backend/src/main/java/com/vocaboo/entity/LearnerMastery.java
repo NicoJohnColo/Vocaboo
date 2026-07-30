@@ -44,6 +44,10 @@ public class LearnerMastery {
     @Builder.Default
     private Integer wordsMasteredCount = 0;
 
+    @Column(name = "mastery_level", nullable = false, length = 20)
+    @Builder.Default
+    private String masteryLevel = "LEARNING";
+
     @Column(name = "total_points", nullable = false)
     @Builder.Default
     private Integer totalPoints = 0;

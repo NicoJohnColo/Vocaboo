@@ -16,6 +16,8 @@ public class PracticeResultResponse {
     private UUID sessionId;
     private UUID wordId;
     private Boolean isCorrect;
+    private Integer attemptNumber;
+    private String activityType;
     private Integer points;
     private OffsetDateTime recordedAt;
 }

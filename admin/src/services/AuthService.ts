@@ -83,6 +83,18 @@ export const AuthService = {
       return false;
     }
   },
+
+  async forgotPassword(email: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/api/admin/accounts/request-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Request failed' }));
+      throw new Error(err.error ?? err.message ?? `HTTP ${res.status}`);
+    }
+  },
 };
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {

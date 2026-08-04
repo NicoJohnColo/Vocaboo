@@ -21,7 +21,7 @@ const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
   AuthProvider? _auth;
-  static final String baseUrl = AppConfig.baseUrl;
+  static String get baseUrl => AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
   List<LessonModel> _lessons = [];

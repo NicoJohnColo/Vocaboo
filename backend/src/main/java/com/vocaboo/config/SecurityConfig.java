@@ -41,8 +41,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/learners/register", "/api/v1/learners/login").permitAll()
                 // Public admin login and registration
                 .requestMatchers(HttpMethod.POST, "/api/admin/login", "/api/admin/register").permitAll()
-                // Password reset completion — must be public (user is not logged in when clicking the link)
+                // Password reset — both endpoints must be public (user is not logged in)
                 .requestMatchers(HttpMethod.POST, "/api/admin/accounts/complete-reset").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/admin/accounts/request-reset").permitAll()
                 // Token refresh and logout (learner — bearer token required but role-agnostic)
                 .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
                 // Uploaded asset files — publicly readable (audio & images for mobile app)

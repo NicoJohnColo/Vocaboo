@@ -10,7 +10,7 @@ import '../services/local_storage_service.dart';
 class AuthProvider with ChangeNotifier {
   final _storage = const FlutterSecureStorage();
   
-  static final String baseUrl = AppConfig.baseUrl;
+  static String get baseUrl => AppConfig.baseUrl;
 
   String? _token;
   LearnerModel? _learner;

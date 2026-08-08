@@ -121,6 +121,7 @@ public class LessonService {
                     .lessonType(lesson.getLessonType() != null ? lesson.getLessonType().name() : "REGULAR")
                     .sourceLessonIds(lesson.getSourceLessonIds())
                     .compositeReviewAfterLessonId(lesson.getCompositeReviewAfterLessonId())
+                    .contextParagraph(lesson.getContextParagraph())
                     .build());
 
             previousCompleted = (status == LessonStatus.COMPLETED);
@@ -129,8 +130,9 @@ public class LessonService {
         return responses;
     }
 
-    public List<VocabularyWordResponse> getVocabularyForLesson(UUID lessonId) {
+    public List<VocabularyWordResponse> getVocabularyForLesson(UUID lessonId, String partOfSpeech) {
         return wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId).stream()
+                .filter(word -> partOfSpeech == null || partOfSpeech.equalsIgnoreCase(word.getPartOfSpeech()))
                 .map(word -> VocabularyWordResponse.builder()
                         .wordId(word.getWordId())
                         .englishWord(word.getEnglishWord())
@@ -204,7 +206,7 @@ public class LessonService {
         return responses;
     }
 
-    public List<LessonWordActivityResponse> getLessonActivityForLesson(UUID lessonId) {
+    public List<LessonWordActivityResponse> getLessonActivityForLesson(UUID lessonId, String partOfSpeech) {
         String sql = """
             SELECT
                 vw.word_id,
@@ -239,6 +241,11 @@ public class LessonService {
         List<LessonWordActivityResponse> responses = new ArrayList<>();
 
         for (Map<String, Object> row : rows) {
+            String pos = readString(row, "part_of_speech");
+            if (partOfSpeech != null && !partOfSpeech.equalsIgnoreCase(pos)) {
+                continue;
+            }
+
             responses.add(LessonWordActivityResponse.builder()
                     .wordId((UUID) row.get("word_id"))
                     .lessonId((UUID) row.get("lesson_id"))

@@ -106,6 +106,14 @@ export default function VocabularyListPage() {
             <p className="admin-main__subtitle">
               {lesson?.lesson_title ?? `Lesson ${lessonId?.slice(0, 8)}…`}
             </p>
+            {lesson?.context_paragraph && (
+              <div style={{ marginTop: 12, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                <strong style={{ fontSize: 12, color: '#64748B', textTransform: 'uppercase' }}>Context Paragraph</strong>
+                <p style={{ marginTop: 4, fontSize: 14, color: '#334155', fontStyle: 'italic' }}>
+                  "{lesson.context_paragraph}"
+                </p>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             

@@ -11,6 +11,7 @@ class LessonModel {
   final String? lessonType; // 'REGULAR', 'COMPOSITE_REVIEW'
   final List<String>? sourceLessonIds; // For composite review lessons
   final String? compositeReviewAfterLessonId; // Configurable node insertion position
+  final String? contextParagraph;
 
   LessonModel({
     required this.lessonId,
@@ -25,6 +26,7 @@ class LessonModel {
     this.lessonType,
     this.sourceLessonIds,
     this.compositeReviewAfterLessonId,
+    this.contextParagraph,
   });
 
   factory LessonModel.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class LessonModel {
           ? List<String>.from(json['sourceLessonIds']) 
           : null,
       compositeReviewAfterLessonId: json['compositeReviewAfterLessonId'],
+      contextParagraph: json['contextParagraph'],
     );
   }
 
@@ -60,6 +63,7 @@ class LessonModel {
       'lessonType': lessonType,
       'sourceLessonIds': sourceLessonIds,
       'compositeReviewAfterLessonId': compositeReviewAfterLessonId,
+      'contextParagraph': contextParagraph,
     };
   }
 

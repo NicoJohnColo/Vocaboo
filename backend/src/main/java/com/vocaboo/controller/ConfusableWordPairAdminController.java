@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/admin/lessons/{lessonId}")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
 public class ConfusableWordPairAdminController {
 
     private final ConfusableWordPairRepository pairRepository;

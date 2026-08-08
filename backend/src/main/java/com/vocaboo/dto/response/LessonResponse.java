@@ -25,4 +25,5 @@ public class LessonResponse {
     private String lessonType;
     private List<UUID> sourceLessonIds;
     private UUID compositeReviewAfterLessonId;
+    private String contextParagraph;
 }

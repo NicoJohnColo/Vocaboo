@@ -9,6 +9,7 @@ export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token') ?? '';
+  const role  = searchParams.get('role') ?? 'admin'; // 'admin' | 'teacher'
 
   const [stage, setStage]           = useState<Stage>(token ? 'form' : 'invalid');
   const [newPassword, setNewPassword] = useState('');
@@ -35,7 +36,12 @@ export default function ResetPasswordPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API}/api/admin/accounts/complete-reset`, {
+      // Use the correct endpoint depending on whether it's an admin or teacher token
+      const endpoint = role === 'teacher'
+        ? `${API}/api/teachers/complete-reset`
+        : `${API}/api/admin/accounts/complete-reset`;
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, new_password: newPassword }),

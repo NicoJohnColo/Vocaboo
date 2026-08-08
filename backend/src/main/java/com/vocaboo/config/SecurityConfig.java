@@ -41,6 +41,11 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/learners/register", "/api/v1/learners/login").permitAll()
                 // Public admin login and registration
                 .requestMatchers(HttpMethod.POST, "/api/admin/login", "/api/admin/register").permitAll()
+                // Public teacher self-registration
+                .requestMatchers(HttpMethod.POST, "/api/teachers/register").permitAll()
+                // Public teacher password reset
+                .requestMatchers(HttpMethod.POST, "/api/teachers/request-reset").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/teachers/complete-reset").permitAll()
                 // Password reset — both endpoints must be public (user is not logged in)
                 .requestMatchers(HttpMethod.POST, "/api/admin/accounts/complete-reset").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/admin/accounts/request-reset").permitAll()
@@ -48,8 +53,31 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
                 // Uploaded asset files — publicly readable (audio & images for mobile app)
                 .requestMatchers("/uploads/**").permitAll()
-                // All other /api/admin/** require ROLE_ADMIN
+
+                // ── Admin-only routes (account management, logs, admin logout) ──
+                // Teachers must NOT access these.
+                .requestMatchers("/api/admin/accounts/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/logout-everywhere").hasRole("ADMIN")
+
+                // ── Content routes — both ADMIN and TEACHER can access ──────────
+                // Lessons, categories, vocabulary, dashboard, diagnostics, etc.
+                .requestMatchers("/api/admin/lessons/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/categories/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/vocabulary/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/confusable-pairs/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/difficulty/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/dashboard/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/diagnostics/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/learners/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/logs/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/assets/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/sandbox/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/reviews/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/reports/**").hasAnyRole("ADMIN", "TEACHER")
+
+                // Remaining /api/admin/** (catch-all) — require at least ADMIN
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                 // Everything else requires authentication
                 .anyRequest().authenticated()
             )

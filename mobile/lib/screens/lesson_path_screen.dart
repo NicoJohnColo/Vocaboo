@@ -230,7 +230,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                               if (lesson.status == 'COMPLETED') {
                                                 _showCompletedLessonOptions(lesson);
                                               } else {
-                                                _showFocusPromptAndStartLesson(lesson);
+                                                _showContextParagraphPrompt(lesson);
                                               }
                                             }
                                           : null,
@@ -526,7 +526,68 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
     if (!mounted) return;
 
-    _showFocusPromptAndStartLesson(lesson);
+    _showContextParagraphPrompt(lesson);
+  }
+
+  void _showContextParagraphPrompt(LessonModel lesson) {
+    if (lesson.contextParagraph == null || lesson.contextParagraph!.trim().isEmpty) {
+      _showFocusPromptAndStartLesson(lesson);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'Lesson Context',
+          style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w900, color: Color(0xFF0F172A), fontSize: 20),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'The context paragraph you will be learning throughout the lesson is...',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Color(0xFF64748B), height: 1.5, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Text(
+                '"${lesson.contextParagraph}"',
+                style: const TextStyle(fontSize: 16, color: Color(0xFF334155), fontStyle: FontStyle.italic),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _showFocusPromptAndStartLesson(lesson);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0EA5E9),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showFocusPromptAndStartLesson(LessonModel lesson) {

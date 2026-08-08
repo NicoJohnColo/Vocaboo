@@ -3,6 +3,7 @@ import type { AdminAuthResponse } from '../types';
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 const TOKEN_KEY = 'vocaboo_admin_token';
 const ADMIN_KEY = 'vocaboo_admin_info';
+const ROLE_KEY  = 'vocaboo_user_role';
 
 export const AuthService = {
 
@@ -18,11 +19,13 @@ export const AuthService = {
     }
     const data: AdminAuthResponse = await res.json();
     localStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(ROLE_KEY, data.role ?? 'admin');
     localStorage.setItem(ADMIN_KEY, JSON.stringify({
       adminId: data.adminId,
       username: data.username,
       email: data.email,
       mustChangePassword: !!data.mustChangePassword,
+      role: data.role ?? 'admin',
     }));
     return data;
   },
@@ -51,10 +54,16 @@ export const AuthService = {
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ADMIN_KEY);
+    localStorage.removeItem(ROLE_KEY);
   },
 
   getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
+  },
+
+  /** Returns "admin" or "teacher" based on the stored login response. */
+  getRole(): string {
+    return localStorage.getItem(ROLE_KEY) ?? 'admin';
   },
 
   getAdminInfo(): { adminId: string; username: string; email: string; mustChangePassword?: boolean } | null {
@@ -95,7 +104,34 @@ export const AuthService = {
       throw new Error(err.error ?? err.message ?? `HTTP ${res.status}`);
     }
   },
+
+  /** Teacher self-service forgot password — tries the teacher reset endpoint. */
+  async teacherForgotPassword(email: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/api/teachers/request-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Request failed' }));
+      throw new Error(err.error ?? err.message ?? `HTTP ${res.status}`);
+    }
+  },
+
+  /** Complete a teacher password reset using the token from the email link. */
+  async teacherCompleteReset(token: string, newPassword: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/api/teachers/complete-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Reset failed' }));
+      throw new Error(err.error ?? err.message ?? `HTTP ${res.status}`);
+    }
+  },
 };
+
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = AuthService.getToken();

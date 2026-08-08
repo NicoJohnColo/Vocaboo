@@ -4,6 +4,335 @@ import { AuthService } from '../services/AuthService';
 
 type View = 'login' | 'forgot' | 'forgot-sent';
 
+// ── Role Selection + Teacher Registration Dialog ───────────────────────────
+interface RoleDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onChooseAdmin: () => void;
+}
+
+function RoleSelectionDialog({ isOpen, onClose, onChooseAdmin }: RoleDialogProps) {
+  const [step, setStep] = useState<'role' | 'details'>('role');
+
+  // Teacher form fields
+  const [tUsername, setTUsername] = useState('');
+  const [tEmail, setTEmail] = useState('');
+  const [tFirstName, setTFirstName] = useState('');
+  const [tMiddleName, setTMiddleName] = useState('');
+  const [tLastName, setTLastName] = useState('');
+  const [tGender, setTGender] = useState('');
+  const [tSchool, setTSchool] = useState('');
+  const [tPassword, setTPassword] = useState('');
+  const [tConfirmPassword, setTConfirmPassword] = useState('');
+  const [tShowPass, setTShowPass] = useState(false);
+  const [tError, setTError] = useState('');
+  const [tLoading, setTLoading] = useState(false);
+
+  const resetTeacherForm = () => {
+    setStep('role');
+    setTUsername(''); setTEmail(''); setTFirstName(''); setTMiddleName('');
+    setTLastName(''); setTGender(''); setTSchool('');
+    setTPassword(''); setTConfirmPassword(''); setTError('');
+  };
+
+  const handleClose = () => {
+    resetTeacherForm();
+    onClose();
+  };
+
+  const handleTeacherSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setTError('');
+
+    if (!tUsername.trim()) { setTError('Username is required.'); return; }
+    if (tUsername.trim().length < 3) { setTError('Username must be at least 3 characters.'); return; }
+    if (!tEmail.trim()) { setTError('Email is required.'); return; }
+    if (!tFirstName.trim()) { setTError('First name is required.'); return; }
+    if (!tLastName.trim()) { setTError('Last name is required.'); return; }
+    if (!tPassword) { setTError('Password is required.'); return; }
+    if (tPassword.length < 6) { setTError('Password must be at least 6 characters.'); return; }
+    if (tPassword !== tConfirmPassword) { setTError('Passwords do not match.'); return; }
+
+    setTLoading(true);
+    try {
+      const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+      const res = await fetch(`${BASE_URL}/api/teachers/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: tUsername.trim(),
+          email: tEmail.trim(),
+          password: tPassword,
+          firstname: tFirstName.trim(),
+          middlename: tMiddleName.trim(),
+          lastname: tLastName.trim(),
+          gender: tGender,
+          school: tSchool.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Registration failed' }));
+        throw new Error(err.message ?? `HTTP ${res.status}`);
+      }
+      handleClose();
+      alert('Teacher account created successfully! Please sign in.');
+    } catch (err: unknown) {
+      setTError(err instanceof Error ? err.message : 'Registration failed. Please try again.');
+    } finally {
+      setTLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      id="role-dialog-overlay"
+      className="role-dialog-overlay"
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+    >
+      <div className="role-dialog" role="dialog" aria-modal="true" aria-labelledby="role-dialog-title">
+
+        {/* ── Step 1: Choose Role ── */}
+        {step === 'role' && (
+          <>
+            <div className="role-dialog__header">
+              <div className="role-dialog__icon">👤</div>
+              <h2 id="role-dialog-title" className="role-dialog__title">Are you a…?</h2>
+              <p className="role-dialog__subtitle">Select your role to continue with account creation.</p>
+            </div>
+
+            <div className="role-dialog__options">
+              <button
+                id="role-choose-admin"
+                type="button"
+                className="role-option-btn"
+                onClick={() => { handleClose(); onChooseAdmin(); }}
+              >
+                <span className="role-option-btn__icon">🛡️</span>
+                <span className="role-option-btn__label">Admin</span>
+                <span className="role-option-btn__desc">Full management access</span>
+              </button>
+
+              <button
+                id="role-choose-teacher"
+                type="button"
+                className="role-option-btn"
+                onClick={() => setStep('details')}
+              >
+                <span className="role-option-btn__icon">📚</span>
+                <span className="role-option-btn__label">Teacher</span>
+                <span className="role-option-btn__desc">Classroom management access</span>
+              </button>
+            </div>
+
+            <button
+              id="role-dialog-cancel"
+              type="button"
+              className="role-dialog__cancel"
+              onClick={handleClose}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+
+        {/* ── Step 2: Teacher Details Form ── */}
+        {step === 'details' && (
+          <>
+            <div className="role-dialog__header">
+              <div className="role-dialog__icon">📚</div>
+              <h2 id="role-dialog-title" className="role-dialog__title">Create Teacher Account</h2>
+              <p className="role-dialog__subtitle">Fill in your details to register as a teacher.</p>
+            </div>
+
+            <form className="role-dialog__form" onSubmit={handleTeacherSubmit} noValidate>
+              {tError && (
+                <div className="login-form__error" role="alert" style={{ marginBottom: '12px' }}>
+                  <span>⚠</span> {tError}
+                </div>
+              )}
+
+              {/* Username */}
+              <div className="login-form__field">
+                <label htmlFor="t-username" className="login-form__label">Username</label>
+                <input
+                  id="t-username"
+                  type="text"
+                  className="login-form__input"
+                  value={tUsername}
+                  onChange={e => setTUsername(e.target.value)}
+                  placeholder="teacher_username"
+                  autoComplete="username"
+                  autoFocus
+                  required
+                  disabled={tLoading}
+                />
+              </div>
+
+              {/* Email */}
+              <div className="login-form__field">
+                <label htmlFor="t-email" className="login-form__label">Email Address</label>
+                <input
+                  id="t-email"
+                  type="email"
+                  className="login-form__input"
+                  value={tEmail}
+                  onChange={e => setTEmail(e.target.value)}
+                  placeholder="teacher@school.edu.ph"
+                  autoComplete="email"
+                  required
+                  disabled={tLoading}
+                />
+              </div>
+
+              {/* Name row */}
+              <div className="role-dialog__name-row">
+                <div className="login-form__field">
+                  <label htmlFor="t-firstname" className="login-form__label">First Name</label>
+                  <input
+                    id="t-firstname"
+                    type="text"
+                    className="login-form__input"
+                    value={tFirstName}
+                    onChange={e => setTFirstName(e.target.value)}
+                    placeholder="Juan"
+                    required
+                    disabled={tLoading}
+                  />
+                </div>
+                <div className="login-form__field">
+                  <label htmlFor="t-middlename" className="login-form__label">Middle Name</label>
+                  <input
+                    id="t-middlename"
+                    type="text"
+                    className="login-form__input"
+                    value={tMiddleName}
+                    onChange={e => setTMiddleName(e.target.value)}
+                    placeholder="(Optional)"
+                    disabled={tLoading}
+                  />
+                </div>
+                <div className="login-form__field">
+                  <label htmlFor="t-lastname" className="login-form__label">Last Name</label>
+                  <input
+                    id="t-lastname"
+                    type="text"
+                    className="login-form__input"
+                    value={tLastName}
+                    onChange={e => setTLastName(e.target.value)}
+                    placeholder="Dela Cruz"
+                    required
+                    disabled={tLoading}
+                  />
+                </div>
+              </div>
+
+              {/* Gender */}
+              <div className="login-form__field">
+                <label htmlFor="t-gender" className="login-form__label">Gender</label>
+                <select
+                  id="t-gender"
+                  className="login-form__input"
+                  value={tGender}
+                  onChange={e => setTGender(e.target.value)}
+                  disabled={tLoading}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <option value="">Select gender…</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+              </div>
+
+              {/* School */}
+              <div className="login-form__field">
+                <label htmlFor="t-school" className="login-form__label">School</label>
+                <input
+                  id="t-school"
+                  type="text"
+                  className="login-form__input"
+                  value={tSchool}
+                  onChange={e => setTSchool(e.target.value)}
+                  placeholder="School name"
+                  disabled={tLoading}
+                />
+              </div>
+
+              {/* Password */}
+              <div className="login-form__field">
+                <label htmlFor="t-password" className="login-form__label">Password</label>
+                <div className="login-form__input-wrapper">
+                  <input
+                    id="t-password"
+                    type={tShowPass ? 'text' : 'password'}
+                    className="login-form__input"
+                    value={tPassword}
+                    onChange={e => setTPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    required
+                    disabled={tLoading}
+                  />
+                  <button
+                    type="button"
+                    className="login-form__toggle-pass"
+                    onClick={() => setTShowPass(s => !s)}
+                    tabIndex={-1}
+                    aria-label={tShowPass ? 'Hide password' : 'Show password'}
+                  >
+                    {tShowPass ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm Password */}
+              <div className="login-form__field">
+                <label htmlFor="t-confirm-password" className="login-form__label">Confirm Password</label>
+                <input
+                  id="t-confirm-password"
+                  type={tShowPass ? 'text' : 'password'}
+                  className="login-form__input"
+                  value={tConfirmPassword}
+                  onChange={e => setTConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  required
+                  disabled={tLoading}
+                />
+              </div>
+
+              <div className="role-dialog__actions">
+                <button
+                  id="teacher-back-to-role"
+                  type="button"
+                  className="role-dialog__cancel"
+                  onClick={() => { setStep('role'); setTError(''); }}
+                  disabled={tLoading}
+                >
+                  ← Back
+                </button>
+                <button
+                  id="teacher-register-submit"
+                  type="submit"
+                  className={`login-form__submit ${tLoading ? 'login-form__submit--loading' : ''}`}
+                  disabled={tLoading || !tUsername || !tEmail || !tFirstName || !tLastName || !tPassword || !tConfirmPassword}
+                  style={{ flex: 1 }}
+                >
+                  {tLoading ? <span className="spinner spinner--sm" /> : 'Create Teacher Account'}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Login Page ────────────────────────────────────────────────────────
 export default function LoginPage() {
   const [view, setView] = useState<View>('login');
 
@@ -17,8 +346,12 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
+  // Role dialog state
+  const [showRoleDialog, setShowRoleDialog] = useState(false);
+
   // Forgot password state
   const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotRole, setForgotRole] = useState<'admin' | 'teacher'>('admin');
   const [forgotError, setForgotError] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
@@ -87,7 +420,11 @@ export default function LoginPage() {
     }
     setForgotLoading(true);
     try {
-      await AuthService.forgotPassword(forgotEmail.trim());
+      if (forgotRole === 'teacher') {
+        await AuthService.teacherForgotPassword(forgotEmail.trim());
+      } else {
+        await AuthService.forgotPassword(forgotEmail.trim());
+      }
       setView('forgot-sent');
     } catch (err: unknown) {
       setForgotError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -155,7 +492,7 @@ export default function LoginPage() {
             <div className="login-card__logo">🔑</div>
             <h1 className="login-card__title">Forgot Password</h1>
             <p className="login-card__subtitle">
-              Enter the email linked to your admin account and we'll send a reset link.
+              Enter the email linked to your {forgotRole} account and we'll send a reset link.
             </p>
           </div>
 
@@ -166,6 +503,28 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* Role toggle */}
+            <div className="forgot-role-toggle">
+              <button
+                id="forgot-role-admin"
+                type="button"
+                className={`forgot-role-toggle__btn ${forgotRole === 'admin' ? 'forgot-role-toggle__btn--active' : ''}`}
+                onClick={() => setForgotRole('admin')}
+                disabled={forgotLoading}
+              >
+                🛡️ Admin
+              </button>
+              <button
+                id="forgot-role-teacher"
+                type="button"
+                className={`forgot-role-toggle__btn ${forgotRole === 'teacher' ? 'forgot-role-toggle__btn--active' : ''}`}
+                onClick={() => setForgotRole('teacher')}
+                disabled={forgotLoading}
+              >
+                📚 Teacher
+              </button>
+            </div>
+
             <div className="login-form__field">
               <label htmlFor="forgot-email" className="login-form__label">Email Address</label>
               <input
@@ -174,7 +533,7 @@ export default function LoginPage() {
                 className="login-form__input"
                 value={forgotEmail}
                 onChange={e => setForgotEmail(e.target.value)}
-                placeholder="admin@school.edu.ph"
+                placeholder={forgotRole === 'teacher' ? 'teacher@school.edu.ph' : 'admin@school.edu.ph'}
                 autoComplete="email"
                 autoFocus
                 required
@@ -217,6 +576,18 @@ export default function LoginPage() {
     <div className="login-root">
       {/* Background decoration */}
       <Bg />
+
+      {/* Role Selection Dialog (portal-style overlay) */}
+      <RoleSelectionDialog
+        isOpen={showRoleDialog}
+        onClose={() => setShowRoleDialog(false)}
+        onChooseAdmin={() => {
+          setError('');
+          setPassword('');
+          setConfirmPassword('');
+          setIsRegistering(true);
+        }}
+      />
 
       <main className="login-card">
         {/* Header */}
@@ -361,10 +732,15 @@ export default function LoginPage() {
             type="button"
             className="login-form__switch"
             onClick={() => {
-              setError('');
-              setPassword('');
-              setConfirmPassword('');
-              setIsRegistering(!isRegistering);
+              if (!isRegistering) {
+                // Show role selection before going to create account
+                setShowRoleDialog(true);
+              } else {
+                setError('');
+                setPassword('');
+                setConfirmPassword('');
+                setIsRegistering(false);
+              }
             }}
             disabled={loading}
           >

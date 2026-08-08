@@ -243,10 +243,14 @@ class DiagnosticSummaryScreen extends StatelessWidget {
 
               ElevatedButton(
                 onPressed: () async {
+                  final auth = Provider.of<AuthProvider>(context, listen: false);
                   final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+                  final posFocus = auth.learner?.posFocus;
+                  final filter = (posFocus != null && posFocus != 'ALL') ? posFocus : null;
+                  
                   final activityData = categoryId.isNotEmpty
                       ? await lessonProvider.loadCategoryActivity(categoryId)
-                      : await lessonProvider.loadLessonActivity(lessonId);
+                      : await lessonProvider.loadLessonActivity(lessonId, partOfSpeech: filter);
                   final activityByWordId = {
                     for (final item in activityData)
                       if ((item['wordId'] ?? '').toString().isNotEmpty) item['wordId'].toString(): item,

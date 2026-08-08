@@ -77,15 +77,21 @@ public class AdminEmailService {
     }
 
     /**
-     * Sends a password reset link to an existing admin.
+     * Sends a password reset link to an existing admin or teacher.
      *
-     * @param toEmail    the admin's email address
-     * @param username   the admin's username
+     * @param toEmail    the user's email address
+     * @param username   the user's username (used in greeting)
      * @param resetToken the raw (unhashed) reset token
+     * @param role       "admin" or "teacher" — included in the reset URL so the frontend
+     *                   knows which completion endpoint to call (default: "admin")
      */
     public void sendPasswordResetEmail(String toEmail, String username, String resetToken) {
+        sendPasswordResetEmail(toEmail, username, resetToken, "admin");
+    }
+
+    public void sendPasswordResetEmail(String toEmail, String username, String resetToken, String role) {
         try {
-            String resetUrl = adminBaseUrl + "/reset-password?token=" + resetToken;
+            String resetUrl = adminBaseUrl + "/reset-password?token=" + resetToken + "&role=" + role;
 
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromAddress);
@@ -93,20 +99,20 @@ public class AdminEmailService {
             message.setSubject("[Vocaboo] Password Reset Request");
             message.setText(String.format(
                     "Hello %s,%n%n" +
-                    "A password reset was requested for your Vocaboo admin account.%n%n" +
+                    "A password reset was requested for your Vocaboo %s account.%n%n" +
                     "Click the link below to reset your password (expires in 1 hour):%n" +
                     "%s%n%n" +
                     "If you did not request a password reset, you can safely ignore this email.%n%n" +
                     "— The Vocaboo Team",
-                    username, resetUrl
+                    username, role, resetUrl
             ));
             mailSender.send(message);
-            log.info("Password reset email sent to: {}", toEmail);
+            log.info("Password reset email sent to: {} (role: {})", toEmail, role);
         } catch (Exception e) {
             log.error("Failed to send password reset email to {}: {}", toEmail, e.getMessage());
-            
+
             // Fallback for local development when SMTP is not configured
-            String resetUrl = adminBaseUrl + "/reset-password?token=" + resetToken;
+            String resetUrl = adminBaseUrl + "/reset-password?token=" + resetToken + "&role=" + role;
             log.warn("=====================================================");
             log.warn("FALLBACK EMAIL LOG (SMTP FAILED)");
             log.warn("To: {}", toEmail);

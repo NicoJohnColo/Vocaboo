@@ -31,7 +31,7 @@ import java.util.stream.Stream;
 @RestController
 @RequestMapping("/api/admin/logs")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
 public class AdminLogsController {
 
     private static final String LOG_DIR = System.getProperty("LOG_PATH", "logs");

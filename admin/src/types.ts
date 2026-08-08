@@ -4,6 +4,7 @@ export interface AdminAuthResponse {
   username: string;
   email: string;
   mustChangePassword?: boolean;
+  role?: string; // "admin" | "teacher"
 }
 
 export interface AdminInfo {

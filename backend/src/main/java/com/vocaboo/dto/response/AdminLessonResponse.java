@@ -52,4 +52,7 @@ public class AdminLessonResponse {
     
     @JsonProperty("updated_at")
     private OffsetDateTime updatedAt;
+    
+    @JsonProperty("context_paragraph")
+    private String contextParagraph;
 }

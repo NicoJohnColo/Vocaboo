@@ -190,10 +190,14 @@ class LessonProvider with ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> loadLessonActivity(String lessonId) async {
+  Future<List<Map<String, dynamic>>> loadLessonActivity(String lessonId, {String? partOfSpeech}) async {
     try {
+      final uri = (partOfSpeech != null && partOfSpeech.isNotEmpty && partOfSpeech != 'ALL')
+          ? Uri.parse('$baseUrl/lessons/$lessonId/activity?partOfSpeech=${Uri.encodeComponent(partOfSpeech)}')
+          : Uri.parse('$baseUrl/lessons/$lessonId/activity');
+
       final response = await http.get(
-        Uri.parse('$baseUrl/lessons/$lessonId/activity'),
+        uri,
         headers: _headers,
       );
 

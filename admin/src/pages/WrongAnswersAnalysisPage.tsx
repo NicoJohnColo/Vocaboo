@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import AdminNav from '../components/AdminNav';
-import { apiFetch } from '../services/AuthService';
+import { apiFetch, AuthService } from '../services/AuthService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -170,7 +170,7 @@ export default function WrongAnswersAnalysisPage() {
               Class-wide error patterns and curriculum gaps
             </p>
           </div>
-          <div className="admin-main__badge">ROLE_ADMIN</div>
+          <div className="admin-main__badge">{AuthService.getRole().toUpperCase()}</div>
         </header>
 
         {error && <div className="alert alert--error">{error}</div>}

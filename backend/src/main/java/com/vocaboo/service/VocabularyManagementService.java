@@ -84,6 +84,12 @@ public class VocabularyManagementService {
                 .wordOrder(nextOrder)
                 .isConfusablePairMember(false)
                 .isDeleted(false)
+                .distractorPool(req.getDistractorPool())
+                .fillBlankSentence(req.getFillBlankSentence())
+                .tileSentence(req.getTileSentence())
+                .hintText(req.getHintText())
+                .audioTextCebuano(req.getAudioTextCebuano())
+                .audioTextEnglish(req.getAudioTextEnglish())
                 .build();
 
         VocabularyWord saved = wordRepository.save(word);
@@ -120,6 +126,24 @@ public class VocabularyManagementService {
         }
         if (req.getImageAssetPath() != null) {
             word.setImageAssetPath(req.getImageAssetPath());
+        }
+        if (req.getDistractorPool() != null) {
+            word.setDistractorPool(req.getDistractorPool());
+        }
+        if (req.getFillBlankSentence() != null) {
+            word.setFillBlankSentence(req.getFillBlankSentence());
+        }
+        if (req.getTileSentence() != null) {
+            word.setTileSentence(req.getTileSentence());
+        }
+        if (req.getHintText() != null) {
+            word.setHintText(req.getHintText());
+        }
+        if (req.getAudioTextCebuano() != null) {
+            word.setAudioTextCebuano(req.getAudioTextCebuano());
+        }
+        if (req.getAudioTextEnglish() != null) {
+            word.setAudioTextEnglish(req.getAudioTextEnglish());
         }
 
         return toAdminResponse(wordRepository.save(word));
@@ -184,6 +208,12 @@ public class VocabularyManagementService {
                 .phonologicalTipKey(w.getPhonologicalTipKey())
                 .createdAt(w.getCreatedAt())
                 .updatedAt(w.getUpdatedAt())
+                .distractorPool(w.getDistractorPool())
+                .fillBlankSentence(w.getFillBlankSentence())
+                .tileSentence(w.getTileSentence())
+                .hintText(w.getHintText())
+                .audioTextCebuano(w.getAudioTextCebuano())
+                .audioTextEnglish(w.getAudioTextEnglish())
                 .build();
     }
 }

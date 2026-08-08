@@ -24,7 +24,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/admin/lessons/{lessonId}/vocabulary")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
 public class AdminVocabularyController {
 
     private final VocabularyManagementService vocabularyManagementService;

@@ -143,6 +143,12 @@ public class LessonService {
                         .exampleSentenceEnglish(word.getExampleSentenceEnglish())
                         .exampleSentenceCebuano(word.getExampleSentenceCebuano())
                         .phonologicalTipKey(word.getPhonologicalTipKey())
+                        .distractorPool(word.getDistractorPool())
+                        .fillBlankSentence(word.getFillBlankSentence())
+                        .tileSentence(word.getTileSentence())
+                        .hintText(word.getHintText())
+                        .audioTextCebuano(word.getAudioTextCebuano())
+                        .audioTextEnglish(word.getAudioTextEnglish())
                         .build())
                 .collect(Collectors.toList());
     }

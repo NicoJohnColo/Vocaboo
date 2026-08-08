@@ -23,4 +23,12 @@ public class VocabularyWordResponse {
     private Integer wordOrder;
     private Boolean isConfusablePairMember;
     private String phonologicalTipKey;
+    
+    // Per-word activity content fields
+    private String distractorPool;
+    private String fillBlankSentence;
+    private String tileSentence;
+    private String hintText;
+    private String audioTextCebuano;
+    private String audioTextEnglish;
 }

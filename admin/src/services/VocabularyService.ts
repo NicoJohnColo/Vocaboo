@@ -17,6 +17,13 @@ export interface AdminVocabularyWord {
   is_confusable_pair_member: boolean;
   created_at: string;
   updated_at: string;
+  // Per-word activity content fields
+  distractor_pool: string | null;
+  fill_blank_sentence: string | null;
+  tile_sentence: string | null;
+  hint_text: string | null;
+  audio_text_cebuano: string | null;
+  audio_text_english: string | null;
 }
 
 export interface AddWordPayload {
@@ -28,6 +35,13 @@ export interface AddWordPayload {
   example_sentence_cebuano?: string;
   audio_asset_path?: string;
   image_asset_path?: string;
+  // Per-word activity content fields
+  distractor_pool?: string;
+  fill_blank_sentence?: string;
+  tile_sentence?: string;
+  hint_text?: string;
+  audio_text_cebuano?: string;
+  audio_text_english?: string;
 }
 
 export interface UpdateWordPayload {
@@ -38,6 +52,13 @@ export interface UpdateWordPayload {
   example_sentence_cebuano?: string;
   audio_asset_path?: string;
   image_asset_path?: string;
+  // Per-word activity content fields
+  distractor_pool?: string;
+  fill_blank_sentence?: string;
+  tile_sentence?: string;
+  hint_text?: string;
+  audio_text_cebuano?: string;
+  audio_text_english?: string;
 }
 
 export const VocabularyService = {
@@ -57,6 +78,12 @@ export const VocabularyService = {
       exampleSentenceCebuano: payload.example_sentence_cebuano,
       audioAssetPath: payload.audio_asset_path,
       imageAssetPath: payload.image_asset_path,
+      distractorPool: payload.distractor_pool,
+      fillBlankSentence: payload.fill_blank_sentence,
+      tileSentence: payload.tile_sentence,
+      hintText: payload.hint_text,
+      audioTextCebuano: payload.audio_text_cebuano,
+      audioTextEnglish: payload.audio_text_english,
     };
     const res = await apiFetch(`/api/admin/lessons/${lessonId}/vocabulary`, {
       method: 'POST',
@@ -94,6 +121,12 @@ export const VocabularyService = {
       exampleSentenceCebuano: payload.example_sentence_cebuano,
       audioAssetPath: payload.audio_asset_path,
       imageAssetPath: payload.image_asset_path,
+      distractorPool: payload.distractor_pool,
+      fillBlankSentence: payload.fill_blank_sentence,
+      tileSentence: payload.tile_sentence,
+      hintText: payload.hint_text,
+      audioTextCebuano: payload.audio_text_cebuano,
+      audioTextEnglish: payload.audio_text_english,
     };
     const res = await apiFetch(`/api/admin/lessons/${lessonId}/vocabulary/${wordId}`, {
       method: 'PUT',

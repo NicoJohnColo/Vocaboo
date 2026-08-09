@@ -176,6 +176,7 @@ public class LessonManagementService {
                 .publishedDate(l.getPublishedDate())
                 .createdAt(l.getCreatedAt())
                 .updatedAt(l.getUpdatedAt())
+                .contextParagraph(l.getContextParagraph())
                 .build();
     }
 

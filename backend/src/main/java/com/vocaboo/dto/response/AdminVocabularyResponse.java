@@ -61,4 +61,24 @@ public class AdminVocabularyResponse {
     
     @JsonProperty("updated_at")
     private OffsetDateTime updatedAt;
+
+    // ── Per-word Activity Content Fields ─────────────────────────────────────
+
+    @JsonProperty("distractor_pool")
+    private String distractorPool;
+
+    @JsonProperty("fill_blank_sentence")
+    private String fillBlankSentence;
+
+    @JsonProperty("tile_sentence")
+    private String tileSentence;
+
+    @JsonProperty("hint_text")
+    private String hintText;
+
+    @JsonProperty("audio_text_cebuano")
+    private String audioTextCebuano;
+
+    @JsonProperty("audio_text_english")
+    private String audioTextEnglish;
 }

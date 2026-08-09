@@ -1831,7 +1831,8 @@ a:hover {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding-top: 36px; /* align with select inputs */
+  padding-top: 36px;
+  /* align with select inputs */
   color: var(--color-text-muted);
 }
 
@@ -1867,8 +1868,15 @@ a:hover {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1961,11 +1969,9 @@ a:hover {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(
-    90deg,
-    var(--color-accent-1) 0%,
-    var(--color-accent-2) 100%
-  );
+  background: linear-gradient(90deg,
+      var(--color-accent-1) 0%,
+      var(--color-accent-2) 100%);
 }
 
 .confusable-pair-card:hover {
@@ -2225,4 +2231,234 @@ a:hover {
   color: var(--color-text-muted);
   text-align: center;
   line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Role Selection Dialog & Teacher Registration Form
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Backdrop overlay */
+.role-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fadeIn 0.15s ease;
+  padding: 16px;
+}
+
+/* Dialog card */
+.role-dialog {
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid rgba(124, 77, 255, 0.25);
+  border-radius: var(--radius-xl);
+  padding: 36px 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(124, 77, 255, 0.1);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Dialog header */
+.role-dialog__header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-dialog__icon {
+  font-size: 2.8rem;
+  line-height: 1;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 0 12px rgba(124, 77, 255, 0.4));
+}
+
+.role-dialog__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}
+
+.role-dialog__subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* Role option buttons (side by side) */
+.role-dialog__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.role-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  background: var(--glass-bg);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--color-text);
+  text-align: center;
+}
+
+.role-option-btn:hover {
+  background: var(--glass-hover);
+  border-color: var(--color-accent-1);
+  box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.12), 0 4px 16px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+.role-option-btn:active {
+  transform: translateY(0);
+}
+
+.role-option-btn__icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.role-option-btn__label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.role-option-btn__desc {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+/* Cancel button */
+.role-dialog__cancel {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: center;
+}
+
+.role-dialog__cancel:hover {
+  background: var(--glass-hover);
+  color: var(--color-text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Teacher form inside dialog */
+.role-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 3-column name row */
+.role-dialog__name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .role-dialog__name-row {
+    grid-template-columns: 1fr;
+  }
+
+  .role-dialog__options {
+    grid-template-columns: 1fr;
+  }
+
+  .role-dialog {
+    padding: 24px 20px 20px;
+  }
+}
+
+/* Bottom actions row for teacher form (Back + Submit) */
+.role-dialog__actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.role-dialog__actions .role-dialog__cancel {
+  align-self: auto;
+  white-space: nowrap;
+}
+
+/* ── Forgot Password Role Toggle (Admin / Teacher pill switcher) ──────────── */
+.forgot-role-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.forgot-role-toggle__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--glass-bg);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.forgot-role-toggle__btn:hover:not(:disabled) {
+  background: var(--glass-hover);
+  border-color: rgba(124, 77, 255, 0.4);
+  color: var(--color-text);
+}
+
+.forgot-role-toggle__btn--active {
+  background: rgba(124, 77, 255, 0.15) !important;
+  border-color: var(--color-accent-1) !important;
+  color: var(--color-text) !important;
+  box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.12);
+}
+
+.forgot-role-toggle__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

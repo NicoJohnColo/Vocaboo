@@ -22,7 +22,8 @@ import java.util.*;
 public class BulkImportService {
 
     private static final String CSV_HEADER =
-            "english_word,cebuano_meaning,part_of_speech,grade_level,example_sentence_english,example_sentence_cebuano,audio_path,image_path";
+            "english_word,cebuano_meaning,part_of_speech,grade_level,example_sentence_english,example_sentence_cebuano,audio_path,image_path," +
+            "distractor_pool,fill_blank_sentence,tile_sentence,hint_text,audio_text_cebuano,audio_text_english,context_paragraph";
 
     private final LessonRepository lessonRepository;
     private final VocabularyWordRepository wordRepository;
@@ -58,23 +59,40 @@ public class BulkImportService {
 
                 String[] cols = parseCsvLine(line);
 
-                // Need at least 6 columns
+                // Need at least 6 columns (core fields required; activity fields are optional)
                 if (cols.length < 6) {
-                    errors.add(Map.of("row", String.valueOf(rowIndex), "error", "Too few columns (expected 8, got " + cols.length + ")"));
+                    errors.add(Map.of("row", String.valueOf(rowIndex), "error", "Too few columns (expected at least 6, got " + cols.length + ")"));
                     continue;
                 }
 
-                String englishWord = cols[0].trim();
+                String englishWord    = cols[0].trim();
                 String cebuanoMeaning = cols[1].trim();
-                String partOfSpeech = cols[2].trim();
-                String gradeLevel = cols[3].trim();
-                String exampleEn = cols[4].trim();
-                String exampleCeb = cols.length > 5 ? cols[5].trim() : "";
-                String audioPath = cols.length > 6 ? cols[6].trim() : "";
-                String imagePath = cols.length > 7 ? cols[7].trim() : "";
+                String partOfSpeech   = cols[2].trim();
+                String gradeLevel     = cols[3].trim();
+                String exampleEn      = cols[4].trim();
+                String exampleCeb     = cols.length > 5  ? cols[5].trim()  : "";
+                String audioPath      = cols.length > 6  ? cols[6].trim()  : "";
+                String imagePath      = cols.length > 7  ? cols[7].trim()  : "";
+                // Per-word activity content fields (columns 8-13, all optional)
+                String distractorPool     = cols.length > 8  ? cols[8].trim()  : "";
+                String fillBlankSentence  = cols.length > 9  ? cols[9].trim()  : "";
+                String tileSentence       = cols.length > 10 ? cols[10].trim() : "";
+                String hintText           = cols.length > 11 ? cols[11].trim() : "";
+                String audioTextCebuano   = cols.length > 12 ? cols[12].trim() : "";
+                String audioTextEnglish   = cols.length > 13 ? cols[13].trim() : "";
+                String contextParagraph   = cols.length > 14 ? cols[14].trim() : "";
+
+                // If context_paragraph is provided, we save it to the lesson.
+                // We do this for the first row that provides it.
+                if (!contextParagraph.isBlank() && !dryRun) {
+                    if (lesson.getContextParagraph() == null || lesson.getContextParagraph().isBlank()) {
+                        lesson.setContextParagraph(contextParagraph);
+                        // Save immediately or wait until the end? The end is fine since we call lessonRepository.save(lesson) later.
+                    }
+                }
 
                 // Validate required fields
-                String rowError = validateRow(rowIndex, englishWord, cebuanoMeaning, partOfSpeech, gradeLevel, exampleEn, exampleCeb);
+                String rowError = validateRow(rowIndex, englishWord, cebuanoMeaning, partOfSpeech, gradeLevel, exampleEn, exampleCeb, fillBlankSentence);
                 if (rowError != null) {
                     errors.add(Map.of("row", String.valueOf(rowIndex), "error", rowError));
                     continue;
@@ -100,6 +118,12 @@ public class BulkImportService {
                         .wordOrder(nextOrder++)
                         .isConfusablePairMember(false)
                         .isDeleted(false)
+                        .distractorPool(distractorPool.isBlank() ? null : distractorPool)
+                        .fillBlankSentence(fillBlankSentence.isBlank() ? null : fillBlankSentence)
+                        .tileSentence(tileSentence.isBlank() ? null : tileSentence)
+                        .hintText(hintText.isBlank() ? null : hintText)
+                        .audioTextCebuano(audioTextCebuano.isBlank() ? null : audioTextCebuano)
+                        .audioTextEnglish(audioTextEnglish.isBlank() ? null : audioTextEnglish)
                         .build();
 
                 if (!dryRun) {
@@ -146,18 +170,35 @@ public class BulkImportService {
     /** Returns CSV template as a string */
     public String getCsvTemplate() {
         return CSV_HEADER + "\n" +
-               "Pencil,Lapis,NOUN,GRADE_4,I write with a pencil.,Nagsulat ko og lapis.,,\n" +
-               "Notebook,Kuwaderno,NOUN,GRADE_4,I store notes in my notebook.,Gitipigan ko ang akong mga nota sa kuwaderno.,,\n";
+               "Pencil,Lapis,NOUN,GRADE_4," +
+               "\"I use a pencil to write in class.\",\"Naggamit ko og lapis sa pagsulat sa klase.\",,," +
+               "eraser;ruler;scissors," +
+               "\"I use a {BLANK} to write in class.\"," +
+               "\"I use a pencil to write in class.\"," +
+               "\"Think of a long thin writing tool.\"," +
+               "\"Lapis. Naggamit ko og lapis sa pagsulat sa klase.\"," +
+               "\"Pencil. I use a pencil to write in class.\"," +
+               "\"I prepare my school bag before leaving. I put my pencil and notebook inside it.\"\n" +
+               "Notebook,Kuwaderno,NOUN,GRADE_4," +
+               "\"I write my lessons in a notebook.\",\"Nagsulat ko sa akong kuwaderno.\",,," +
+               "journal;folder;binder," +
+               "\"I write my lessons in a {BLANK}.\"," +
+               "\"I write my lessons in a notebook.\"," +
+               "\"Think of a book you write notes in.\"," +
+               "\"Kuwaderno. Nagsulat ko sa akong kuwaderno.\"," +
+               "\"Notebook. I write my lessons in a notebook.\",\"\"\n";
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────
 
-    private String validateRow(int rowIndex, String english, String cebuano, String pos, String grade, String exampleEn, String exampleCeb) {
+    private String validateRow(int rowIndex, String english, String cebuano, String pos, String grade,
+                                String exampleEn, String exampleCeb, String fillBlankSentence) {
         List<String> rowErrors = new ArrayList<>();
         if (english.isEmpty() || english.length() < 2 || english.length() > 100) rowErrors.add("english_word must be 2-100 chars");
         if (!english.isEmpty() && !dictionaryValidationService.isValidEnglishWord(english)) rowErrors.add("'" + english + "' is not recognized as a valid English word");
         if (cebuano.isEmpty() || cebuano.length() < 2 || cebuano.length() > 200) rowErrors.add("cebuano_meaning must be 2-200 chars");
-        if (!cebuano.isEmpty() && dictionaryValidationService.isValidEnglishWord(cebuano)) rowErrors.add("'" + cebuano + "' appears to be an English word, not Cebuano");
+        // Note: we do NOT check cebuano_meaning against the English dictionary — many valid Cebuano
+        // words (e.g. lapis, bag, nota, hait) coincidentally appear in English dictionaries.
         if (!Set.of("NOUN","VERB","ADJECTIVE").contains(pos)) rowErrors.add("part_of_speech must be NOUN, VERB, or ADJECTIVE");
         if (!Set.of("GRADE_4","GRADE_5","GRADE_6").contains(grade)) rowErrors.add("grade_level must be GRADE_4, GRADE_5, or GRADE_6");
         if (exampleEn.length() < 10 || exampleEn.length() > 500) rowErrors.add("example_sentence_english must be 10-500 chars");
@@ -173,17 +214,18 @@ public class BulkImportService {
             }
         }
 
-        // Validate Cebuano example sentence: meaningful words must NOT be English words
+        // Validate Cebuano example sentence: length only.
+        // We intentionally do NOT scan for English words — many common Cebuano words (nako, lapis,
+        // nota, among, hait, etc.) hit the English dictionary, causing mass false positives.
+        // Code-switching (English words in Cebuano sentences) is also normal in PH classrooms.
         if (!exampleCeb.isEmpty()) {
             if (exampleCeb.length() < 5 || exampleCeb.length() > 500)
                 rowErrors.add("example_sentence_cebuano must be 5-500 chars");
-            List<String> englishInCeb = extractMeaningfulWords(exampleCeb).stream()
-                    .filter(w -> dictionaryValidationService.isValidEnglishWord(w))
-                    .limit(3)
-                    .collect(java.util.stream.Collectors.toList());
-            if (!englishInCeb.isEmpty()) {
-                rowErrors.add("example_sentence_cebuano appears to contain English word(s): " + String.join(", ", englishInCeb));
-            }
+        }
+
+        // Validate fill_blank_sentence: must contain {BLANK} placeholder if provided
+        if (!fillBlankSentence.isEmpty() && !fillBlankSentence.contains("{BLANK}")) {
+            rowErrors.add("fill_blank_sentence must contain the {BLANK} placeholder (e.g. \"I sharpen my {BLANK} before class.\")");
         }
 
         if (rowErrors.isEmpty()) return null;

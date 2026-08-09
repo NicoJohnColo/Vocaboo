@@ -59,6 +59,9 @@ public class Lesson {
     @Column(name = "source_lesson_ids", columnDefinition = "UUID[]")
     private List<UUID> sourceLessonIds;
 
+    @Column(name = "context_paragraph", columnDefinition = "TEXT")
+    private String contextParagraph;
+
     @Column(name = "composite_review_after_lesson_id")
     private UUID compositeReviewAfterLessonId;
 

@@ -53,13 +53,19 @@ export default function VocabularyTable({
                 <th>Example (CEB)</th>
                 <th>Audio</th>
                 <th>Image</th>
+                <th>Distractors</th>
+                <th>Fill Blank</th>
+                <th>Tile Sentence</th>
+                <th>Hint</th>
+                <th>TTS (CEB)</th>
+                <th>TTS (EN)</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {words.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
+                  <td colSpan={17} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
                     No words yet. Click <strong>+ Add Word</strong> or <strong>Bulk Import CSV</strong>.
                   </td>
                 </tr>
@@ -102,6 +108,36 @@ export default function VocabularyTable({
                     {w.image_asset_path
                       ? <span title={w.image_asset_path} className="asset-indicator asset-indicator--ok">🖼️</span>
                       : <span className="asset-indicator asset-indicator--missing">—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 120 }}>
+                    {w.distractor_pool
+                      ? <span title={w.distractor_pool}>{w.distractor_pool}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    {w.fill_blank_sentence
+                      ? <span title={w.fill_blank_sentence} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.fill_blank_sentence}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    {w.tile_sentence
+                      ? <span title={w.tile_sentence} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.tile_sentence}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 120 }}>
+                    {w.hint_text
+                      ? <span title={w.hint_text} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.hint_text}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    {w.audio_text_cebuano
+                      ? <span title={w.audio_text_cebuano} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.audio_text_cebuano}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    {w.audio_text_english
+                      ? <span title={w.audio_text_english} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.audio_text_english}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
                   </td>
                   <td className="actions-cell">
                     <button className="btn btn--sm btn--ghost" onClick={() => onEdit(w)}>✏️</button>

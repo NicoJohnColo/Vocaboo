@@ -14,7 +14,7 @@ export default function FilePreviewWidget({ type, url }: Props) {
         <span>Preview</span>
         <span style={{ color: 'var(--color-success)' }}>✓ Ready</span>
       </div>
-      
+
       {type === 'IMAGE' ? (
         <div style={{ textAlign: 'center' }}>
           <img src={url} alt="Preview" style={{ maxWidth: '100%', maxHeight: 150, borderRadius: 4, objectFit: 'contain' }} />
@@ -22,7 +22,7 @@ export default function FilePreviewWidget({ type, url }: Props) {
       ) : (
         <audio controls src={url} style={{ width: '100%', height: 36, outline: 'none' }} />
       )}
-      
+
       <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'var(--color-text-muted)', wordBreak: 'break-all' }}>
         URL: <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-accent-2)' }}>{url}</a>
       </div>

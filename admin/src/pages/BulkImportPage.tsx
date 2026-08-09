@@ -12,12 +12,23 @@ interface ImportRow {
   example_sentence_cebuano: string;
   audio_path: string;
   image_path: string;
+  // Per-word activity content fields
+  distractor_pool: string;
+  fill_blank_sentence: string;
+  tile_sentence: string;
+  hint_text: string;
+  audio_text_cebuano: string;
+  audio_text_english: string;
   _status?: 'ok' | 'error' | 'duplicate';
   _error?: string;
 }
 
-const CSV_HEADERS = ['english_word', 'cebuano_meaning', 'part_of_speech', 'grade_level',
-  'example_sentence_english', 'example_sentence_cebuano', 'audio_path', 'image_path'];
+const CSV_HEADERS = [
+  'english_word', 'cebuano_meaning', 'part_of_speech', 'grade_level',
+  'example_sentence_english', 'example_sentence_cebuano', 'audio_path', 'image_path',
+  'distractor_pool', 'fill_blank_sentence', 'tile_sentence', 'hint_text',
+  'audio_text_cebuano', 'audio_text_english',
+];
 
 function parseCSV(text: string): ImportRow[] {
   const lines = text.trim().split('\n');
@@ -198,7 +209,7 @@ export default function BulkImportPage() {
                     Choose File
                     <input type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
                   </label>
-                  <p className="dropzone__hint">Format: english_word, cebuano_meaning, part_of_speech, grade_level, example_en, example_ceb, audio_path, image_path</p>
+                  <p className="dropzone__hint">Required: english_word, cebuano_meaning, part_of_speech, grade_level, example_en, example_ceb<br/>Optional: audio_path, image_path, distractor_pool, fill_blank_sentence, tile_sentence, hint_text, audio_text_cebuano, audio_text_english</p>
                 </div>
               )}
             </div>
@@ -220,6 +231,12 @@ export default function BulkImportPage() {
                         <th>Grade</th>
                         <th>Example (EN)</th>
                         <th>Example (CEB)</th>
+                        <th>Distractors</th>
+                        <th>Fill Blank</th>
+                        <th>Tile Sentence</th>
+                        <th>Hint</th>
+                        <th>TTS (CEB)</th>
+                        <th>TTS (EN)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -239,6 +256,20 @@ export default function BulkImportPage() {
                             <td className="text-muted">{row.grade_level?.replace('_', ' ')}</td>
                             <td className="text-muted" style={{ fontSize: '0.8rem' }}>{row.example_sentence_english}</td>
                             <td className="text-muted" style={{ fontSize: '0.8rem' }}>{row.example_sentence_cebuano || <span style={{ opacity: 0.4 }}>—</span>}</td>
+                            <td className="text-muted" style={{ fontSize: '0.8rem' }}>{row.distractor_pool || <span style={{ opacity: 0.4 }}>—</span>}</td>
+                            <td className="text-muted" style={{ fontSize: '0.8rem' }}>{row.fill_blank_sentence || <span style={{ opacity: 0.4 }}>—</span>}</td>
+                            <td className="text-muted" style={{ fontSize: '0.8rem' }}>{row.tile_sentence || <span style={{ opacity: 0.4 }}>—</span>}</td>
+                            <td className="text-muted" style={{ fontSize: '0.8rem' }}>{row.hint_text || <span style={{ opacity: 0.4 }}>—</span>}</td>
+                            <td className="text-muted" style={{ fontSize: '0.8rem', maxWidth: 160 }}>
+                              <span title={row.audio_text_cebuano} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                {row.audio_text_cebuano || <span style={{ opacity: 0.4 }}>—</span>}
+                              </span>
+                            </td>
+                            <td className="text-muted" style={{ fontSize: '0.8rem', maxWidth: 160 }}>
+                              <span title={row.audio_text_english} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                {row.audio_text_english || <span style={{ opacity: 0.4 }}>—</span>}
+                              </span>
+                            </td>
                           </tr>
                         </React.Fragment>
                       ))}

@@ -19,6 +19,32 @@ public class PasswordResetController {
     private final AdminAccountService adminAccountService;
 
     /**
+     * POST /api/admin/accounts/request-reset
+     * Self-service "Forgot Password" — called from the login page.
+     * This endpoint is PUBLIC. Always returns 200 to prevent email enumeration.
+     *
+     * Request: { "email": "..." }
+     */
+    @PostMapping("/request-reset")
+    public ResponseEntity<Map<String, String>> requestPasswordReset(
+            @RequestBody Map<String, String> body) {
+
+        String email = body.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "email is required"));
+        }
+
+        // Always returns 200 — even if the email is not found — to prevent enumeration
+        adminAccountService.requestPasswordReset(email);
+
+        return ResponseEntity.ok(Map.of(
+                "status",  "sent",
+                "message", "If that email is registered, a reset link has been sent."
+        ));
+    }
+
+    /**
      * POST /api/admin/accounts/complete-reset
      * Called from the reset-password page in the admin panel.
      * This endpoint is PUBLIC — the user clicks a link from their email while not logged in.

@@ -55,6 +55,19 @@ class VocabularyWordModel {
 
   factory VocabularyWordModel.fromJson(Map<String, dynamic> json) {
     final sentenceCompletionOptions = _readStringList(json, 'sentenceCompletionOptions');
+    
+    // Parse the distractorPool which comes as a semicolon-separated string from the backend
+    String? mc1 = json['mcDistractor1'];
+    String? mc2 = json['mcDistractor2'];
+    String? mc3 = json['mcDistractor3'];
+    
+    if (json['distractorPool'] != null && json['distractorPool'].toString().isNotEmpty) {
+      final pool = json['distractorPool'].toString().split(';');
+      if (pool.isNotEmpty) mc1 = pool[0].trim();
+      if (pool.length > 1) mc2 = pool[1].trim();
+      if (pool.length > 2) mc3 = pool[2].trim();
+    }
+
     return VocabularyWordModel(
       wordId: json['wordId'] ?? '',
       lessonId: json['lessonId'] ?? '',
@@ -69,9 +82,9 @@ class VocabularyWordModel {
       wordOrder: json['wordOrder'] ?? 1,
       isConfusablePairMember: json['isConfusablePairMember'] ?? false,
       phonologicalTipKey: json['phonologicalTipKey'],
-      mcDistractor1: json['mcDistractor1'],
-      mcDistractor2: json['mcDistractor2'],
-      mcDistractor3: json['mcDistractor3'],
+      mcDistractor1: mc1,
+      mcDistractor2: mc2,
+      mcDistractor3: mc3,
       fitbSentence: _readString(json, 'fitbSentence', 'fillInTheBlankSentence'),
       fitbAnswer: _readString(json, 'fitbAnswer', 'sentenceCompletionAnswer', 'sentenceCompletionBlank'),
       matchingSet: (json['matchingSet'] as List<dynamic>?)

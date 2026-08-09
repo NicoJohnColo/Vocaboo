@@ -21,7 +21,7 @@ const double passingThreshold = ScoringService.passingThreshold;
 
 class LessonProvider with ChangeNotifier {
   AuthProvider? _auth;
-  static final String baseUrl = AppConfig.baseUrl;
+  static String get baseUrl => AppConfig.baseUrl;
 
   List<CategoryModel> _categories = [];
   List<LessonModel> _lessons = [];
@@ -190,10 +190,14 @@ class LessonProvider with ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> loadLessonActivity(String lessonId) async {
+  Future<List<Map<String, dynamic>>> loadLessonActivity(String lessonId, {String? partOfSpeech}) async {
     try {
+      final uri = (partOfSpeech != null && partOfSpeech.isNotEmpty && partOfSpeech != 'ALL')
+          ? Uri.parse('$baseUrl/lessons/$lessonId/activity?partOfSpeech=${Uri.encodeComponent(partOfSpeech)}')
+          : Uri.parse('$baseUrl/lessons/$lessonId/activity');
+
       final response = await http.get(
-        Uri.parse('$baseUrl/lessons/$lessonId/activity'),
+        uri,
         headers: _headers,
       );
 

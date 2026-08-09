@@ -14,4 +14,6 @@ public class AdminAuthResponse {
     private String username;
     private String email;
     private boolean mustChangePassword;
+    /** "admin" or "teacher" — set by the auth service so the frontend can differentiate. */
+    private String role;
 }

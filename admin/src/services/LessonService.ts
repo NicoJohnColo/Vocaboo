@@ -15,6 +15,7 @@ export interface AdminLesson {
   published_date: string | null;
   created_at: string;
   updated_at: string;
+  context_paragraph?: string;
 }
 
 export interface CreateLessonPayload {

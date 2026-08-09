@@ -49,6 +49,7 @@ public class LearnerController {
         private String displayName;
         private String languagePreference;
         private Boolean masteryApplyImmediately;
+        private String posFocus;
     }
 
     @PatchMapping("/preferences")
@@ -58,7 +59,8 @@ public class LearnerController {
                 learnerId, 
                 request.getDisplayName(), 
                 request.getLanguagePreference(), 
-                request.getMasteryApplyImmediately()
+                request.getMasteryApplyImmediately(),
+                request.getPosFocus()
         );
         return ResponseEntity.ok(response);
     }

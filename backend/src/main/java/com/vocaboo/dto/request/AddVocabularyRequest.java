@@ -35,4 +35,24 @@ public class AddVocabularyRequest {
 
     private String audioAssetPath;
     private String imageAssetPath;
+
+    // ── Per-word Activity Content Fields ─────────────────────────────────────
+
+    /** Comma-separated wrong-answer candidates (3-5 same-POS words), e.g. "eraser,ruler,scissors" */
+    private String distractorPool;
+
+    /** Sentence with {BLANK} placeholder, e.g. "I sharpen my {BLANK} before class." */
+    private String fillBlankSentence;
+
+    /** Full correct sentence for Word Tile Arrangement (app scrambles at runtime) */
+    private String tileSentence;
+
+    /** Optional hint shown only at LEARNING difficulty level */
+    private String hintText;
+
+    /** Exact text fed to Cebuano TTS */
+    private String audioTextCebuano;
+
+    /** Exact text fed to English TTS */
+    private String audioTextEnglish;
 }

@@ -88,6 +88,32 @@ public class VocabularyWord {
     @Builder.Default
     private Boolean imageVerified = false;
 
+    // ── Per-word Activity Content Fields ─────────────────────────────────────
+
+    /** Comma-separated wrong-answer candidates (same POS), e.g. "eraser,ruler,scissors" */
+    @Column(name = "distractor_pool", columnDefinition = "TEXT")
+    private String distractorPool;
+
+    /** Sentence with {BLANK} placeholder for Fill-in-the-Blank, e.g. "I sharpen my {BLANK}." */
+    @Column(name = "fill_blank_sentence", columnDefinition = "TEXT")
+    private String fillBlankSentence;
+
+    /** Full correct sentence for Word Tile Arrangement (app scrambles at runtime) */
+    @Column(name = "tile_sentence", columnDefinition = "TEXT")
+    private String tileSentence;
+
+    /** Optional hint shown only at LEARNING difficulty level */
+    @Column(name = "hint_text", columnDefinition = "TEXT")
+    private String hintText;
+
+    /** Exact text fed to Cebuano TTS (distinct from audio_asset_path file path) */
+    @Column(name = "audio_text_cebuano", columnDefinition = "TEXT")
+    private String audioTextCebuano;
+
+    /** Exact text fed to English TTS */
+    @Column(name = "audio_text_english", columnDefinition = "TEXT")
+    private String audioTextEnglish;
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

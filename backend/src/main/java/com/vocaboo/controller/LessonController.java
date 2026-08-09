@@ -37,8 +37,10 @@ public class LessonController {
     }
 
     @GetMapping("/lessons/{id}/vocabulary")
-    public ResponseEntity<List<VocabularyWordResponse>> getVocabulary(@PathVariable("id") UUID lessonId) {
-        return ResponseEntity.ok(lessonService.getVocabularyForLesson(lessonId));
+    public ResponseEntity<List<VocabularyWordResponse>> getVocabulary(
+            @PathVariable("id") UUID lessonId,
+            @RequestParam(value = "partOfSpeech", required = false) String partOfSpeech) {
+        return ResponseEntity.ok(lessonService.getVocabularyForLesson(lessonId, partOfSpeech));
     }
 
     @GetMapping("/categories/{id}/activity")
@@ -47,8 +49,10 @@ public class LessonController {
     }
 
     @GetMapping("/lessons/{id}/activity")
-    public ResponseEntity<List<LessonWordActivityResponse>> getLessonActivity(@PathVariable("id") UUID lessonId) {
-        return ResponseEntity.ok(lessonService.getLessonActivityForLesson(lessonId));
+    public ResponseEntity<List<LessonWordActivityResponse>> getLessonActivity(
+            @PathVariable("id") UUID lessonId,
+            @RequestParam(value = "partOfSpeech", required = false) String partOfSpeech) {
+        return ResponseEntity.ok(lessonService.getLessonActivityForLesson(lessonId, partOfSpeech));
     }
 
     @GetMapping("/lessons/{id}/confusable-pairs")

@@ -121,11 +121,12 @@ public class LearnerService {
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
                 .masteryApplyImmediately(learner.getMasteryApplyImmediately())
+                .posFocus(learner.getPosFocus())
                 .build();
     }
 
     @Transactional
-    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr, Boolean masteryApplyImmediately) {
+    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr, Boolean masteryApplyImmediately, String posFocus) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner profile not found."));
 
@@ -152,6 +153,10 @@ public class LearnerService {
             learner.setMasteryApplyImmediately(masteryApplyImmediately);
         }
 
+        if (posFocus != null && !posFocus.trim().isEmpty()) {
+            learner.setPosFocus(posFocus.trim().toUpperCase());
+        }
+
         learner = learnerRepository.save(learner);
 
         return LearnerResponse.builder()
@@ -161,6 +166,7 @@ public class LearnerService {
                 .languagePreference(learner.getLanguagePreference())
                 .onboardingComplete(learner.getOnboardingComplete())
                 .masteryApplyImmediately(learner.getMasteryApplyImmediately())
+                .posFocus(learner.getPosFocus())
                 .build();
     }
 

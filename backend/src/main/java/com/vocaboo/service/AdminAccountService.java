@@ -116,6 +116,24 @@ public class AdminAccountService {
     }
 
     /**
+     * Self-service "Forgot Password" — called from the public login page.
+     * Looks up the admin by email and sends a reset link if found.
+     * Always returns silently even if the email is not found (to avoid enumeration).
+     */
+    @Transactional
+    public void requestPasswordReset(String email) {
+        adminRepository.findByEmail(email.trim()).ifPresent(admin -> {
+            String rawToken = UUID.randomUUID().toString();
+            admin.setPasswordResetToken(rawToken);
+            admin.setPasswordResetExpiry(OffsetDateTime.now().plusHours(1));
+            adminRepository.save(admin);
+            emailService.sendPasswordResetEmail(admin.getEmail(), admin.getUsername(), rawToken);
+            audit(admin.getAdminId(), "FORGOT_PASSWORD", admin.getAdminId(), "Self-service reset email sent");
+            log.info("Self-service password reset requested for email: {}", email);
+        });
+    }
+
+    /**
      * Completes a password reset using the token from the reset link.
      */
     @Transactional

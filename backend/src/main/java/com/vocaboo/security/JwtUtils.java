@@ -68,6 +68,22 @@ public class JwtUtils {
                 .compact();
     }
 
+    /**
+     * Generates an access token for a teacher with ROLE_TEACHER claim.
+     */
+    public String generateTeacherToken(UUID teacherId, String username) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("username", username);
+        claims.put("role", "ROLE_TEACHER");
+        return Jwts.builder()
+                .subject(teacherId.toString())
+                .claims(claims)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + accessTokenExpirationMs))
+                .signWith(key)
+                .compact();
+    }
+
     public String extractSubject(String token) {
         return extractClaim(token, Claims::getSubject);
     }

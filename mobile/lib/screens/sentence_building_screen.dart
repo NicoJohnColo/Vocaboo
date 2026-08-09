@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import 'cumulative_mixed_review_screen.dart';
 import '../models/vocabulary_word_model.dart';
@@ -185,11 +186,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         }
       } else {
         // Primary backend fetch for non-sandbox
-        fetchedWords = await lessonProvider.loadVocabulary(widget.lessonId);
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        final posFocus = auth.learner?.posFocus;
+        final filter = (posFocus != null && posFocus != 'ALL') ? posFocus : null;
+        
+        fetchedWords = await lessonProvider.loadVocabulary(widget.lessonId, partOfSpeech: filter);
 
         // Fallback 1: try lesson activity endpoint which sometimes contains word-like items
         if (fetchedWords.isEmpty) {
-          final activity = await lessonProvider.loadLessonActivity(widget.lessonId);
+          final activity = await lessonProvider.loadLessonActivity(widget.lessonId, partOfSpeech: filter);
           if (activity.isNotEmpty) {
             fetchedWords = activity.map((m) => VocabularyWordModel.fromJson({
                   'wordId': m['wordId'] ?? m['id'] ?? '',

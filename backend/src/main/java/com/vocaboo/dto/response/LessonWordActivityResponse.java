@@ -41,4 +41,9 @@ public class LessonWordActivityResponse {
     private String sentenceCompletionOption1;
     private String sentenceCompletionOption2;
     private String sentenceCompletionOption3;
+    /** Which activity format this word uses across all 4 difficulty tiers. */
+    private String activityType;
+    private String difficultyLevel; // current learner tier for this word
+    private Boolean showHint;       // true only at LEARNING tier
+    private Integer timeLimitSeconds;
 }

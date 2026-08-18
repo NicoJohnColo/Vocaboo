@@ -22,7 +22,7 @@ public class CreateLessonRequest {
     private String categoryId; // Received as string, parsed to UUID in service
 
     @NotBlank(message = "Grade level is required")
-    @Pattern(regexp = "GRADE_4|GRADE_5|GRADE_6", message = "Grade level must be GRADE_4, GRADE_5, or GRADE_6")
+    @Pattern(regexp = "GRADE_3_4|GRADE_5_6|GRADE_6", message = "Grade level must be GRADE_3_4, GRADE_5_6, or GRADE_6")
     private String gradeLevel;
 
     @Pattern(regexp = "REGULAR|COMPOSITE_REVIEW|", message = "Lesson type must be REGULAR or COMPOSITE_REVIEW")

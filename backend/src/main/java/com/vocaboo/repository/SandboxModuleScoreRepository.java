@@ -12,4 +12,5 @@ import java.util.UUID;
 public interface SandboxModuleScoreRepository extends JpaRepository<SandboxModuleScore, UUID> {
     Optional<SandboxModuleScore> findBySessionSessionIdAndModuleNumber(UUID sessionId, Integer moduleNumber);
     List<SandboxModuleScore> findBySessionSessionId(UUID sessionId);
+    void deleteBySessionSessionId(UUID sessionId);
 }

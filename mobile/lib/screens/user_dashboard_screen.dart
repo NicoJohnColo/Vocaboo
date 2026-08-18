@@ -17,6 +17,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   Future<Map<String, dynamic>?>? _dashboardFuture;
   Future<List<Map<String, dynamic>>>? _badgesFuture;
 
+  String _formatLanguagePreference(String? pref) {
+    if (pref == 'CEBUANO_TO_ENGLISH') return 'Cebuano';
+    if (pref == 'FULL_ENGLISH') return 'English';
+    if (pref == 'CEBUANO_ENGLISH_MIXED') return 'Mixed';
+    return pref ?? 'English';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +106,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
             final averageScore = (dashboard['averageMasteryScore'] as num?)?.toDouble() ?? 0.0;
             final pronunciationAttempts = dashboard['totalPronunciationAttempts'] ?? 0;
             final correctPronunciations = dashboard['correctPronunciationAttempts'] ?? 0;
+            final cumulativeReviewsCompleted = dashboard['cumulativeReviewsCompleted'] as int? ?? 0;
+            final bestCumulativeBadge = dashboard['bestCumulativeBadge'] as String?;
+            final cumulativeHistory = List<Map<String, dynamic>>.from(dashboard['cumulativeReviewHistory'] ?? []);
             final sandboxHistory = List<Map<String, dynamic>>.from(dashboard['sandboxHistory'] ?? []);
 
             return SingleChildScrollView(
@@ -137,7 +147,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Age ${learner?.age ?? '-'} • ${learner?.languagePreference ?? 'FULL_ENGLISH'}',
+                    'Age ${learner?.age ?? '-'} • ${_formatLanguagePreference(learner?.languagePreference)}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
                   ),
@@ -151,11 +161,18 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     ),
                     child: Column(
                       children: [
-                        _buildMetricRow('Lessons completed', '$completedLessons / $totalLessons'),
+                        _buildMetricRow(LocalizationService.translate(pref, 'lessons_completed_metric'), '$completedLessons / $totalLessons'),
                         const SizedBox(height: 12),
-                        _buildMetricRow('Average mastery', '${averageScore.toStringAsFixed(0)}%'),
+                        _buildMetricRow(LocalizationService.translate(pref, 'avg_mastery_metric'), '${averageScore.toStringAsFixed(0)}%'),
                         const SizedBox(height: 12),
-                        _buildMetricRow('Pronunciation correct', '$correctPronunciations / $pronunciationAttempts'),
+                        _buildMetricRow(LocalizationService.translate(pref, 'pronunciation_correct_metric'), '$correctPronunciations / $pronunciationAttempts'),
+                        const SizedBox(height: 12),
+                        _buildMetricRow(
+                          LocalizationService.translate(pref, 'cumulative_reviews_completed'),
+                          bestCumulativeBadge != null
+                              ? '$cumulativeReviewsCompleted · ${LocalizationService.translate(pref, bestCumulativeBadge == 'GOLD' ? 'badge_gold' : bestCumulativeBadge == 'SILVER' ? 'badge_silver' : 'badge_bronze')}'
+                              : '$cumulativeReviewsCompleted',
+                        ),
                       ],
                     ),
                   ),
@@ -192,9 +209,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Lesson Badges',
-                                style: TextStyle(
+                              Text(
+                                LocalizationService.translate(pref, 'lesson_badges'),
+                                style: const TextStyle(
                                   fontFamily: 'Outfit',
                                   fontSize: 16,
                                   fontWeight: FontWeight.w900,
@@ -209,7 +226,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                                   if (perfectGold > 0)
                                     _BadgePill(
                                       emoji: '🏆',
-                                      label: 'Perfect Gold',
+                                      label: LocalizationService.translate(pref, 'badge_perfect_gold'),
                                       count: perfectGold,
                                       color: const Color(0xFFCA8A04),
                                       bg: const Color(0xFFFEF9C3),
@@ -218,7 +235,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                                   if (gold > 0)
                                     _BadgePill(
                                       emoji: '🥇',
-                                      label: 'Gold',
+                                      label: LocalizationService.translate(pref, 'badge_gold'),
                                       count: gold,
                                       color: const Color(0xFFD97706),
                                       bg: const Color(0xFFFFFBEB),
@@ -227,7 +244,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                                   if (silver > 0)
                                     _BadgePill(
                                       emoji: '🥈',
-                                      label: 'Silver',
+                                      label: LocalizationService.translate(pref, 'badge_silver'),
                                       count: silver,
                                       color: const Color(0xFF475569),
                                       bg: const Color(0xFFF1F5F9),
@@ -236,7 +253,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                                   if (bronze > 0)
                                     _BadgePill(
                                       emoji: '🥉',
-                                      label: 'Bronze',
+                                      label: LocalizationService.translate(pref, 'badge_bronze'),
                                       count: bronze,
                                       color: const Color(0xFF92400E),
                                       bg: const Color(0xFFFFF7ED),
@@ -254,15 +271,16 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton(
-                            onPressed: () => GoRouter.of(context).go('/settings'),
+                          onPressed: () => GoRouter.of(context).go('/settings'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
-                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF0F172A),
                             padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             elevation: 0,
                           ),
-                          child: const Text('Edit profile'),
+                          child: const Text('Edit profile', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -307,23 +325,23 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                                 color: Color(0xFF06A6FF), size: 22),
                           ),
                           const SizedBox(width: 14),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'View Full Progress',
-                                  style: TextStyle(
+                                  LocalizationService.translate(pref, 'view_full_progress'),
+                                  style: const TextStyle(
                                     fontFamily: 'Outfit',
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14,
                                     color: Color(0xFF1E40AF),
                                   ),
                                 ),
-                                SizedBox(height: 2),
+                                const SizedBox(height: 2),
                                 Text(
-                                  'Check lesson accuracy, category breakdown & recent words',
-                                  style: TextStyle(
+                                  LocalizationService.translate(pref, 'view_full_progress_sub'),
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     color: Color(0xFF2563EB),
                                   ),
@@ -338,18 +356,25 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Wrong answers shortcut
+                  // Wrong answers shortcut (Consistent White Card)
                   GestureDetector(
                     onTap: () => GoRouter.of(context).push('/wrong-answers'),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFF7ED),
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                            color: const Color(0xFFF97316).withValues(alpha: 0.35),
+                            color: const Color(0xFFE2E8F0),
                             width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: Row(
                         children: [
@@ -357,50 +382,140 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF97316).withValues(alpha: 0.15),
+                              color: const Color(0xFFF97316).withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(Icons.warning_amber_rounded,
                                 color: Color(0xFFF97316), size: 22),
                           ),
                           const SizedBox(width: 14),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Words You Need Help With',
-                                  style: TextStyle(
+                                  LocalizationService.translate(pref, 'words_need_help_title'),
+                                  style: const TextStyle(
                                     fontFamily: 'Outfit',
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14,
-                                    color: Color(0xFF92400E),
+                                    color: Color(0xFF0F172A),
                                   ),
                                 ),
-                                SizedBox(height: 2),
+                                const SizedBox(height: 2),
                                 Text(
-                                  'Review your wrong answers & demerits',
-                                  style: TextStyle(
+                                  LocalizationService.translate(pref, 'words_need_help_subtitle'),
+                                  style: const TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFFC2410C),
+                                    color: Color(0xFF64748B),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFFF97316)),
+                              color: Color(0xFF94A3B8)),
                         ],
                       ),
                     ),
                   ),
-                  const Text(
-                    'Recent sandbox sessions',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  const SizedBox(height: 16),
+
+                  // ── Past Cumulative Review Sessions ───────────────────
+                  Text(
+                    LocalizationService.translate(pref, 'past_cumulative_sessions'),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(height: 12),
+                  if (cumulativeHistory.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Text(LocalizationService.translate(pref, 'no_cumulative_sessions'), style: const TextStyle(color: Color(0xFF64748B))),
+                    )
+                  else ...[
+                    ...cumulativeHistory.take(5).map((session) {
+                      final status = session['sessionStatus'] as String? ?? 'IN_PROGRESS';
+                      final accuracy = (session['accuracyPercent'] as num?)?.toDouble();
+                      final badge = session['badgeAwarded'] as String?;
+                      final points = session['pointsEarned'] as int? ?? 0;
+                      final isAbandoned = status == 'ABANDONED';
+                      final isCompleted = status == 'COMPLETED';
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.02),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: isCompleted
+                                    ? const Color(0xFFEFF6FF)
+                                    : (isAbandoned ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9)),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  isCompleted
+                                      ? (badge == 'GOLD' ? '🥇' : badge == 'SILVER' ? '🥈' : '🥉')
+                                      : (isAbandoned ? '⚠️' : '⏳'),
+                                  style: const TextStyle(fontSize: 22),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    isCompleted
+                                        ? '${LocalizationService.translate(pref, 'this_attempt')}: ${badge != null ? LocalizationService.translate(pref, badge == 'GOLD' ? 'badge_gold' : badge == 'SILVER' ? 'badge_silver' : 'badge_bronze') : 'Completed'}'
+                                        : (isAbandoned ? LocalizationService.translate(pref, 'abandoned') : status),
+                                    style: TextStyle(
+                                      fontFamily: 'Outfit',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: isCompleted ? const Color(0xFF0F172A) : const Color(0xFFEF4444),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    accuracy != null
+                                        ? '${accuracy.toStringAsFixed(0)}% accuracy · +$points pts'
+                                        : (isAbandoned ? 'Session was not finished' : 'In progress'),
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 12),
+                  ],
+
+                  Text(
+                    LocalizationService.translate(pref, 'recent_sandbox_sessions'),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
                   const SizedBox(height: 12),
                   if (sandboxHistory.isEmpty)
-                    const Text('No sandbox sessions yet.', style: TextStyle(color: Color(0xFF64748B)))
+                    Text(LocalizationService.translate(pref, 'no_sandbox_sessions'), style: const TextStyle(color: Color(0xFF64748B)))
                   else
                     ...sandboxHistory.take(3).map((session) {
                       final words = List<String>.from(session['words'] ?? []);
@@ -428,18 +543,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                         ),
                       );
                     }),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF1F5F9),
-                      foregroundColor: const Color(0xFF0F172A),
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                    child: Text(LocalizationService.translate(pref, 'back')),
-                  ),
                 ],
               ),
             );

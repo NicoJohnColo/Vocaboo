@@ -72,6 +72,7 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
       final pair = _findPairForWord(word);
       if (pair != null) {
         final shouldContinue = await _showConfusablePairSheet(pair);
+        if (!mounted) return;
         // If user dismissed the sheet without tapping "Got it", don't advance
         if (shouldContinue != true) return;
       }
@@ -208,7 +209,13 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, color: Color(0xFF0F172A)),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            try {
+              context.pop();
+            } catch (e) {
+              context.go('/home');
+            }
+          },
         ),
         title: Text(
           LocalizationService.translate(pref, 'diagnostic_check'),

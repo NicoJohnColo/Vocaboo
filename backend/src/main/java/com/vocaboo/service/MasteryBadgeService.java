@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -59,7 +60,13 @@ public class MasteryBadgeService {
 
     @Transactional
     public String calculateAndSaveBadge(UUID learnerId, UUID lessonId) {
-        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        Learner learner = learnerRepository.findById(learnerId).orElse(null);
+        String posFocus = learner != null ? learner.getPosFocus() : null;
+
+        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).stream()
+                .filter(w -> posFocus == null || "ALL".equalsIgnoreCase(posFocus) || posFocus.equalsIgnoreCase(w.getPartOfSpeech()))
+                .collect(Collectors.toList());
+
         if (words == null || words.isEmpty()) {
             return calculateAndSaveBadge(learnerId, lessonId, 0.0);
         }

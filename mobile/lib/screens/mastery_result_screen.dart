@@ -9,6 +9,7 @@ import '../services/localization_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/scoring_service.dart';
 import '../widgets/mascot_visual.dart';
+import '../widgets/category_completion_dialog.dart';
 
 class MasteryResultScreen extends StatefulWidget {
   final String sessionId;
@@ -379,7 +380,11 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                   if (passed) {
                     await lessons.fetchDashboardProgress();
                     if (!context.mounted) return;
-                    context.go('/category/$categoryId/lessons');
+                    await CategoryCompletionDialog.show(
+                      context,
+                      categoryName: categoryId,
+                      categoryId: categoryId,
+                    );
                     return;
                   }
 

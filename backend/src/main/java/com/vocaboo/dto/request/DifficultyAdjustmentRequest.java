@@ -12,6 +12,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class DifficultyAdjustmentRequest {
     private UUID learnerId;
-    private Boolean isCorrect;
-    private String action; // e.g. "INCREMENT", "DECREMENT"
+    private Boolean correct;
+    private String action; // e.g. "INCREMENT", "DECREMENT", "DIAGNOSTIC_BOOST", "DIAGNOSTIC_FAIL"
+    private String activityType;
 }

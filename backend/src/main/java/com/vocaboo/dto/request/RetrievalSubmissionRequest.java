@@ -12,7 +12,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class RetrievalSubmissionRequest {
     private UUID wordId;
-    private boolean correct;
+    private Boolean correct;
     private String wrongAnswer;
     private String activityFormat;
 }

@@ -45,6 +45,15 @@ public class WordPerformance {
     @Builder.Default
     private Integer demeritPoints = 0;
 
+    /**
+     * Number of times this word's difficulty tier was downgraded (wrong answer at
+     * FAMILIAR/PROFICIENT/MASTERED). Used with accuracy to compute Gold/Silver/Bronze
+     * word-level performance rating on the score screen.
+     */
+    @Column(name = "tier_drop_count", nullable = false)
+    @Builder.Default
+    private Integer tierDropCount = 0;
+
     @Column(name = "total_attempts", nullable = false)
     @Builder.Default
     private Integer totalAttempts = 0;

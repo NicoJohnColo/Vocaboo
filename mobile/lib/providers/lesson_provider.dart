@@ -322,52 +322,6 @@ class LessonProvider with ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> loadRetrievalQuestions(String sessionId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/retrieval/session/$sessionId/questions'),
-        headers: _headers,
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data);
-      } else if (response.statusCode == 401) {
-        _auth?.logout();
-      } else {
-        debugPrint('Error loading retrieval questions. HTTP ${response.statusCode}: ${response.body}');
-      }
-    } catch (e, stackTrace) {
-      debugPrint('Error loading retrieval questions: $e\n$stackTrace');
-    }
-    return [];
-  }
-
-  Future<void> submitRetrievalAnswer(
-    String sessionId,
-    String wordId,
-    bool isCorrect, {
-    String? wrongAnswer,
-    String? activityFormat,
-  }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/retrieval/session/$sessionId/submit'),
-        headers: _headers,
-        body: json.encode({
-          'wordId': wordId,
-          'correct': isCorrect,
-          if (wrongAnswer != null) 'wrongAnswer': wrongAnswer,
-          if (activityFormat != null) 'activityFormat': activityFormat,
-        }),
-      );
-      if (response.statusCode == 401) {
-        _auth?.logout();
-      }
-    } catch (e) {
-      debugPrint('Error submitting retrieval answer: $e');
-    }
-  }
 
   Future<void> submitPracticeResult(
     String sessionId,
@@ -623,6 +577,7 @@ class LessonProvider with ChangeNotifier {
     int totalCount, {
     bool isSandbox = false,
     String? sessionId,
+    int? timeSeconds,
   }) async {
     final score = ScoringService.computeLessonScore(correctCount, totalCount);
     try {
@@ -637,6 +592,7 @@ class LessonProvider with ChangeNotifier {
               'correctCount': correctCount,
               'totalCount': totalCount,
               'score': score,
+              if (timeSeconds != null) 'timeSeconds': timeSeconds,
             }),
           );
         } else {
@@ -649,6 +605,7 @@ class LessonProvider with ChangeNotifier {
               'correctCount': correctCount,
               'totalCount': totalCount,
               'score': score,
+              if (timeSeconds != null) 'timeSeconds': timeSeconds,
             }),
           );
         }
@@ -682,6 +639,265 @@ class LessonProvider with ChangeNotifier {
       // Don't let local storage failures block the app; just log silently.
       debugPrint('LessonProvider.persistModuleScore: failed to save locally');
     }
+  }
+
+  /// Records partial elapsed active time for a module when exiting/abandoning.
+  Future<void> recordPartialModuleTime(
+    String sessionId,
+    int moduleNumber,
+    int timeSeconds, {
+    String? lessonId,
+  }) async {
+    try {
+      http.post(
+        Uri.parse('$baseUrl/progress/module-time'),
+        headers: _headers,
+        body: json.encode({
+          'sessionId': sessionId,
+          'lessonId': lessonId,
+          'moduleNumber': moduleNumber,
+          'timeSeconds': timeSeconds,
+          'isPartial': true,
+        }),
+      );
+    } catch (e) {
+      debugPrint('LessonProvider.recordPartialModuleTime error: $e');
+    }
+  }
+
+  /// Fetches retrieval practice questions generated for a session.
+  Future<List<Map<String, dynamic>>> loadRetrievalQuestions(String sessionId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/questions'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.loadRetrievalQuestions error: $e');
+    }
+    return [];
+  }
+
+  /// Fetches a dynamic FAMILIAR-tier diagnostic question for a word.
+  Future<Map<String, dynamic>?> loadDiagnosticQuestion(String sessionId, String wordId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/diagnostic-question/$wordId'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.loadDiagnosticQuestion error: $e');
+    }
+    return null;
+  }
+
+  /// Applies diagnostic boost promoting word from LEARNING -> PROFICIENT.
+  Future<void> applyDiagnosticBoost(String wordId, {String? activityType}) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/words/$wordId/difficulty/adjust'),
+        headers: _headers,
+        body: json.encode({
+          'action': 'DIAGNOSTIC_BOOST',
+          if (activityType != null) 'activityType': activityType,
+        }),
+      );
+    } catch (e) {
+      debugPrint('LessonProvider.applyDiagnosticBoost error: $e');
+    }
+  }
+
+  /// Records diagnostic failure audit state.
+  Future<void> recordDiagnosticFail(String wordId, {String? activityType}) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/words/$wordId/difficulty/adjust'),
+        headers: _headers,
+        body: json.encode({
+          'action': 'DIAGNOSTIC_FAIL',
+          if (activityType != null) 'activityType': activityType,
+        }),
+      );
+    } catch (e) {
+      debugPrint('LessonProvider.recordDiagnosticFail error: $e');
+    }
+  }
+
+  /// Submits an answer to the retrieval endpoint.
+  Future<Map<String, dynamic>?> submitRetrievalAnswer(
+    String sessionId,
+    String wordId,
+    bool isCorrect, {
+    String? wrongAnswer,
+    String? activityFormat,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/retrieval/session/$sessionId/submit'),
+        headers: _headers,
+        body: json.encode({
+          'wordId': wordId,
+          'correct': isCorrect,
+          'wrongAnswer': wrongAnswer ?? '',
+          'activityFormat': activityFormat ?? 'MULTIPLE_CHOICE',
+        }),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.submitRetrievalAnswer error: $e');
+    }
+    return null;
+  }
+
+  /// Acknowledges reintroduction for a word.
+  Future<void> acknowledgeReintroduction(String wordId) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/words/$wordId/reintroduction/acknowledge'),
+        headers: _headers,
+      );
+    } catch (e) {
+      debugPrint('LessonProvider.acknowledgeReintroduction error: $e');
+    }
+  }
+
+  /// Checks whether all words in a lesson are MASTERED.
+  Future<Map<String, dynamic>?> checkLessonMasteryStatus(String lessonId, {int moduleNumber = 2}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/lessons/$lessonId/mastery-status?moduleNumber=$moduleNumber'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.checkLessonMasteryStatus error: $e');
+    }
+    return null;
+  }
+
+  /// Submits difficulty result with activity type.
+  Future<Map<String, dynamic>?> submitDifficultyResult(String wordId, bool isCorrect, {String? activityType, int moduleNumber = 2}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/words/$wordId/difficulty/adjust').replace(
+        queryParameters: {
+          'moduleNumber': moduleNumber.toString(),
+        },
+      );
+      final response = await http.post(
+        uri,
+        headers: _headers,
+        body: json.encode({
+          'isCorrect': isCorrect,
+          if (activityType != null) 'activityType': activityType,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.submitDifficultyResult error: $e');
+    }
+    return null;
+  }
+
+  /// Loads a single retrieval question for a word.
+  Future<Map<String, dynamic>?> loadSingleRetrievalQuestion(String sessionId, String wordId, {String? format}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/retrieval/session/$sessionId/question/$wordId').replace(
+        queryParameters: {
+          if (format != null && format.isNotEmpty) 'format': format,
+        },
+      );
+      final response = await http.get(uri, headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.loadSingleRetrievalQuestion error: $e');
+    }
+    return null;
+  }
+
+  /// Fetches leaderboard for a given time range.
+  Future<List<Map<String, dynamic>>> fetchLeaderboard(String range) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/leaderboard?range=$range'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLeaderboard error: $e');
+    }
+    return [];
+  }
+
+  /// Loads word difficulty map for a lesson.
+  Future<Map<String, String>> loadWordDifficulties(String lessonId, {int? moduleNumber}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/lessons/$lessonId/word-difficulties').replace(
+        queryParameters: {
+          if (moduleNumber != null) 'moduleNumber': moduleNumber.toString(),
+        },
+      );
+      final response = await http.get(uri, headers: _headers);
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        return data.map((k, v) => MapEntry(k, v.toString()));
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.loadWordDifficulties error: $e');
+    }
+    return {};
+  }
+
+  /// Fetches word mastery summary for a lesson score screen.
+  Future<List<Map<String, dynamic>>> fetchWordMasterySummary(String lessonId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/lessons/$lessonId/word-mastery-summary'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = json.decode(response.body);
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchWordMasterySummary error: $e');
+    }
+    return [];
   }
 
   Future<Map<String, dynamic>?> generateSandbox({required String customWord}) async {
@@ -887,12 +1103,18 @@ class LessonProvider with ChangeNotifier {
         Uri.parse('$baseUrl/learners/reset-progress'),
         headers: _headers,
       );
+      
+      debugPrint('Reset progress response status: ${response.statusCode}');
+      debugPrint('Reset progress response body: ${response.body}');
+      
       if (response.statusCode == 401) {
         _auth?.logout();
+      } else if (response.statusCode != 204 && response.statusCode != 200) {
+        throw Exception('Failed to reset progress: ${response.statusCode}');
       }
-    // Catch any errors silently; can log if needed
     } catch (e) {
       debugPrint('LessonProvider.resetProgress error: $e');
+      rethrow;
     }
 
   }

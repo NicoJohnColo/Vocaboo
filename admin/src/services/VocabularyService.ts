@@ -24,6 +24,7 @@ export interface AdminVocabularyWord {
   hint_text: string | null;
   audio_text_cebuano: string | null;
   audio_text_english: string | null;
+  eligible_activity_types: string;
 }
 
 export interface AddWordPayload {
@@ -42,6 +43,7 @@ export interface AddWordPayload {
   hint_text?: string;
   audio_text_cebuano?: string;
   audio_text_english?: string;
+  eligible_activity_types?: string;
 }
 
 export interface UpdateWordPayload {
@@ -162,7 +164,7 @@ export const VocabularyService = {
     const token = localStorage.getItem('vocaboo_admin_token');
     const formData = new FormData();
     formData.append('file', file);
-    const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+    const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8081';
     const url = `${BASE_URL}/api/admin/lessons/${lessonId}/vocabulary/bulk-import${options?.dryRun ? '?dryRun=true' : ''}`;
     const res = await fetch(url, {
       method: 'POST',

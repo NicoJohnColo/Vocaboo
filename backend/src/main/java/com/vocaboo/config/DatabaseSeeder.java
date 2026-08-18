@@ -171,23 +171,11 @@ public class DatabaseSeeder implements CommandLineRunner {
         }
 
         try {
-            // Unconditionally run V2 to ensure all vocabulary words are seeded (uses ON CONFLICT DO NOTHING)
-            ResourceDatabasePopulator contentPopulator = new ResourceDatabasePopulator();
-            contentPopulator.addScript(new ClassPathResource("V2__seed_content.sql"));
-            contentPopulator.execute(dataSource);
-            System.out.println("Database content seeding completed (ON CONFLICT DO NOTHING).");
+            // Remove hardcoded lessons from V2
+            jdbcTemplate.execute("DELETE FROM vocabulary_categories WHERE category_id::text LIKE 'a1000000-%'");
+            System.out.println("Removed all hardcoded categories and lessons.");
         } catch (Exception e) {
-            System.err.println("Failed to seed database content: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        try {
-            ResourceDatabasePopulator activityPopulator = new ResourceDatabasePopulator();
-            activityPopulator.addScript(new ClassPathResource("V3__seed_word_activity_data.sql"));
-            activityPopulator.execute(dataSource);
-            System.out.println("Database word activity data seeding completed.");
-        } catch (Exception e) {
-            System.err.println("Failed to seed word activity data: " + e.getMessage());
+            System.err.println("Failed to remove hardcoded categories: " + e.getMessage());
             e.printStackTrace();
         }
     }

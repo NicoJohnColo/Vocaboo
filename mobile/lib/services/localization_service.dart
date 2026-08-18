@@ -48,6 +48,27 @@ class LocalizationService {
       'your_categories': 'Imong mga Kategoriya',
       'logout': 'Gawas',
       'sandbox_mode': 'Sandbox Mode',
+      'sandbox_desc': 'Pag-practice og mga custom nga pulong ug topiko',
+      
+      // Dashboard Metrics
+      'lessons_completed_metric': 'Mga Leksyon Nahuman',
+      'avg_mastery_metric': 'Average nga Mastery',
+      'pronunciation_correct_metric': 'Sakto nga Paglitok',
+      'cumulative_reviews_completed': 'Cumulative Reviews Nahuman',
+      'view_full_progress': 'Tan-awa ang Full Progress',
+      'view_full_progress_sub': 'Tan-awa ang imong detalyado nga stats',
+      'words_need_help_title': 'Mga Pulong nga Nanginahanglan Tabang',
+      'words_need_help_subtitle': 'I-practice ang mga pulong nga lisod kanimo',
+      'past_cumulative_sessions': 'Mga Past Cumulative Sessions',
+      'no_cumulative_sessions': 'Wala pay cumulative sessions',
+      'recent_sandbox_sessions': 'Mga Recent Sandbox Sessions',
+      'no_sandbox_sessions': 'Wala pay sandbox sessions',
+      'badge_gold': 'GOLD',
+      'badge_silver': 'SILVER',
+      'badge_bronze': 'BRONZE',
+      
+      // Settings
+      'settings': 'MGA SETTINGS',
 
       // Lesson Path Screen
       'lessons': 'Mga Leksyon',
@@ -76,6 +97,17 @@ class LocalizationService {
       'english_example': 'EKSAMPUL SA ININGLES',
       'cebuano_translation': 'HUBAD SA SINUGBOANON',
       'how_to_pronounce': 'UNSAON PAGLITOK',
+      
+      // Sentence Building Screen
+      'prompt_sentence_select': 'Pilia ang tambal nga husto sa blangko.',
+      'instruction_sentence_select': 'Pilia ang pulong nga nagpuno sa blangko.',
+      'prompt_sentence_build': 'Paghimo og tambal pinaagi sa pagdrag sa mga pulong.',
+      'instruction_sentence_drag': 'Drag ang mga pulong sa paghimo sa tambal.',
+      'prompt_sentence_type': 'Isulat ang pulong nga nagpuno sa blangko.',
+      'instruction_sentence_type': 'Isulat ang tambal nga husto.',
+      'prompt_sentence_review': 'Rebyuha ang imong mga tambal.',
+      'lesson_context_title': 'Lesson Context',
+      'lesson_context_desc': 'Basaha ang istorya aron masabtan ang konteksto sa mga pulong.',
       'mic_prompt_idle': 'I-tap ang mikropono ug isulti ang pulong.',
       'mic_prompt_recording': 'Naminaw... Isulti na!',
       'tap_to_stop': 'I-TAP ARON MOHUNONG',
@@ -119,7 +151,7 @@ class LocalizationService {
       'sandbox_mode_desc': 'Pag-practice og mga custom nga pulong ug topiko',
       'app_preferences_section': 'KAGUSTUHAN SA APP',
       'language_preference': 'Gipalabing Pinulongan',
-      'cebuano_to_english': 'Cebuano ngadto sa Ingles',
+      'cebuano_to_english': 'Cebuano',
       'cebuano_to_english_subtitle': 'Naghubad sa mga buton sa interface, settings, ug home page.',
       'full_english': 'Full English',
       'full_english_subtitle': 'Nagpabilin sa mga buton, settings, ug home page sa Iningles lang.',
@@ -129,15 +161,20 @@ class LocalizationService {
       'pin_changed': 'Malampuson nga nabag-o ang PIN.',
       'profile_updated': 'Malampuson nga naupdate ang profile.',
       'reset_progress': 'I-RESET ANG PAUGMAD',
-      'progress_reset': 'Na-reset na ang imong paugmad.',
+      'progress_reset': 'Na-reset na ang imong paugmad, score, history, ug points.',
       'confirm_reset_title': 'I-reset ang Paugmad?',
-      'confirm_reset_body': 'Mawala ang tanan nimong paugmad. Dili kini mabawi.',
+      'confirm_reset_body': 'Mawala ang tanan nimong paugmad, score, history, ug points. Dili kini mabawi.',
       'cancel': 'KANSELAHON',
       'confirm': 'KUMPIRMAHON',
       'pin_mismatch': 'Ang bag-ong PIN ug kumpirmasyon dili magkatugma.',
       'pin_wrong': 'Sayop ang kasamtangang PIN.',
       'name_empty': 'Ang ngalan dili mahimong blangko.',
       'age_invalid': 'Ang edad kinahanglan tali sa 9 ug 12.',
+      
+      // Activity Buttons
+      'true': 'TINUOD',
+      'false': 'SAYOP',
+      'check': 'CHECK',
     },
     'CEBUANO_ENGLISH_MIXED': {
       // Welcome Screen
@@ -186,6 +223,27 @@ class LocalizationService {
       'your_categories': 'Your Categories / Kategoriya',
       'logout': 'Logout',
       'sandbox_mode': 'Sandbox Mode',
+      'sandbox_desc': 'Pag-practice og mga custom nga pulong ug topiko / Practice custom words and topics',
+      
+      // Dashboard Metrics
+      'lessons_completed_metric': 'Lessons Completed / Mga Leksyon Nahuman',
+      'avg_mastery_metric': 'Average Mastery / Average nga Mastery',
+      'pronunciation_correct_metric': 'Correct Pronunciation / Sakto nga Paglitok',
+      'cumulative_reviews_completed': 'Cumulative Reviews Completed / Cumulative Reviews Nahuman',
+      'view_full_progress': 'View Full Progress / Tan-awa ang Full Progress',
+      'view_full_progress_sub': 'View your detailed stats / Tan-awa ang imong detalyado nga stats',
+      'words_need_help_title': 'Words Need Help / Mga Pulong nga Nanginahanglan Tabang',
+      'words_need_help_subtitle': 'Practice words you find difficult / I-practice ang mga pulong nga lisod kanimo',
+      'past_cumulative_sessions': 'Past Cumulative Sessions / Mga Past Cumulative Sessions',
+      'no_cumulative_sessions': 'No cumulative sessions yet / Wala pay cumulative sessions',
+      'recent_sandbox_sessions': 'Recent Sandbox Sessions / Mga Recent Sandbox Sessions',
+      'no_sandbox_sessions': 'No sandbox sessions yet / Wala pay sandbox sessions',
+      'badge_gold': 'GOLD',
+      'badge_silver': 'SILVER',
+      'badge_bronze': 'BRONZE',
+      
+      // Settings
+      'settings': 'SETTINGS / MGA SETTINGS',
 
       // Lesson Path Screen
       'lessons': 'Lessons / Leksyon',
@@ -226,6 +284,17 @@ class LocalizationService {
       'got_it': 'GOT IT / NAKUHA NAKO',
       'practice_pronunciation': 'PRACTICE PRONUNCIATION',
       'continue': 'CONTINUE / PADAYON',
+      
+      // Sentence Building Screen
+      'prompt_sentence_select': 'Select the correct answer for the blank.',
+      'instruction_sentence_select': 'Choose the word that fills the blank.',
+      'prompt_sentence_build': 'Build a sentence by dragging words.',
+      'instruction_sentence_drag': 'Drag words to build the sentence.',
+      'prompt_sentence_type': 'Type the word that fills the blank.',
+      'instruction_sentence_type': 'Type the correct sentence.',
+      'prompt_sentence_review': 'Review your sentences.',
+      'lesson_context_title': 'Lesson Context',
+      'lesson_context_desc': 'Read the story to understand the context of the words.',
 
       // Round One Completed Screen
       'lesson_completed': 'Lesson Completed!',
@@ -255,9 +324,10 @@ class LocalizationService {
       'progress_summary': 'PROGRESS SUMMARY',
       'progress_summary_desc': 'View stats, badges, and history',
       'sandbox_mode_desc': 'Practice custom words and topics',
+      
       'app_preferences_section': 'APP PREFERENCES / KAGUSTUHAN',
       'language_preference': 'Language Preference / Gipalabing Pinulongan',
-      'cebuano_to_english': 'Cebuano to English / Cebuano ngadto sa Ingles',
+      'cebuano_to_english': 'Cebuano',
       'cebuano_to_english_subtitle': 'Translates interface buttons, settings, and home page.',
       'full_english': 'Full English',
       'full_english_subtitle': 'Keeps buttons, settings, and home page in English only.',
@@ -267,15 +337,20 @@ class LocalizationService {
       'pin_changed': 'PIN changed successfully.',
       'profile_updated': 'Profile updated successfully.',
       'reset_progress': 'RESET PROGRESS / I-RESET',
-      'progress_reset': 'Your progress has been reset. / Na-reset na.',
+      'progress_reset': 'Your progress, score, history, and points have been reset. / Na-reset na.',
       'confirm_reset_title': 'Reset Progress?',
-      'confirm_reset_body': 'All your progress will be lost. This cannot be undone.',
+      'confirm_reset_body': 'All your progress, score, history, and points will be lost. This cannot be undone.',
       'cancel': 'CANCEL / KANSELAHON',
       'confirm': 'CONFIRM / KUMPIRMAHON',
       'pin_mismatch': 'New PIN and confirmation do not match.',
       'pin_wrong': 'Current PIN is incorrect.',
       'name_empty': 'Name cannot be empty.',
       'age_invalid': 'Age must be between 9 and 12.',
+      
+      // Activity Buttons
+      'true': 'TRUE / TINUOD',
+      'false': 'FALSE / SAYOP',
+      'check': 'CHECK',
     },
     'FULL_ENGLISH': {
       // Welcome Screen
@@ -324,6 +399,27 @@ class LocalizationService {
       'your_categories': 'Your Categories',
       'logout': 'Logout',
       'sandbox_mode': 'Sandbox Mode',
+      'sandbox_desc': 'Practice custom words and topics',
+      
+      // Dashboard Metrics
+      'lessons_completed_metric': 'Lessons Completed',
+      'avg_mastery_metric': 'Average Mastery',
+      'pronunciation_correct_metric': 'Correct Pronunciation',
+      'cumulative_reviews_completed': 'Cumulative Reviews Completed',
+      'view_full_progress': 'View Full Progress',
+      'view_full_progress_sub': 'View your detailed stats',
+      'words_need_help_title': 'Words Need Help',
+      'words_need_help_subtitle': 'Practice words you find difficult',
+      'past_cumulative_sessions': 'Past Cumulative Sessions',
+      'no_cumulative_sessions': 'No cumulative sessions yet',
+      'recent_sandbox_sessions': 'Recent Sandbox Sessions',
+      'no_sandbox_sessions': 'No sandbox sessions yet',
+      'badge_gold': 'GOLD',
+      'badge_silver': 'SILVER',
+      'badge_bronze': 'BRONZE',
+      
+      // Settings
+      'settings': 'SETTINGS',
 
       // Lesson Path Screen
       'lessons': 'Lessons',
@@ -364,6 +460,17 @@ class LocalizationService {
       'got_it': 'GOT IT',
       'practice_pronunciation': 'PRACTICE PRONUNCIATION',
       'continue': 'CONTINUE',
+      
+      // Sentence Building Screen
+      'prompt_sentence_select': 'Select the correct answer for the blank.',
+      'instruction_sentence_select': 'Choose the word that fills the blank.',
+      'prompt_sentence_build': 'Build a sentence by dragging words.',
+      'instruction_sentence_drag': 'Drag words to build the sentence.',
+      'prompt_sentence_type': 'Type the word that fills the blank.',
+      'instruction_sentence_type': 'Type the correct sentence.',
+      'prompt_sentence_review': 'Review your sentences.',
+      'lesson_context_title': 'Lesson Context',
+      'lesson_context_desc': 'Read the story to understand the context of the words.',
 
       // Round One Completed Screen
       'lesson_completed': 'Lesson Completed!',
@@ -393,9 +500,10 @@ class LocalizationService {
       'progress_summary': 'PROGRESS SUMMARY',
       'progress_summary_desc': 'View stats, badges, and history',
       'sandbox_mode_desc': 'Practice custom words and topics',
+      
       'app_preferences_section': 'APP PREFERENCES',
       'language_preference': 'Language Preference',
-      'cebuano_to_english': 'Cebuano to English',
+      'cebuano_to_english': 'Cebuano',
       'cebuano_to_english_subtitle': 'Translates interface buttons, settings, and home page.',
       'full_english': 'Full English',
       'full_english_subtitle': 'Keeps buttons, settings, and home page in English only.',
@@ -405,9 +513,9 @@ class LocalizationService {
       'pin_changed': 'PIN changed successfully.',
       'profile_updated': 'Profile updated successfully.',
       'reset_progress': 'RESET PROGRESS',
-      'progress_reset': 'Your progress has been reset.',
+      'progress_reset': 'Your progress, score, history, and points have been reset.',
       'confirm_reset_title': 'Reset Progress?',
-      'confirm_reset_body': 'All your progress will be lost. This cannot be undone.',
+      'confirm_reset_body': 'All your progress, score, history, and points will be lost. This cannot be undone.',
       'cancel': 'CANCEL',
       'confirm': 'CONFIRM',
       'pin_mismatch': 'New PIN and confirmation do not match.',

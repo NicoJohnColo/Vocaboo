@@ -85,6 +85,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.leaderboard_rounded, color: Color(0xFF0F172A)),
+            tooltip: 'Leaderboard',
+            onPressed: () {
+              context.push('/leaderboard');
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.dashboard_rounded, color: Color(0xFF0F172A)),
             tooltip: LocalizationService.translate(pref, 'dashboard'),
             onPressed: () {
@@ -186,22 +193,22 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF06A6FF)),
                         ),
                         const SizedBox(width: 14),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Sandbox Mode',
-                                style: TextStyle(
+                                LocalizationService.translate(pref, 'sandbox_mode'),
+                                style: const TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w900,
                                   color: Colors.white,
                                 ),
                               ),
-                              SizedBox(height: 4),
+                              const SizedBox(height: 4),
                               Text(
-                                'Practice a custom topic before choosing a category lesson.',
-                                style: TextStyle(
+                                LocalizationService.translate(pref, 'sandbox_desc'),
+                                style: const TextStyle(
                                   fontSize: 12,
                                   color: Colors.white,
                                   height: 1.3,
@@ -215,13 +222,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 28),
                 Text(
                   LocalizationService.translate(pref, 'your_categories'),
                   style: const TextStyle(
                     fontFamily: 'Outfit',
                     fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
                   ),
                 ),

@@ -24,34 +24,40 @@ public class DifficultyController {
     public ResponseEntity<DifficultyProgressResponse> getDifficulty(
             @PathVariable("id") UUID wordId,
             @RequestParam(name = "learnerId", required = false) UUID learnerId,
+            @RequestParam(name = "moduleNumber", required = false, defaultValue = "2") Integer moduleNumber,
             Principal principal) {
         UUID resolvedLearnerId = resolveLearnerId(learnerId, principal);
-        return ResponseEntity.ok(difficultyService.getProgress(resolvedLearnerId, wordId));
+        return ResponseEntity.ok(difficultyService.getProgress(resolvedLearnerId, wordId, moduleNumber));
     }
 
     @PostMapping("/{id}/difficulty/adjust")
     public ResponseEntity<DifficultyProgressResponse> adjustDifficulty(
             @PathVariable("id") UUID wordId,
             @RequestBody DifficultyAdjustmentRequest request,
+            @RequestParam(name = "moduleNumber", required = false, defaultValue = "2") Integer moduleNumber,
             Principal principal) {
         UUID resolvedLearnerId = resolveLearnerId(request.getLearnerId(), principal);
 
         if (request.getAction() != null) {
             String action = request.getAction().toUpperCase();
             if ("INCREMENT".equals(action)) {
-                return ResponseEntity.ok(difficultyService.increment(resolvedLearnerId, wordId));
+                return ResponseEntity.ok(difficultyService.increment(resolvedLearnerId, wordId, moduleNumber));
             } else if ("DECREMENT".equals(action)) {
-                return ResponseEntity.ok(difficultyService.decrement(resolvedLearnerId, wordId));
+                return ResponseEntity.ok(difficultyService.decrement(resolvedLearnerId, wordId, moduleNumber));
+            } else if ("DIAGNOSTIC_BOOST".equals(action)) {
+                return ResponseEntity.ok(difficultyService.diagnosticBoost(resolvedLearnerId, wordId, request.getActivityType(), moduleNumber));
+            } else if ("DIAGNOSTIC_FAIL".equals(action)) {
+                return ResponseEntity.ok(difficultyService.recordDiagnosticFail(resolvedLearnerId, wordId, request.getActivityType(), moduleNumber));
             } else {
                 throw new IllegalArgumentException("Unsupported action override: " + request.getAction());
             }
         }
 
-        if (request.getIsCorrect() != null) {
-            return ResponseEntity.ok(difficultyService.calculateNext(resolvedLearnerId, wordId, request.getIsCorrect()));
+        if (request.getCorrect() != null) {
+            return ResponseEntity.ok(difficultyService.calculateNext(resolvedLearnerId, wordId, request.getCorrect(), moduleNumber, request.getActivityType()));
         }
 
-        throw new IllegalArgumentException("Either action override or isCorrect result is required for adjustment");
+        throw new IllegalArgumentException("Either action override or correct result is required for adjustment");
     }
 
     @GetMapping("/{id}/reintroduction")
@@ -67,9 +73,10 @@ public class DifficultyController {
     public ResponseEntity<DifficultyProgressResponse> acknowledgeReintroduction(
             @PathVariable("id") UUID wordId,
             @RequestParam(name = "learnerId", required = false) UUID learnerId,
+            @RequestParam(name = "moduleNumber", required = false, defaultValue = "2") Integer moduleNumber,
             Principal principal) {
         UUID resolvedLearnerId = resolveLearnerId(learnerId, principal);
-        return ResponseEntity.ok(reintroductionService.acknowledgeUnderstanding(resolvedLearnerId, wordId));
+        return ResponseEntity.ok(reintroductionService.acknowledgeUnderstanding(resolvedLearnerId, wordId, moduleNumber));
     }
 
     private UUID resolveLearnerId(UUID requestLearnerId, Principal principal) {

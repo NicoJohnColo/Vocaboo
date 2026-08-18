@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import FileUploadDropZone from './FileUploadDropZone';
 import UploadProgressBar from './UploadProgressBar';
 import FilePreviewWidget from './FilePreviewWidget';
@@ -61,7 +61,7 @@ export default function AssetUploadModal({ lessonId, wordId, onClose, onUploadCo
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ width: 600, maxWidth: '95%' }} onClick={e => e.stopPropagation()}>
         <h2 className="modal__title">Upload Audio & Image</h2>
-        <p className="modal__note">Upload media assets to store them securely. Supported formats: MP3/WAV (&lt;5MB) and PNG/JPG (&lt;2MB).</p>
+        <p className="modal__note">Upload media assets to store them securely. Supported formats: MP3/WAV (&lt;5MB) and PNG/JPG (&lt;6MB).</p>
 
         <div style={{ marginTop: 24, paddingBottom: 24, borderBottom: '1px solid var(--color-border)' }}>
           <h3 style={{ fontSize: '1rem', marginBottom: 16 }}>Audio Asset</h3>
@@ -92,8 +92,8 @@ export default function AssetUploadModal({ lessonId, wordId, onClose, onUploadCo
           {!imageUrl ? (
             <FileUploadDropZone
               accept="image/png,image/jpeg"
-              maxSizeMB={2}
-              label="Image (PNG/JPG, <2MB)"
+              maxSizeMB={6}
+              label="Image (PNG/JPG, <6MB)"
               disabled={imageUploading}
               onFileSelect={file => handleUpload(file, 'IMAGE')}
             />

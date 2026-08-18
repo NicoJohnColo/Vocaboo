@@ -69,27 +69,8 @@ class MascotBubble extends StatelessWidget {
                 alignment: Alignment.center,
                 children: [
                   // Celebrating sparkles or Sad drops backdrops
-                  if (isCelebrating)
-                    Positioned.fill(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.8, end: 1.2),
-                        duration: const Duration(milliseconds: 600),
-                        builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: Opacity(
-                              opacity: 0.6,
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.yellowAccent,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                  // Removed yellow celebration backdrop to keep mascots clean
+
                   SizedBox(
                     width: frameSize,
                     height: frameSize,

@@ -62,28 +62,16 @@ public class ReintroductionIntegrationTest {
         reqBody.put("learnerId", learnerId.toString());
         reqBody.put("isCorrect", false);
 
-        // Errors 1 & 2
-        for (int i = 0; i < 2; i++) {
-            mockMvc.perform(post("/api/v1/words/" + wordId + "/difficulty/adjust")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(reqBody)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.currentLevel").value("LEARNING"))
-                    .andExpect(jsonPath("$.showHints").value(false))
-                    .andExpect(jsonPath("$.needsReintroduction").value(false));
-        }
-
-        // Error 3 -> showHints = true
+        // Error 1
         mockMvc.perform(post("/api/v1/words/" + wordId + "/difficulty/adjust")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reqBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currentLevel").value("LEARNING"))
-                .andExpect(jsonPath("$.consecutiveIncorrect").value(3))
-                .andExpect(jsonPath("$.showHints").value(true))
+                .andExpect(jsonPath("$.showHints").value(false))
                 .andExpect(jsonPath("$.needsReintroduction").value(false));
 
-        // Error 4 -> triggers Short Reintroduction
+        // Error 2 -> triggers Short Reintroduction
         mockMvc.perform(post("/api/v1/words/" + wordId + "/difficulty/adjust")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reqBody)))

@@ -16,6 +16,8 @@ public interface WordPerformanceRepository extends JpaRepository<WordPerformance
     Optional<WordPerformance> findByLearnerLearnerIdAndWordWordId(UUID learnerId, UUID wordId);
     List<WordPerformance> findByLearnerLearnerId(UUID learnerId);
     List<WordPerformance> findByLearnerLearnerIdOrderByLastPracticedAtDesc(UUID learnerId, org.springframework.data.domain.Pageable pageable);
+    /** All performance rows for a learner within a specific lesson. */
+    List<WordPerformance> findByLearnerLearnerIdAndWordLessonLessonId(UUID learnerId, UUID lessonId);
     void deleteByLearnerLearnerId(UUID learnerId);
 
     @Query("SELECT wp FROM WordPerformance wp WHERE wp.learner.learnerId = :learnerId AND wp.accuracy >= :threshold")

@@ -53,6 +53,9 @@ public class LessonModuleScore {
     @Builder.Default
     private Integer starsEarned = 0;
 
+    @Column(name = "time_seconds")
+    private Integer timeSeconds;
+
     @Column(name = "recorded_at", updatable = false)
     @Builder.Default
     private OffsetDateTime recordedAt = OffsetDateTime.now();

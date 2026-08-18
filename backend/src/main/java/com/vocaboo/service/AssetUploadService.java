@@ -30,11 +30,11 @@ public class AssetUploadService {
     @Value("${vocaboo.uploads.dir:uploads}")
     private String uploadsDir;
 
-    @Value("${vocaboo.uploads.base-url:http://localhost:8080/uploads}")
+    @Value("${vocaboo.uploads.base-url:http://localhost:8081/uploads}")
     private String baseUrl;
 
     private static final long MAX_AUDIO_BYTES = 5 * 1024 * 1024; // 5 MB
-    private static final long MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
+    private static final long MAX_IMAGE_BYTES = 6 * 1024 * 1024; // 6 MB
     private static final Set<String> AUDIO_TYPES = Set.of("audio/mpeg", "audio/wav", "audio/wave", "audio/x-wav");
     private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg");
 
@@ -103,7 +103,7 @@ public class AssetUploadService {
         } else {
             boolean isValidImageType = IMAGE_TYPES.contains(contentType) || filename.endsWith(".png") || filename.endsWith(".jpg") || filename.endsWith(".jpeg");
             if (!isValidImageType) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid image type. Allowed: PNG, JPG");
-            if (file.getSize() > MAX_IMAGE_BYTES) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Image file exceeds 2 MB limit");
+            if (file.getSize() > MAX_IMAGE_BYTES) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Image file exceeds 6 MB limit");
         }
     }
 

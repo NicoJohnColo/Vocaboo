@@ -23,7 +23,7 @@ public class BulkImportService {
 
     private static final String CSV_HEADER =
             "english_word,cebuano_meaning,part_of_speech,grade_level,example_sentence_english,example_sentence_cebuano,audio_path,image_path," +
-            "distractor_pool,fill_blank_sentence,tile_sentence,hint_text,audio_text_cebuano,audio_text_english,context_paragraph";
+            "distractor_pool,fill_blank_sentence,tile_sentence,hint_text,audio_text_cebuano,audio_text_english,context_paragraph,activity_type";
 
     private final LessonRepository lessonRepository;
     private final VocabularyWordRepository wordRepository;
@@ -81,6 +81,22 @@ public class BulkImportService {
                 String audioTextCebuano   = cols.length > 12 ? cols[12].trim() : "";
                 String audioTextEnglish   = cols.length > 13 ? cols[13].trim() : "";
                 String contextParagraph   = cols.length > 14 ? cols[14].trim() : "";
+                // eligible_activity_types: column 15 (optional). Valid: MULTIPLE_CHOICE, FILL_IN_BLANK, MATCHING, SENTENCE_ARRANGEMENT, WORD_SCRAMBLE, IMAGE_LABELING, TRUE_OR_FALSE
+                String eligibleActivityTypes = cols.length > 15 ? cols[15].trim() : "";
+                if (eligibleActivityTypes.isBlank()) {
+                    eligibleActivityTypes = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+                }
+                
+                // Basic validation: ensure uppercase and keep only supported activity names
+                eligibleActivityTypes = eligibleActivityTypes.toUpperCase();
+                
+                // Clean up any double semicolons from replacement
+                eligibleActivityTypes = eligibleActivityTypes.replaceAll(";+", ";").replaceAll("^;|;$", "");
+                
+                // IMAGE_LABELING rule: only allow if imagePath is populated
+                if (eligibleActivityTypes.contains("IMAGE_LABELING") && imagePath.isBlank()) {
+                    eligibleActivityTypes = eligibleActivityTypes.replace("IMAGE_LABELING", "").replaceAll(";+", ";").replaceAll("^;|;$", "");
+                }
 
                 // If context_paragraph is provided, we save it to the lesson.
                 // We do this for the first row that provides it.
@@ -124,6 +140,7 @@ public class BulkImportService {
                         .hintText(hintText.isBlank() ? null : hintText)
                         .audioTextCebuano(audioTextCebuano.isBlank() ? null : audioTextCebuano)
                         .audioTextEnglish(audioTextEnglish.isBlank() ? null : audioTextEnglish)
+                        .eligibleActivityTypes(eligibleActivityTypes)
                         .build();
 
                 if (!dryRun) {
@@ -170,7 +187,7 @@ public class BulkImportService {
     /** Returns CSV template as a string */
     public String getCsvTemplate() {
         return CSV_HEADER + "\n" +
-               "Pencil,Lapis,NOUN,GRADE_4," +
+               "Pencil,Lapis,NOUN,GRADE_3_4," +
                "\"I use a pencil to write in class.\",\"Naggamit ko og lapis sa pagsulat sa klase.\",,," +
                "eraser;ruler;scissors," +
                "\"I use a {BLANK} to write in class.\"," +
@@ -179,7 +196,7 @@ public class BulkImportService {
                "\"Lapis. Naggamit ko og lapis sa pagsulat sa klase.\"," +
                "\"Pencil. I use a pencil to write in class.\"," +
                "\"I prepare my school bag before leaving. I put my pencil and notebook inside it.\"\n" +
-               "Notebook,Kuwaderno,NOUN,GRADE_4," +
+               "Notebook,Kuwaderno,NOUN,GRADE_3_4," +
                "\"I write my lessons in a notebook.\",\"Nagsulat ko sa akong kuwaderno.\",,," +
                "journal;folder;binder," +
                "\"I write my lessons in a {BLANK}.\"," +
@@ -200,7 +217,7 @@ public class BulkImportService {
         // Note: we do NOT check cebuano_meaning against the English dictionary — many valid Cebuano
         // words (e.g. lapis, bag, nota, hait) coincidentally appear in English dictionaries.
         if (!Set.of("NOUN","VERB","ADJECTIVE").contains(pos)) rowErrors.add("part_of_speech must be NOUN, VERB, or ADJECTIVE");
-        if (!Set.of("GRADE_4","GRADE_5","GRADE_6").contains(grade)) rowErrors.add("grade_level must be GRADE_4, GRADE_5, or GRADE_6");
+        if (!Set.of("GRADE_3_4","GRADE_5_6","GRADE_6").contains(grade)) rowErrors.add("grade_level must be GRADE_3_4, GRADE_5_6, or GRADE_6");
         if (exampleEn.length() < 10 || exampleEn.length() > 500) rowErrors.add("example_sentence_english must be 10-500 chars");
 
         // Validate English example sentence: meaningful words must be in English dictionary

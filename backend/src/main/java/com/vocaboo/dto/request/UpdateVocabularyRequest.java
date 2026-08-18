@@ -47,4 +47,6 @@ public class UpdateVocabularyRequest {
 
     /** Exact text fed to English TTS */
     private String audioTextEnglish;
+    
+    private String eligibleActivityTypes;
 }

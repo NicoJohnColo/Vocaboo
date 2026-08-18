@@ -48,6 +48,18 @@ public class LearnerLessonStatus {
     @Builder.Default
     private Integer attempts = 0;
 
+    @Column(name = "best_lesson_points", nullable = false)
+    @Builder.Default
+    private Integer bestLessonPoints = 0;
+
+    @Column(name = "lesson_completion_bonus_awarded", nullable = false)
+    @Builder.Default
+    private Boolean lessonCompletionBonusAwarded = false;
+
+    @Column(name = "perfect_score_bonus_awarded", nullable = false)
+    @Builder.Default
+    private Boolean perfectScoreBonusAwarded = false;
+
     @Column(name = "unlocked_at")
     private OffsetDateTime unlockedAt;
 

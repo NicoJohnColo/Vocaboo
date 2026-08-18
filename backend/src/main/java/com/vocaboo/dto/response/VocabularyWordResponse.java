@@ -31,4 +31,8 @@ public class VocabularyWordResponse {
     private String hintText;
     private String audioTextCebuano;
     private String audioTextEnglish;
+    /** Which activity format this word uses across all 4 difficulty tiers. */
+    private String activityType;
+    /** Eligible activity formats for this word. */
+    private String eligibleActivityTypes;
 }

@@ -102,7 +102,10 @@ class SuccessScreen extends StatelessWidget {
               // START LEARNING Button (black)
               ElevatedButton(
                 onPressed: () {
-                  context.go('/home');
+                  context.go('/loading', extra: {
+                    'duration': 13000,
+                    'redirectPath': '/home',
+                  });
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0F172A), // Black

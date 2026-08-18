@@ -15,7 +15,7 @@ interface Props {
   error?: string;
 }
 
-const GRADE_LEVELS = ['GRADE_4', 'GRADE_5', 'GRADE_6'];
+const GRADE_LEVELS = ['GRADE_3_4', 'GRADE_5_6'];
 const LESSON_TYPES = ['REGULAR', 'COMPOSITE_REVIEW'];
 
 export default function CreateLessonModal({ categories, onSubmit, onClose, submitting, error }: Props) {
@@ -23,7 +23,7 @@ export default function CreateLessonModal({ categories, onSubmit, onClose, submi
     lesson_title: '',
     lesson_description: '',
     category_id: categories[0]?.category_id ?? '',
-    grade_level: 'GRADE_4',
+    grade_level: 'GRADE_3_4',
     lesson_type: 'REGULAR',
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});

@@ -1,6 +1,6 @@
 import type { AdminAuthResponse } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8081';
 const TOKEN_KEY = 'vocaboo_admin_token';
 const ADMIN_KEY = 'vocaboo_admin_info';
 const ROLE_KEY  = 'vocaboo_user_role';

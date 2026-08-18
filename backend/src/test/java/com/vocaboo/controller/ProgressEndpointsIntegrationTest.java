@@ -79,7 +79,7 @@ class ProgressEndpointsIntegrationTest {
                 lessonRepository.save(Lesson.builder()
                         .category(category)
                         .lessonTitle("Lesson 1 - School Objects Test")
-                        .gradeLevel(GradeLevel.GRADE_4)
+                        .gradeLevel(GradeLevel.GRADE_3_4)
                         .build())
         );
         lessonId = lesson.getLessonId();
@@ -89,7 +89,7 @@ class ProgressEndpointsIntegrationTest {
                         .lesson(lesson)
                         .englishWord("Pencil")
                         .cebuanoMeaning("Lapis")
-                        .gradeLevel(GradeLevel.GRADE_4)
+                        .gradeLevel(GradeLevel.GRADE_3_4)
                         .build())
         );
         wordId = word.getWordId();

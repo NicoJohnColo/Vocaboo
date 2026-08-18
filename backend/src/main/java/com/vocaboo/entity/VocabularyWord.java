@@ -1,5 +1,6 @@
 package com.vocaboo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcType;
@@ -14,6 +15,7 @@ import java.util.UUID;
         @UniqueConstraint(columnNames = {"lesson_id", "word_order"})
     }
 )
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -26,6 +28,20 @@ public class VocabularyWord {
     @Column(name = "word_id", updatable = false, nullable = false)
     private UUID wordId;
 
+    /** Eligible activity types for this word (semicolon-separated).
+     *  e.g. MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE
+     *  Determines which activity formats the learner sees across all difficulty tiers.
+     */
+    @Column(name = "eligible_activity_types", nullable = false, length = 255)
+    @Builder.Default
+    private String eligibleActivityTypes = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+
+    public String getActivityType() {
+        if (eligibleActivityTypes == null || eligibleActivityTypes.isBlank()) return "MULTIPLE_CHOICE";
+        return eligibleActivityTypes.split(";")[0];
+    }
+
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "category", "vocabularyWords"})
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lesson_id", nullable = false)
     private Lesson lesson;

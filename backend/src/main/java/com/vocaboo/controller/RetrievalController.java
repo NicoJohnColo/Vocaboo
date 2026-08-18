@@ -22,10 +22,25 @@ public class RetrievalController {
         return ResponseEntity.ok(retrievalService.generateSessionQuestions(sessionId));
     }
 
+    @GetMapping("/session/{sessionId}/question/{wordId}")
+    public ResponseEntity<Map<String, Object>> getSingleQuestion(
+            @PathVariable("sessionId") UUID sessionId,
+            @PathVariable("wordId") UUID wordId,
+            @RequestParam(value = "format", required = false) String format) {
+        return ResponseEntity.ok(retrievalService.generateSingleQuestion(sessionId, wordId, format));
+    }
+
+    @GetMapping("/session/{sessionId}/diagnostic-question/{wordId}")
+    public ResponseEntity<Map<String, Object>> getDiagnosticQuestion(
+            @PathVariable("sessionId") UUID sessionId,
+            @PathVariable("wordId") UUID wordId) {
+        return ResponseEntity.ok(retrievalService.generateDiagnosticQuestion(sessionId, wordId));
+    }
+
     @PostMapping("/session/{sessionId}/submit")
     public ResponseEntity<Map<String, Object>> submitAnswer(
             @PathVariable("sessionId") UUID sessionId,
             @RequestBody RetrievalSubmissionRequest request) {
-        return ResponseEntity.ok(retrievalService.submitAnswer(sessionId, request.getWordId(), request.isCorrect(), request.getWrongAnswer(), request.getActivityFormat()));
+        return ResponseEntity.ok(retrievalService.submitAnswer(sessionId, request.getWordId(), request.getCorrect(), request.getWrongAnswer(), request.getActivityFormat()));
     }
 }

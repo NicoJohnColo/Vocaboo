@@ -55,6 +55,11 @@ public class Module4ReviewIntegrationTest {
         UUID learnerId = learner.getLearnerId();
 
         List<Lesson> lessons = lessonRepository.findAll();
+        if (lessons.size() < 2) {
+            Lesson l1 = lessonRepository.save(Lesson.builder().lessonTitle("Test Lesson 1").lessonOrder(1).build());
+            Lesson l2 = lessonRepository.save(Lesson.builder().lessonTitle("Test Lesson 2").lessonOrder(2).build());
+            lessons = List.of(l1, l2);
+        }
         assertTrue(lessons.size() >= 2, "At least 2 lessons should exist");
         Lesson priorLesson = lessons.get(0);
         Lesson currentLesson = lessons.get(1);

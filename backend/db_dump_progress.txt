@@ -1,0 +1,4 @@
+book | Mod: 2 | Level: FAMILIAR | Streak: 0 | Recall: false
+father | Mod: 2 | Level: FAMILIAR | Streak: 0 | Recall: false
+food | Mod: 2 | Level: FAMILIAR | Streak: 0 | Recall: false
+girl | Mod: 2 | Level: FAMILIAR | Streak: 0 | Recall: false

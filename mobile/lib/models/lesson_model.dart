@@ -6,12 +6,15 @@ class LessonModel {
   final String gradeLevel;
   final int lessonOrder;
   final int totalWordCount;
+  final int masteredWordCount;
   final String status; // 'LOCKED', 'UNLOCKED', 'COMPLETED'
   final double? masteryScore;
   final String? lessonType; // 'REGULAR', 'COMPOSITE_REVIEW'
   final List<String>? sourceLessonIds; // For composite review lessons
   final String? compositeReviewAfterLessonId; // Configurable node insertion position
   final String? contextParagraph;
+  final Map<String, int> posTotalWordCounts;
+  final Map<String, int> posMasteredWordCounts;
 
   LessonModel({
     required this.lessonId,
@@ -21,12 +24,15 @@ class LessonModel {
     required this.gradeLevel,
     required this.lessonOrder,
     required this.totalWordCount,
+    this.masteredWordCount = 0,
     required this.status,
     this.masteryScore,
     this.lessonType,
     this.sourceLessonIds,
     this.compositeReviewAfterLessonId,
     this.contextParagraph,
+    this.posTotalWordCounts = const {},
+    this.posMasteredWordCounts = const {},
   });
 
   factory LessonModel.fromJson(Map<String, dynamic> json) {
@@ -38,6 +44,7 @@ class LessonModel {
       gradeLevel: json['gradeLevel'] ?? 'GRADE_4',
       lessonOrder: json['lessonOrder'] ?? 1,
       totalWordCount: json['totalWordCount'] ?? 0,
+      masteredWordCount: json['masteredWordCount'] ?? 0,
       status: json['status'] ?? 'LOCKED',
       masteryScore: json['masteryScore'] != null ? (json['masteryScore'] as num).toDouble() : null,
       lessonType: json['lessonType'],
@@ -46,6 +53,8 @@ class LessonModel {
           : null,
       compositeReviewAfterLessonId: json['compositeReviewAfterLessonId'],
       contextParagraph: json['contextParagraph'],
+      posTotalWordCounts: json['posTotalWordCounts'] != null ? Map<String, int>.from(json['posTotalWordCounts']) : const {},
+      posMasteredWordCounts: json['posMasteredWordCounts'] != null ? Map<String, int>.from(json['posMasteredWordCounts']) : const {},
     );
   }
 
@@ -58,12 +67,15 @@ class LessonModel {
       'gradeLevel': gradeLevel,
       'lessonOrder': lessonOrder,
       'totalWordCount': totalWordCount,
+      'masteredWordCount': masteredWordCount,
       'status': status,
       'masteryScore': masteryScore,
       'lessonType': lessonType,
       'sourceLessonIds': sourceLessonIds,
       'compositeReviewAfterLessonId': compositeReviewAfterLessonId,
       'contextParagraph': contextParagraph,
+      'posTotalWordCounts': posTotalWordCounts,
+      'posMasteredWordCounts': posMasteredWordCounts,
     };
   }
 

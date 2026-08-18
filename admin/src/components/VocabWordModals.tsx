@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import AssetUploadModal from './AssetUploadModal';
-import { AssetUploadService } from '../services/AssetUploadService';
 
-const GRADE_LEVELS = ['GRADE_4', 'GRADE_5', 'GRADE_6'];
+const GRADE_LEVELS = ['GRADE_3_4', 'GRADE_5_6'];
 const POS_OPTIONS = ['NOUN', 'VERB', 'ADJECTIVE'];
 
 interface WordFormData {
@@ -14,6 +13,7 @@ interface WordFormData {
   example_sentence_cebuano: string;
   audio_asset_path: string;
   image_asset_path: string;
+  eligible_activity_types: string;
 }
 
 interface Props {
@@ -33,11 +33,12 @@ function emptyForm(): WordFormData {
     english_word: '',
     cebuano_meaning: '',
     part_of_speech: 'NOUN',
-    grade_level: 'GRADE_4',
+    grade_level: 'GRADE_3_4',
     example_sentence_english: '',
     example_sentence_cebuano: '',
     audio_asset_path: '',
     image_asset_path: '',
+    eligible_activity_types: 'MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;TRUE_OR_FALSE',
   };
 }
 
@@ -45,7 +46,6 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
   const [form, setForm] = useState<WordFormData>({ ...emptyForm(), ...initial });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [validating, setValidating] = useState(false);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -59,44 +59,7 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
     const errs = validate();
     if (Object.keys(errs).length) { setValidationErrors(errs); return; }
 
-    setValidating(true);
-    setValidationErrors({});
-    let hasVerificationError = false;
-
-    if (form.audio_asset_path) {
-      if (form.audio_asset_path.startsWith('http://') || form.audio_asset_path.startsWith('https://')) {
-        try {
-          const res = await AssetUploadService.verifyUrl(form.audio_asset_path);
-          if (!res.accessible) {
-            setValidationErrors(prev => ({ ...prev, audio_asset_path: 'Audio file not found or inaccessible. Please verify the URL or upload it.' }));
-            hasVerificationError = true;
-          }
-        } catch {
-          setValidationErrors(prev => ({ ...prev, audio_asset_path: 'Failed to verify audio URL.' }));
-          hasVerificationError = true;
-        }
-      }
-    }
-
-    if (form.image_asset_path) {
-      if (form.image_asset_path.startsWith('http://') || form.image_asset_path.startsWith('https://')) {
-        try {
-          const res = await AssetUploadService.verifyUrl(form.image_asset_path);
-          if (!res.accessible) {
-            setValidationErrors(prev => ({ ...prev, image_asset_path: 'Image file not found or inaccessible. Please verify the URL or upload it.' }));
-            hasVerificationError = true;
-          }
-        } catch {
-          setValidationErrors(prev => ({ ...prev, image_asset_path: 'Failed to verify image URL.' }));
-          hasVerificationError = true;
-        }
-      }
-    }
-
-    setValidating(false);
-
-    if (hasVerificationError) return;
-
+    // Skip URL verification - allow saving with any URL
     await onSubmit(form);
   };
 
@@ -136,6 +99,13 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
             <select className="form-select" {...f('grade_level')}>
               {GRADE_LEVELS.map(g => <option key={g} value={g}>{g.replace('_', ' ')}</option>)}
             </select>
+          </div>
+          <div className="form-field form-field--full">
+            <label className="form-label">Eligible Activity Types (semicolon-separated)</label>
+            <input className="form-input" {...f('eligible_activity_types')} placeholder="e.g. MULTIPLE_CHOICE;FILL_IN_BLANK" />
+            <span style={{fontSize: '0.8rem', color: 'var(--color-text-dim)', marginTop: '4px'}}>
+              Available: MULTIPLE_CHOICE, FILL_IN_BLANK, MATCHING, WORD_SCRAMBLE, TRUE_OR_FALSE, IMAGE_LABELING
+            </span>
           </div>
           <div className="form-field form-field--full">
             <label className="form-label">Example Sentence (English) *</label>
@@ -182,9 +152,9 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
         )}
 
         <div className="modal__actions">
-          <button className="btn btn--ghost" onClick={onClose} disabled={submitting || validating}>Cancel</button>
-          <button className="btn btn--primary" onClick={handleSubmit} disabled={submitting || validating}>
-            {(submitting || validating) ? <span className="spinner spinner--sm" /> : submitLabel}
+          <button className="btn btn--ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn--primary" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? <span className="spinner spinner--sm" /> : submitLabel}
           </button>
         </div>
       </div>

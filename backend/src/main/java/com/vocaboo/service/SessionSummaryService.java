@@ -11,6 +11,7 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +25,8 @@ public class SessionSummaryService {
     private final PracticeResultRepository resultRepository;
     private final PointTransactionRepository pointTransactionRepository;
     private final LearnerMasteryRepository masteryRepository;
+    private final LearnerLessonStatusRepository lessonStatusRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
 
     @Transactional
     public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId, Double reviewScore, Boolean isPerfectFirstAttempt) {
@@ -32,7 +35,10 @@ public class SessionSummaryService {
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
 
-        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        String posFocus = learner.getPosFocus();
+        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).stream()
+                .filter(w -> posFocus == null || "ALL".equalsIgnoreCase(posFocus) || posFocus.equalsIgnoreCase(w.getPartOfSpeech()))
+                .collect(Collectors.toList());
         int totalWords = words.size();
         int correct = 0;
         int incorrect = 0;
@@ -63,32 +69,65 @@ public class SessionSummaryService {
         List<PracticeResult> results = resultRepository.findBySessionSessionId(sessionId);
         int basePoints = results.stream().mapToInt(PracticeResult::getPoints).sum();
 
-        BigDecimal sessionAccuracy = accuracy;
-        int bonusPoints = 0;
+        LearnerLessonStatus lessonStatus = lessonStatusRepository
+                .findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId)
+                .orElseGet(() -> {
+                    LearnerLessonStatus s = LearnerLessonStatus.builder()
+                            .learner(learner)
+                            .lesson(lesson)
+                            .build();
+                    return lessonStatusRepository.save(s);
+                });
 
-        int completionBonus = 0;
-        if (sessionAccuracy.compareTo(BigDecimal.valueOf(90.0)) >= 0) {
-            completionBonus = 100;
-        } else if (sessionAccuracy.compareTo(BigDecimal.valueOf(80.0)) >= 0) {
-            completionBonus = 50;
+        int deltaBasePoints = 0;
+        if (basePoints > lessonStatus.getBestLessonPoints()) {
+            deltaBasePoints = basePoints - lessonStatus.getBestLessonPoints();
+            lessonStatus.setBestLessonPoints(basePoints);
+            lessonStatusRepository.save(lessonStatus);
         }
-
-        if (completionBonus > 0) {
-            bonusPoints += completionBonus;
+        
+        // Add delta base points to transaction if > 0
+        if (deltaBasePoints > 0) {
             PointTransaction tx = PointTransaction.builder()
                     .learner(learner)
-                    .actionType(PointActionType.LESSON_COMPLETE)
-                    .pointsAwarded(completionBonus)
+                    .actionType(PointActionType.CORRECT_ANSWER)
+                    .pointsAwarded(deltaBasePoints)
                     .relatedSessionId(sessionId)
                     .createdAt(OffsetDateTime.now())
                     .build();
             pointTransactionRepository.save(tx);
         }
 
+        BigDecimal sessionAccuracy = accuracy;
+        int bonusPoints = 0;
+
+        // The Lesson Completion Bonus (+200) is ONLY awarded when the entire lesson is completely MASTERED.
+        // It is no longer based on single session accuracy.
+        long masteredWords = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
+        long totalWordsForLesson = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).size();
+        
+        if (masteredWords >= totalWordsForLesson && !lessonStatus.getLessonCompletionBonusAwarded()) {
+            bonusPoints += 200;
+            PointTransaction tx = PointTransaction.builder()
+                    .learner(learner)
+                    .actionType(PointActionType.LESSON_COMPLETE)
+                    .pointsAwarded(200)
+                    .relatedSessionId(sessionId)
+                    .createdAt(OffsetDateTime.now())
+                    .build();
+            pointTransactionRepository.save(tx);
+            
+            lessonStatus.setLessonCompletionBonusAwarded(true);
+            
+            // Strictly enforce LessonStatus.COMPLETED here (Bug A)
+            lessonStatus.setStatus(LessonStatus.COMPLETED);
+            lessonStatusRepository.save(lessonStatus);
+        }
+
         boolean isPerfect = (isPerfectFirstAttempt != null && isPerfectFirstAttempt) ||
                 (results.isEmpty() ? sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0 : (results.stream().noneMatch(r -> !r.getIsCorrect()) && sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0));
 
-        if (isPerfect) {
+        if (isPerfect && !lessonStatus.getPerfectScoreBonusAwarded()) {
             bonusPoints += 100;
 
             PointTransaction tx = PointTransaction.builder()
@@ -99,10 +138,14 @@ public class SessionSummaryService {
                     .createdAt(OffsetDateTime.now())
                     .build();
             pointTransactionRepository.save(tx);
+            
+            lessonStatus.setPerfectScoreBonusAwarded(true);
+            lessonStatusRepository.save(lessonStatus);
         }
 
-        // Update cached totalPoints in LearnerMastery by the total bonus points awarded
-        if (bonusPoints > 0) {
+        // Update cached totalPoints in LearnerMastery by the total points actually awarded (delta + bonus)
+        int totalNewPoints = deltaBasePoints + bonusPoints;
+        if (totalNewPoints > 0) {
             LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(learnerId)
                     .orElseGet(() -> LearnerMastery.builder()
                             .learner(learner)
@@ -114,11 +157,11 @@ public class SessionSummaryService {
                             .totalPoints(0)
                             .createdAt(OffsetDateTime.now())
                             .build());
-            mastery.setTotalPoints(mastery.getTotalPoints() + bonusPoints);
+            mastery.setTotalPoints(mastery.getTotalPoints() + totalNewPoints);
             masteryRepository.save(mastery);
         }
 
-        int totalPointsEarned = basePoints + bonusPoints;
+        int totalPointsEarned = basePoints + bonusPoints; // For summary object display
 
         int starsEarned = PracticeSessionService.calculateStars(accuracy);
 

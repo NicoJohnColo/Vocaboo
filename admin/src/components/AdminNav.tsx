@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/categories',     label: 'Categories',             icon: '🗂️' },
   { to: '/wrong-answers',  label: 'Wrong Answer Analysis',  icon: '📊' },
   { to: '/accounts',       label: 'Admin Accounts',         icon: '👤' },
+  { to: '/cross-lesson-sentences', label: 'Cross-Lesson Sentences', icon: '🧩' },
   { to: '/logs',           label: 'System Logs',            icon: '📋' },
 ];
 

@@ -17,8 +17,10 @@ public class DictionaryValidationService {
 
     private final Set<String> dictionary = new HashSet<>();
 
-    @PostConstruct
-    public void init() {
+    private boolean initialized = false;
+
+    private synchronized void ensureInitialized() {
+        if (initialized) return;
         log.info("Loading English dictionary into memory...");
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(
@@ -34,6 +36,8 @@ public class DictionaryValidationService {
             log.info("Successfully loaded {} English words.", dictionary.size());
         } catch (Exception e) {
             log.error("Failed to load dictionary.txt. English word validation might be unavailable or inaccurate.", e);
+        } finally {
+            initialized = true;
         }
     }
 
@@ -42,6 +46,7 @@ public class DictionaryValidationService {
      * It handles phrases by splitting by spaces and hyphens.
      */
     public boolean isValidEnglishWord(String text) {
+        ensureInitialized();
         if (text == null || text.isBlank()) {
             return false;
         }

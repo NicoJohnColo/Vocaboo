@@ -15,5 +15,8 @@ public interface PointTransactionRepository extends JpaRepository<PointTransacti
     @Query("SELECT COALESCE(SUM(t.pointsAwarded), 0) FROM PointTransaction t WHERE t.learner.learnerId = :learnerId AND t.createdAt >= :afterDate")
     int sumPointsByLearnerAndDateAfter(@Param("learnerId") UUID learnerId, @Param("afterDate") OffsetDateTime afterDate);
 
+    @Query("SELECT CASE WHEN COUNT(t) > 0 THEN true ELSE false END FROM PointTransaction t WHERE t.learner.learnerId = :learnerId AND t.relatedWord.wordId = :wordId AND t.actionType = 'MASTERY_BONUS'")
+    boolean existsMasteryBonusForWord(@Param("learnerId") UUID learnerId, @Param("wordId") UUID wordId);
+
     void deleteByLearnerLearnerId(UUID learnerId);
 }

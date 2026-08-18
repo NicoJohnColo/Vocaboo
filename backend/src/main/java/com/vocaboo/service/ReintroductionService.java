@@ -42,8 +42,8 @@ public class ReintroductionService {
     }
 
     @Transactional
-    public DifficultyProgressResponse acknowledgeUnderstanding(UUID learnerId, UUID wordId) {
-        return difficultyAdjustmentService.completeReintroduction(learnerId, wordId);
+    public DifficultyProgressResponse acknowledgeUnderstanding(UUID learnerId, UUID wordId, Integer moduleNumber) {
+        return difficultyAdjustmentService.completeReintroduction(learnerId, wordId, moduleNumber);
     }
 
     private String highlightTargetWord(String sentence, String word) {

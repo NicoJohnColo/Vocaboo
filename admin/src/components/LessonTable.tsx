@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { AdminLesson } from '../services/LessonService';
 import LessonStatusBadge from './LessonStatusBadge';
 import type { AdminCategory } from '../services/CategoryService';
@@ -60,7 +59,7 @@ export default function LessonTable({
           onChange={e => onFilterGrade(e.target.value)}
         >
           <option value="">All Grades</option>
-          <option value="GRADE_4">Grade 4</option>
+          <option value="GRADE_3_4">Grade 4</option>
           <option value="GRADE_5">Grade 5</option>
           <option value="GRADE_6">Grade 6</option>
         </select>

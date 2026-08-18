@@ -48,6 +48,16 @@ public class ReviewController {
         private Integer correctCount;
         private Integer totalCount;
         private Double score;
+        private Integer timeSeconds;
+    }
+
+    @Data
+    public static class ModuleTimeRequest {
+        private UUID lessonId;
+        private UUID sessionId;
+        private Integer moduleNumber;
+        private Integer timeSeconds;
+        private Boolean isPartial;
     }
 
     @PostMapping("/lessons/{lessonId}/review/start")
@@ -87,7 +97,21 @@ public class ReviewController {
                 request.getModuleNumber(),
                 request.getCorrectCount(),
                 request.getTotalCount(),
-                request.getScore()
+                request.getScore(),
+                request.getTimeSeconds()
+        );
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/progress/module-time")
+    public ResponseEntity<Void> recordModuleTime(@RequestBody ModuleTimeRequest request, Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        reviewService.savePartialModuleTime(
+                learnerId,
+                request.getLessonId(),
+                request.getSessionId(),
+                request.getModuleNumber(),
+                request.getTimeSeconds()
         );
         return ResponseEntity.noContent().build();
     }

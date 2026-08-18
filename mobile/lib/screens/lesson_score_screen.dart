@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../models/vocabulary_word_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
+import '../services/localization_service.dart';
 
 // ────────────────────────────────────────────────────────────────
 // Badge metadata helper
@@ -68,6 +70,31 @@ _BadgeInfo _getBadgeInfo(String? badge) {
 }
 
 // ────────────────────────────────────────────────────────────────
+// Word rating chip helper
+// ────────────────────────────────────────────────────────────────
+_WordRatingStyle _getWordRatingStyle(String? rating) {
+  switch (rating) {
+    case 'GOLD':
+      return const _WordRatingStyle('🥇', 'Gold', Color(0xFFD97706), Color(0xFFFFFBEB), Color(0xFFFCD34D));
+    case 'SILVER':
+      return const _WordRatingStyle('🥈', 'Silver', Color(0xFF475569), Color(0xFFF1F5F9), Color(0xFFCBD5E1));
+    case 'BRONZE':
+      return const _WordRatingStyle('🥉', 'Bronze', Color(0xFF92400E), Color(0xFFFFF7ED), Color(0xFFFED7AA));
+    default:
+      return const _WordRatingStyle('', '', Colors.transparent, Colors.transparent, Colors.transparent);
+  }
+}
+
+class _WordRatingStyle {
+  final String emoji;
+  final String label;
+  final Color primary;
+  final Color background;
+  final Color border;
+  const _WordRatingStyle(this.emoji, this.label, this.primary, this.background, this.border);
+}
+
+// ────────────────────────────────────────────────────────────────
 // Screen
 // ────────────────────────────────────────────────────────────────
 class LessonScoreScreen extends StatefulWidget {
@@ -110,6 +137,8 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
     with TickerProviderStateMixin {
   String? _badgeType;
   bool _badgeLoading = true;
+  List<Map<String, dynamic>> _wordSummary = [];
+  bool _wordSummaryLoading = true;
 
   late final AnimationController _badgeScale;
   late final Animation<double> _scaleAnim;
@@ -134,8 +163,12 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
 
     if (!widget.isSandbox) {
       _fetchBadge();
+      _fetchWordSummary();
     } else {
-      setState(() => _badgeLoading = false);
+      setState(() {
+        _badgeLoading = false;
+        _wordSummaryLoading = false;
+      });
     }
   }
 
@@ -158,6 +191,17 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
     }
   }
 
+  Future<void> _fetchWordSummary() async {
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+    final summary = await provider.fetchWordMasterySummary(widget.lessonId);
+    if (mounted) {
+      setState(() {
+        _wordSummary = summary;
+        _wordSummaryLoading = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _badgeScale.dispose();
@@ -167,6 +211,8 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context);
+    final pref = auth.learner?.languagePreference;
     final effectiveMastered = widget.masteredCount ??
         widget.allWords
             .where((w) => !widget.failedSentenceWordIds.contains(w.wordId))
@@ -186,17 +232,17 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          'Lesson Complete',
-          style: TextStyle(
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        title: Text(
+          LocalizationService.translate(pref, 'lesson_completed'),
+          style: const TextStyle(
             fontFamily: 'Outfit',
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
             color: Color(0xFF0F172A),
           ),
         ),
-        centerTitle: false,
-        automaticallyImplyLeading: false,
       ),
       body: SafeArea(
         child: Column(
@@ -251,8 +297,8 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                     const SizedBox(height: 10),
                     Text(
                       allMastered
-                          ? 'Great work! You have mastered all words in this lesson.'
-                          : 'You have completed all modules. Keep practising the words below.',
+                          ? LocalizationService.translate(pref, 'all_words_mastered_msg')
+                          : LocalizationService.translate(pref, 'keep_practising_msg'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 15,
@@ -270,9 +316,9 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: const Color(0xFFFDE68A)),
                           ),
-                          child: const Text(
-                            '+50 bonus',
-                            style: TextStyle(
+                          child: Text(
+                            '+50 ${LocalizationService.translate(pref, 'bonus')}',
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFFB45309),
@@ -305,61 +351,75 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                     ],
 
                     // ── Mastery Count Card ──────────────────────────────────
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 22, horizontal: 20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                            color: const Color(0xFFE2E8F0), width: 1.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            'Words Mastered',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey[600],
-                              letterSpacing: 0.5,
+                    Builder(builder: (context) {
+                      // Count mastered from backend summary if available;
+                      // fall back to passed-in masteredCount.
+                      final backendMastered = _wordSummary.isEmpty
+                          ? null
+                          : _wordSummary.where((w) => w['tierState'] == 'MASTERED').length;
+                      final effectiveMastered = backendMastered ?? widget.masteredCount ??
+                          widget.allWords
+                              .where((w) => !widget.failedSentenceWordIds.contains(w.wordId))
+                              .length;
+                      final totalWords = _wordSummary.isNotEmpty
+                          ? _wordSummary.length
+                          : widget.allWords.length;
+                      final allMastered = effectiveMastered >= totalWords;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          RichText(
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: '$effectiveMastered',
-                                  style: TextStyle(
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.w900,
-                                    color: allMastered
-                                        ? const Color(0xFF10B981)
-                                        : const Color(0xFF06A6FF),
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: ' / $totalWords',
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF94A3B8),
-                                  ),
-                                ),
-                              ],
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              LocalizationService.translate(pref, 'words_mastered'),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF64748B),
+                                letterSpacing: 0.5,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                            const SizedBox(height: 10),
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '$effectiveMastered',
+                                    style: TextStyle(
+                                      fontSize: 48,
+                                      fontWeight: FontWeight.w900,
+                                      color: allMastered
+                                          ? const Color(0xFF10B981)
+                                          : const Color(0xFF06A6FF),
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: ' / $totalWords',
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                     const SizedBox(height: 20),
 
                     // ── Words Needing Review ────────────────────────────────
@@ -376,13 +436,13 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              children: const [
-                                Icon(Icons.refresh_rounded,
+                              children: [
+                                const Icon(Icons.refresh_rounded,
                                     color: Color(0xFFEF4444), size: 18),
-                                SizedBox(width: 8),
+                                const SizedBox(width: 8),
                                 Text(
-                                  'Still Needs Practice',
-                                  style: TextStyle(
+                                  LocalizationService.translate(pref, 'still_needs_practice'),
+                                  style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w900,
                                     color: Color(0xFFEF4444),
@@ -424,9 +484,9 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                     ],
 
                     // ── Per-Word Breakdown ──────────────────────────────────
-                    const Text(
-                      'Word Breakdown',
-                      style: TextStyle(
+                    Text(
+                      LocalizationService.translate(pref, 'word_breakdown'),
+                      style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF0F172A),
@@ -435,115 +495,168 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                     ),
                     const SizedBox(height: 12),
 
-                    ...widget.allWords.asMap().entries.map((entry) {
-                      final word = entry.value;
-                      final failedSentence =
-                          widget.failedSentenceWordIds.contains(word.wordId);
-                      final attempts =
-                          widget.wordPronunciationAttempts[word.wordId] ?? 0;
-
-                      final mastered = !failedSentence;
-                      final statusLabel =
-                          mastered ? 'Mastered' : 'Needs Review';
-                      final statusColor = mastered
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFFEF4444);
-                      final statusBgColor = mastered
-                          ? const Color(0xFFECFDF5)
-                          : const Color(0xFFFEF2F2);
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: const Color(0xFFE2E8F0), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+                    if (_wordSummaryLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: statusBgColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                mastered
-                                    ? Icons.check_rounded
-                                    : Icons.refresh_rounded,
-                                color: statusColor,
-                                size: 18,
-                              ),
+                      )
+                    else if (_wordSummary.isNotEmpty)
+                      ..._wordSummary.map((wordData) {
+                        final tierState = wordData['tierState'] as String? ?? 'LEARNING';
+                        final wordRating = wordData['wordRating'] as String?;
+                        final englishWord = wordData['englishWord'] as String? ?? '';
+                        final cebuanoMeaning = wordData['cebuanoMeaning'] as String? ?? '';
+                        final isMastered = tierState == 'MASTERED';
+                        final rating = _getWordRatingStyle(wordRating);
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isMastered
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.35)
+                                  : const Color(0xFFE2E8F0),
+                              width: 1.5,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    word.englishWord,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    word.cebuanoMeaning,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF64748B),
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                  if (!widget.isSandbox && attempts > 0) ...[
-                                    const SizedBox(height: 4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.02),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              // Status icon circle
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: isMastered
+                                      ? const Color(0xFFECFDF5)
+                                      : const Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  isMastered
+                                      ? Icons.check_rounded
+                                      : Icons.school_rounded,
+                                  color: isMastered
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFF94A3B8),
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      'Pronunciation: $attempts attempt${attempts == 1 ? '' : 's'}',
+                                      englishWord,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      cebuanoMeaning,
                                       style: const TextStyle(
                                         fontSize: 12,
-                                        color: Color(0xFF94A3B8),
+                                        color: Color(0xFF64748B),
+                                        fontStyle: FontStyle.italic,
                                       ),
                                     ),
                                   ],
-                                ],
+                                ),
                               ),
-                            ),
-                            if (!widget.isSandbox)
+                              // Tier badge
+                              _TierBadge(tierState: tierState, pref: pref),
+                              // Word rating badge (only if mastered)
+                              if (isMastered && wordRating != null) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: rating.background,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: rating.border, width: 1),
+                                  ),
+                                  child: Text(
+                                    '${rating.emoji} ${rating.label}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: rating.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      })
+                    else
+                      // Fallback to old local rendering if backend is unavailable
+                      ...widget.allWords.map((word) {
+                        final failed = widget.failedSentenceWordIds.contains(word.wordId);
+                        final mastered = !failed;
+                        final statusColor = mastered ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+                        final statusBgColor = mastered ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2);
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
+                                width: 36, height: 36,
+                                decoration: BoxDecoration(color: statusBgColor, shape: BoxShape.circle),
+                                child: Icon(
+                                  mastered ? Icons.check_rounded : Icons.refresh_rounded,
+                                  color: statusColor, size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(word.englishWord,
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    Text(word.cebuanoMeaning,
+                                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontStyle: FontStyle.italic)),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
                                   color: statusBgColor,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: statusColor, width: 1),
+                                  border: Border.all(color: statusColor, width: 1),
                                 ),
                                 child: Text(
-                                  statusLabel,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: statusColor,
-                                    letterSpacing: 0.4,
-                                  ),
+                                  mastered ? LocalizationService.translate(pref, 'mastered') : LocalizationService.translate(pref, 'needs_review'),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
                                 ),
                               ),
-                          ],
-                        ),
-                      );
-                    }),
+                            ],
+                          ),
+                        );
+                      }),
 
                     const SizedBox(height: 12),
                   ],
@@ -588,9 +701,9 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                         borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'DONE',
-                    style: TextStyle(
+                  child: Text(
+                    LocalizationService.translate(pref, 'done'),
+                    style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.0),
@@ -606,14 +719,69 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
 }
 
 // ────────────────────────────────────────────────────────────────
-// Badge Card Widget
+// Tier Badge Widget
 // ────────────────────────────────────────────────────────────────
+class _TierBadge extends StatelessWidget {
+  final String tierState;
+  final String? pref;
+  const _TierBadge({required this.tierState, required this.pref});
+
+  @override
+  Widget build(BuildContext context) {
+    String label;
+    Color color;
+    Color bg;
+
+    switch (tierState) {
+      case 'MASTERED':
+        label = LocalizationService.translate(pref, 'mastered');
+        color = const Color(0xFF10B981);
+        bg = const Color(0xFFECFDF5);
+        break;
+      case 'PROFICIENT':
+        label = LocalizationService.translate(pref, 'proficient');
+        color = const Color(0xFF6366F1);
+        bg = const Color(0xFFEEF2FF);
+        break;
+      case 'FAMILIAR':
+        label = LocalizationService.translate(pref, 'familiar');
+        color = const Color(0xFFF59E0B);
+        bg = const Color(0xFFFFFBEB);
+        break;
+      default: // LEARNING
+        label = LocalizationService.translate(pref, 'learning');
+        color = const Color(0xFF94A3B8);
+        bg = const Color(0xFFF8FAFC);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          color: color,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
 class _BadgeCard extends StatelessWidget {
   final String? badgeType;
   const _BadgeCard({required this.badgeType});
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context);
+    final pref = auth.learner?.languagePreference;
     final info = _getBadgeInfo(badgeType);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
@@ -638,7 +806,7 @@ class _BadgeCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Lesson Badge',
+                  LocalizationService.translate(pref, 'lesson_badge'),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -648,7 +816,16 @@ class _BadgeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  info.label,
+                  LocalizationService.translate(
+                    pref,
+                    badgeType == 'PERFECT_GOLD'
+                        ? 'badge_perfect_gold'
+                        : badgeType == 'GOLD'
+                            ? 'badge_gold'
+                            : badgeType == 'SILVER'
+                                ? 'badge_silver'
+                                : 'badge_bronze',
+                  ),
                   style: TextStyle(
                     fontFamily: 'Outfit',
                     fontSize: 22,
@@ -658,7 +835,16 @@ class _BadgeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  info.subtitle,
+                  LocalizationService.translate(
+                    pref,
+                    badgeType == 'PERFECT_GOLD'
+                        ? 'badge_perfect_gold_sub'
+                        : badgeType == 'GOLD'
+                            ? 'badge_gold_sub'
+                            : badgeType == 'SILVER'
+                                ? 'badge_silver_sub'
+                                : 'badge_bronze_sub',
+                  ),
                   style: TextStyle(
                     fontSize: 12,
                     color: info.primary.withValues(alpha: 0.75),

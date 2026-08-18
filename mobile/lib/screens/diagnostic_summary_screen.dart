@@ -275,9 +275,11 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                   final knownIds = knownWords.map((w) => w['wordId'] as String).toList();
                   final unknownIds = unknownWords.map((w) => w['wordId'] as String).toList();
 
-                  context.go(
-                    '/session/$sessionId/introduction',
+                  context.push(
+                    '/loading',
                     extra: {
+                      'duration': 13000,
+                      'redirectPath': '/session/$sessionId/introduction',
                       'lessonId': lessonId,
                       'categoryId': categoryId,
                       'knownWordIds': knownIds,

@@ -16,7 +16,6 @@ import java.util.UUID;
 public class PracticeSession {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "session_id", updatable = false, nullable = false)
     private UUID sessionId;
 

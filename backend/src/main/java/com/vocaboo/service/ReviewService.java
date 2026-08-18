@@ -27,6 +27,7 @@ public class ReviewService {
     private final VocabularyWordRepository wordRepository;
     private final WordPerformanceRepository performanceRepository;
     private final IntroductionSessionRepository introductionSessionRepository;
+    private final PracticeSessionRepository practiceSessionRepository;
 
     @Transactional
     public ReviewSession startReview(UUID learnerId, UUID lessonId) {
@@ -111,6 +112,11 @@ public class ReviewService {
 
     @Transactional
     public void saveModuleScore(UUID learnerId, UUID lessonId, Integer moduleNumber, Integer correctCount, Integer totalCount, Double score) {
+        saveModuleScore(learnerId, lessonId, moduleNumber, correctCount, totalCount, score, null);
+    }
+
+    @Transactional
+    public void saveModuleScore(UUID learnerId, UUID lessonId, Integer moduleNumber, Integer correctCount, Integer totalCount, Double score, Integer timeSeconds) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
         Lesson lesson = lessonRepository.findById(lessonId)
@@ -131,10 +137,58 @@ public class ReviewService {
                         .build());
 
         BigDecimal bdScore = BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP);
-        moduleScore.setCorrectCount(safeCorrectCount);
-        moduleScore.setTotalCount(safeTotalCount);
-        moduleScore.setScore(bdScore);
-        moduleScore.setStarsEarned(PracticeSessionService.calculateStars(bdScore));
+        if (moduleScore.getScore() == null || bdScore.compareTo(moduleScore.getScore()) > 0) {
+            moduleScore.setCorrectCount(safeCorrectCount);
+            moduleScore.setTotalCount(safeTotalCount);
+            moduleScore.setScore(bdScore);
+            moduleScore.setStarsEarned(PracticeSessionService.calculateStars(bdScore));
+            if (timeSeconds != null) {
+                moduleScore.setTimeSeconds(timeSeconds);
+            }
+            lessonModuleScoreRepository.save(moduleScore);
+        }
+    }
+
+    @Transactional
+    public void savePartialModuleTime(UUID learnerId, UUID lessonId, UUID sessionId, Integer moduleNumber, Integer timeSeconds) {
+        if (learnerId == null || moduleNumber == null || timeSeconds == null) return;
+        UUID targetLessonId = lessonId;
+        if (targetLessonId == null && sessionId != null) {
+            var practiceOpt = practiceSessionRepository.findById(sessionId);
+            if (practiceOpt.isPresent() && practiceOpt.get().getLesson() != null) {
+                targetLessonId = practiceOpt.get().getLesson().getLessonId();
+            } else {
+                var introOpt = introductionSessionRepository.findById(sessionId);
+                if (introOpt.isPresent() && introOpt.get().getLesson() != null) {
+                    targetLessonId = introOpt.get().getLesson().getLessonId();
+                } else {
+                    var reviewOpt = reviewSessionRepository.findById(sessionId);
+                    if (reviewOpt.isPresent() && reviewOpt.get().getLesson() != null) {
+                        targetLessonId = reviewOpt.get().getLesson().getLessonId();
+                    }
+                }
+            }
+        }
+        if (targetLessonId == null) return;
+
+        Learner learner = learnerRepository.findById(learnerId)
+                .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
+        Lesson lesson = lessonRepository.findById(targetLessonId)
+                .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
+
+        LessonModuleScore moduleScore = lessonModuleScoreRepository
+                .findByLearnerLearnerIdAndLessonLessonIdAndModuleNumber(learnerId, targetLessonId, moduleNumber)
+                .orElseGet(() -> LessonModuleScore.builder()
+                        .learner(learner)
+                        .lesson(lesson)
+                        .moduleNumber(moduleNumber)
+                        .correctCount(0)
+                        .totalCount(0)
+                        .score(BigDecimal.ZERO)
+                        .starsEarned(0)
+                        .build());
+
+        moduleScore.setTimeSeconds(timeSeconds);
         lessonModuleScoreRepository.save(moduleScore);
     }
 
@@ -163,42 +217,11 @@ public class ReviewService {
                         .build());
 
         status.setAttempts(status.getAttempts() + 1);
-        status.setMasteryScore(BigDecimal.valueOf(score));
-        status.setUpdatedAt(OffsetDateTime.now());
-
-        if (score >= 80.0) {
-            status.setStatus(LessonStatus.COMPLETED);
-            status.setCompletedAt(OffsetDateTime.now());
-
-            // Unlock next lesson in the category
-            Optional<Lesson> nextLessonOpt = lessonRepository.findByCategoryCategoryIdAndLessonOrder(
-                    lesson.getCategory().getCategoryId(),
-                    lesson.getLessonOrder() + 1
-            );
-
-            if (nextLessonOpt.isPresent()) {
-                Lesson nextLesson = nextLessonOpt.get();
-                LearnerLessonStatus nextStatus = lessonStatusRepository
-                        .findByLearnerLearnerIdAndLessonLessonId(learnerId, nextLesson.getLessonId())
-                        .orElseGet(() -> LearnerLessonStatus.builder()
-                                .learner(learner)
-                                .lesson(nextLesson)
-                                .attempts(0)
-                                .build());
-
-                if (nextStatus.getStatus() == LessonStatus.LOCKED) {
-                    nextStatus.setStatus(LessonStatus.UNLOCKED);
-                    nextStatus.setUnlockedAt(OffsetDateTime.now());
-                    nextStatus.setUpdatedAt(OffsetDateTime.now());
-                    lessonStatusRepository.save(nextStatus);
-                }
-            }
-        } else {
-            // Keep status as UNLOCKED if they haven't passed yet
-            if (status.getStatus() != LessonStatus.COMPLETED) {
-                status.setStatus(LessonStatus.UNLOCKED);
-            }
+        BigDecimal newScore = BigDecimal.valueOf(score);
+        if (status.getMasteryScore() == null || newScore.compareTo(status.getMasteryScore()) > 0) {
+            status.setMasteryScore(newScore);
         }
+        status.setUpdatedAt(OffsetDateTime.now());
 
         return lessonStatusRepository.save(status);
     }
@@ -225,14 +248,17 @@ public class ReviewService {
                                                         .build());
 
                         status.setAttempts(status.getAttempts() + 1);
-                        status.setMasteryScore(BigDecimal.valueOf(score != null ? score : 0.0));
+                        BigDecimal newScore = BigDecimal.valueOf(score != null ? score : 0.0);
+                        if (status.getMasteryScore() == null || newScore.compareTo(status.getMasteryScore()) > 0) {
+                            status.setMasteryScore(newScore);
+                        }
                         status.setUpdatedAt(OffsetDateTime.now());
 
                         if (passed) {
+                            if (status.getStatus() != LessonStatus.COMPLETED) {
                                 status.setStatus(LessonStatus.COMPLETED);
                                 status.setCompletedAt(OffsetDateTime.now());
-                        } else if (status.getStatus() != LessonStatus.COMPLETED) {
-                                status.setStatus(LessonStatus.UNLOCKED);
+                            }
                         }
 
                         lessonStatusRepository.save(status);

@@ -7,22 +7,22 @@
 
 /* ── Tokens ─────────────────────────────────────────────────────────────── */
 :root {
-  --color-bg: #0a0b14;
-  --color-surface: #111224;
-  --color-surface-2: #161829;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-text: #e8eaf6;
-  --color-text-muted: #7986cb;
-  --color-accent-1: #7c4dff;
-  --color-accent-2: #00bcd4;
-  --color-accent-3: #ff6d00;
-  --color-accent-4: #00e676;
-  --color-danger: #ef5350;
-  --color-success: #66bb6a;
-  --color-warning: #ffa726;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-accent-1: #0ea5e9;
+  --color-accent-2: #6366f1;
+  --color-accent-3: #f59e0b;
+  --color-accent-4: #10b981;
+  --color-danger: #ef4444;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
 
-  --glass-bg: rgba(255, 255, 255, 0.04);
-  --glass-hover: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-hover: rgba(0, 0, 0, 0.04);
   --glass-blur: 16px;
 
   --radius-sm: 8px;
@@ -30,8 +30,8 @@
   --radius-lg: 20px;
   --radius-xl: 28px;
 
-  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
-  --shadow-nav: 4px 0 24px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-nav: 2px 0 12px rgba(0, 0, 0, 0.05);
 
   --sidebar-w: 260px;
   --transition: 0.2s ease;
@@ -70,7 +70,7 @@ a:hover {
   display: inline-block;
   width: 24px;
   height: 24px;
-  border: 3px solid rgba(255, 255, 255, 0.15);
+  border: 3px solid rgba(0, 0, 0, 0.15);
   border-top-color: var(--color-accent-1);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -99,9 +99,9 @@ a:hover {
 .skeleton {
   display: inline-block;
   background: linear-gradient(90deg,
-      rgba(255, 255, 255, 0.06) 25%,
-      rgba(255, 255, 255, 0.12) 50%,
-      rgba(255, 255, 255, 0.06) 75%);
+      rgba(0, 0, 0, 0.06) 25%,
+      rgba(0, 0, 0, 0.12) 50%,
+      rgba(0, 0, 0, 0.06) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
   border-radius: 4px;
@@ -128,15 +128,15 @@ a:hover {
 }
 
 .alert--error {
-  background: rgba(239, 83, 80, 0.15);
-  border: 1px solid rgba(239, 83, 80, 0.4);
-  color: #ef9a9a;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #b91c1c;
 }
 
 .alert--success {
-  background: rgba(102, 187, 106, 0.15);
-  border: 1px solid rgba(102, 187, 106, 0.4);
-  color: #a5d6a7;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #15803d;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -328,7 +328,7 @@ a:hover {
 }
 
 .login-form__input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(0, 0, 0, 0.25);
 }
 
 .login-form__toggle-pass {
@@ -437,7 +437,7 @@ a:hover {
   text-align: center;
   margin-top: 28px;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(0, 0, 0, 0.25);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -883,7 +883,7 @@ a:hover {
 
 .accounts-table th {
   padding: 14px 20px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.03);
   border-bottom: 1px solid var(--color-border);
   text-align: left;
   font-size: 0.75rem;
@@ -908,7 +908,7 @@ a:hover {
 }
 
 .accounts-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .accounts-table tbody tr.row--disabled {
@@ -1119,7 +1119,7 @@ a:hover {
 }
 
 .log-output::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 3px;
 }
 
@@ -1131,7 +1131,7 @@ a:hover {
 }
 
 .log-line:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .log-output__empty {
@@ -2019,7 +2019,7 @@ a:hover {
 }
 
 .confusable-pair-card__sentences {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.03);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   display: flex;
@@ -2376,7 +2376,7 @@ a:hover {
 .role-dialog__cancel:hover {
   background: var(--glass-hover);
   color: var(--color-text);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 /* Teacher form inside dialog */

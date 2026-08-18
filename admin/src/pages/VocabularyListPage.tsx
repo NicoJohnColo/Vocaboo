@@ -12,7 +12,7 @@ export default function VocabularyListPage() {
   const { lessonId } = useParams<{ lessonId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const locationState = location.state as { lesson?: { lesson_title: string }; autoAdd?: boolean };
+  const locationState = location.state as { lesson?: { lesson_title: string; context_paragraph?: string }; autoAdd?: boolean };
   const lesson = locationState?.lesson;
 
   const [words, setWords] = useState<AdminVocabularyWord[]>([]);

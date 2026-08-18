@@ -3,13 +3,15 @@ import 'package:provider/provider.dart';
 import 'app_router.dart';
 import 'providers/auth_provider.dart';
 import 'providers/lesson_provider.dart';
+import 'providers/cumulative_review_provider.dart';
 import 'services/tts_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Text-to-Speech service (static class - no instance needed)
-  await TTSService.initialize();
+  // Do not await this so it doesn't block the app from rendering the first frame.
+  TTSService.initialize();
 
   runApp(
     MultiProvider(
@@ -23,6 +25,13 @@ void main() async {
               return previous;
             }
             return LessonProvider(auth);
+          },
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, CumulativeReviewProvider>(
+          create: (_) => CumulativeReviewProvider(),
+          update: (_, auth, previous) {
+            previous?.update(auth.learner, auth.token);
+            return previous ?? CumulativeReviewProvider()..update(auth.learner, auth.token);
           },
         ),
       ],

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { AdminLesson } from '../services/LessonService';
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
   error?: string;
 }
 
-const GRADE_LEVELS = ['GRADE_4', 'GRADE_5', 'GRADE_6'];
+const GRADE_LEVELS = ['GRADE_3_4', 'GRADE_5_6'];
 
 export default function EditLessonModal({ lesson, onSubmit, onClose, submitting, error }: Props) {
   const [form, setForm] = useState({

@@ -12,5 +12,6 @@ public interface PracticeResultRepository extends JpaRepository<PracticeResult, 
     List<PracticeResult> findBySessionSessionIdAndWordWordId(UUID sessionId, UUID wordId);
     List<PracticeResult> findBySessionLearnerLearnerIdAndWordWordId(UUID learnerId, UUID wordId);
     List<PracticeResult> findBySessionSessionIdOrderByRecordedAtAsc(UUID sessionId);
+    List<PracticeResult> findTop5BySessionLearnerLearnerIdAndWordWordIdOrderByRecordedAtDesc(UUID learnerId, UUID wordId);
     void deleteBySessionSessionId(UUID sessionId);
 }

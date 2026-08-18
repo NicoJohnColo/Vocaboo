@@ -55,7 +55,7 @@ function RoleSelectionDialog({ isOpen, onClose, onChooseAdmin }: RoleDialogProps
 
     setTLoading(true);
     try {
-      const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+      const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8081';
       const res = await fetch(`${BASE_URL}/api/teachers/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

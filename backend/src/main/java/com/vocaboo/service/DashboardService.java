@@ -23,6 +23,7 @@ public class DashboardService {
     private final LearnerRepository learnerRepository;
     private final AdminRepository adminRepository;
     private final ReviewSessionRepository reviewSessionRepository;
+    private final CumulativeReviewSessionRepository cumulativeReviewSessionRepository;
 
     public DashboardResponse getDashboardData(UUID learnerId) {
         // Core lesson stats
@@ -48,6 +49,33 @@ public class DashboardService {
         // Pronunciation stats
         int totalPronunciations = (int) pronunciationAttemptRepository.countByLearnerLearnerId(learnerId);
         int correctPronunciations = (int) pronunciationAttemptRepository.countByLearnerLearnerIdAndIsCorrect(learnerId, true);
+
+        // Cumulative review stats & history
+        List<CumulativeReviewSession> cumulativeSessions = cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId);
+        long cumulativeCompletedCount = cumulativeSessions.stream().filter(s -> "COMPLETED".equals(s.getSessionStatus())).count();
+
+        String bestBadge = null;
+        if (cumulativeSessions.stream().anyMatch(s -> "GOLD".equals(s.getBadgeAwarded()))) {
+            bestBadge = "GOLD";
+        } else if (cumulativeSessions.stream().anyMatch(s -> "SILVER".equals(s.getBadgeAwarded()))) {
+            bestBadge = "SILVER";
+        } else if (cumulativeSessions.stream().anyMatch(s -> "BRONZE".equals(s.getBadgeAwarded()))) {
+            bestBadge = "BRONZE";
+        }
+
+        List<DashboardResponse.CumulativeSessionDetails> cumulativeHistory = cumulativeSessions.stream()
+                .map(s -> DashboardResponse.CumulativeSessionDetails.builder()
+                        .sessionId(s.getId())
+                        .lessonPairId(s.getLessonPairId())
+                        .sessionStatus(s.getSessionStatus())
+                        .accuracyPercent(s.getAccuracyPercent() != null ? s.getAccuracyPercent().doubleValue() : null)
+                        .badgeAwarded(s.getBadgeAwarded())
+                        .pointsEarned(s.getPointsEarned())
+                        .pointsBreakdown(s.getPointsBreakdown())
+                        .startTime(s.getStartTime())
+                        .endTime(s.getEndTime())
+                        .build())
+                .collect(Collectors.toList());
 
         // Sandbox history
         List<SandboxSession> sandboxSessions = sandboxSessionRepository.findByLearnerLearnerIdOrderByCreatedAtDesc(learnerId);
@@ -76,6 +104,9 @@ public class DashboardService {
                 .totalPronunciationAttempts(totalPronunciations)
                 .correctPronunciationAttempts(correctPronunciations)
                 .sandboxHistory(sandboxHistory)
+                .cumulativeReviewsCompleted((int) cumulativeCompletedCount)
+                .bestCumulativeBadge(bestBadge)
+                .cumulativeReviewHistory(cumulativeHistory)
                 .build();
     }
 

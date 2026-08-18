@@ -4,6 +4,7 @@ class RecentWordProgressModel {
   final String cebuanoMeaning;
   final double accuracy;
   final String currentLevel; // 'LEARNING', 'FAMILIAR', 'PROFICIENT', 'MASTERED'
+  final String? partOfSpeech;
   final String? lastPracticedAt;
 
   RecentWordProgressModel({
@@ -12,6 +13,7 @@ class RecentWordProgressModel {
     required this.cebuanoMeaning,
     required this.accuracy,
     required this.currentLevel,
+    this.partOfSpeech,
     this.lastPracticedAt,
   });
 
@@ -22,6 +24,7 @@ class RecentWordProgressModel {
       cebuanoMeaning: json['cebuanoMeaning'] ?? '',
       accuracy: (json['accuracy'] as num?)?.toDouble() ?? 0.0,
       currentLevel: json['currentLevel'] ?? 'LEARNING',
+      partOfSpeech: json['partOfSpeech'],
       lastPracticedAt: json['lastPracticedAt'],
     );
   }

@@ -41,30 +41,9 @@ class ImageMatchingWidget extends StatelessWidget {
                 width: 180,
                 height: 180,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stack) => SizedBox(
-                  width: 180,
-                  height: 180,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
-                  ),
-                ),
+                errorBuilder: (context, error, stack) => const SizedBox.shrink(),
               ),
             ),
-          )
-        else
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: const Center(child: Text('No image available', style: TextStyle(color: Color(0xFF94A3B8)))),
           ),
         const SizedBox(height: 18),
         const Text('Choose the correct English word:', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),

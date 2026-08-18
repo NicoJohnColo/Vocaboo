@@ -46,6 +46,8 @@ public class LearnerService {
     private final DifficultyProgressRepository difficultyProgressRepository;
     private final PointTransactionRepository pointTransactionRepository;
     private final RewardDataRepository rewardDataRepository;
+    private final LessonModuleScoreRepository lessonModuleScoreRepository;
+    private final SandboxModuleScoreRepository sandboxModuleScoreRepository;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -186,6 +188,12 @@ public class LearnerService {
     @Transactional
     public void resetProgress(UUID learnerId) {
         List<SandboxSession> sSessions = sandboxSessionRepository.findByLearnerLearnerIdOrderByCreatedAtDesc(learnerId);
+        
+        // Delete sandbox module scores first
+        for (SandboxSession sSession : sSessions) {
+            sandboxModuleScoreRepository.deleteBySessionSessionId(sSession.getSessionId());
+        }
+        
         for (SandboxSession sSession : sSessions) {
             sandboxWordProgressRepository.deleteBySessionSessionId(sSession.getSessionId());
             sandboxWordRepository.deleteBySessionSessionId(sSession.getSessionId());
@@ -216,5 +224,8 @@ public class LearnerService {
         diagnosticResultRepository.deleteByLearnerLearnerId(learnerId);
         introductionSessionRepository.deleteByLearnerLearnerId(learnerId);
         lessonStatusRepository.deleteByLearnerLearnerId(learnerId);
+        
+        // Delete lesson module scores
+        lessonModuleScoreRepository.deleteByLearnerLearnerId(learnerId);
     }
 }

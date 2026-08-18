@@ -74,6 +74,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/sandbox/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/reviews/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/reports/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/cross-lesson-sentences/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/cumulative-review/**").authenticated()
 
                 // Remaining /api/admin/** (catch-all) — require at least ADMIN
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")

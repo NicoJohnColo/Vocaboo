@@ -17,6 +17,26 @@ public class DashboardResponse {
     private int totalPronunciationAttempts;
     private int correctPronunciationAttempts;
     private List<SandboxSessionDetails> sandboxHistory;
+    private int cumulativeReviewsCompleted;
+    private String bestCumulativeBadge;
+    private List<CumulativeSessionDetails> cumulativeReviewHistory;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CumulativeSessionDetails {
+        private UUID sessionId;
+        private String lessonPairId;
+        private String sessionStatus;
+        private Double accuracyPercent;
+        private String badgeAwarded;
+        private Integer pointsEarned;
+        private Object pointsBreakdown;
+        private OffsetDateTime startTime;
+        private OffsetDateTime endTime;
+    }
 
     @Getter
     @Setter

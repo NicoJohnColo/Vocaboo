@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'dart:math';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
-import '../widgets/mascot_visual.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +14,31 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  Color _getRandomAvatarColor() {
+    final random = Random();
+    final colors = [
+      const Color(0xFFE0F2FE), // Light blue
+      const Color(0xFFFEF3C7), // Light green
+      const Color(0xFFFCE7F3), // Light pink
+      const Color(0xFFE9D5FF), // Light purple
+      const Color(0xFFFFE082), // Light orange
+      const Color(0xFFBFEF37), // Light lime
+      const Color(0xFF9FE5F9), // Light cyan
+      const Color(0xFFFECFE9), // Light teal
+      const Color(0xFFFFE5D8), // Light coral
+    ];
+    return colors[random.nextInt(colors.length)];
+  }
+
+  String _getInitials(String name) {
+    if (name.isEmpty) return '?';
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0].toUpperCase()}${parts[1][0].toUpperCase()}';
+    }
+    return name[0].toUpperCase();
+  }
+
   void _showEditProfileDialog(BuildContext context, AuthProvider auth, String? pref) {
     final nameController = TextEditingController(text: auth.learner?.displayName ?? '');
     final formKey = GlobalKey<FormState>();
@@ -224,69 +249,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showPosFocusDialog(BuildContext context, AuthProvider auth, String? pref) {
-    String currentFocus = auth.learner?.posFocus ?? 'ALL';
-
-    final options = [
-      {'key': 'ALL', 'label': 'All Words', 'icon': Icons.apps_rounded, 'color': const Color(0xFF0EA5E9)},
-      {'key': 'NOUN', 'label': 'Nouns Only', 'icon': Icons.label_outline_rounded, 'color': const Color(0xFF8B5CF6)},
-      {'key': 'VERB', 'label': 'Verbs Only', 'icon': Icons.bolt_rounded, 'color': const Color(0xFFF59E0B)},
-      {'key': 'ADJECTIVE', 'label': 'Adjectives Only', 'icon': Icons.palette_outlined, 'color': const Color(0xFF10B981)},
-    ];
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Part of Speech Focus',
-          style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w800),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options.map((opt) {
-            final key = opt['key'] as String;
-            final isSelected = currentFocus == key;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? (opt['color'] as Color).withValues(alpha: 0.1) : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? (opt['color'] as Color) : const Color(0xFFE2E8F0),
-                  width: isSelected ? 2 : 1,
-                ),
-              ),
-              child: ListTile(
-                leading: Icon(opt['icon'] as IconData, color: opt['color'] as Color),
-                title: Text(
-                  opt['label'] as String,
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: const Color(0xFF0F172A),
-                  ),
-                ),
-                trailing: isSelected ? Icon(Icons.check_circle, color: opt['color'] as Color) : null,
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  final success = await auth.updatePosFocus(key);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(success ? 'Part of speech focus saved to profile' : (auth.error ?? 'Error saving focus preference')),
-                      ),
-                    );
-                  }
-                },
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
   Widget _sectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 24, bottom: 8),
@@ -371,7 +333,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => GoRouter.of(context).pop(),
+          onPressed: () {
+            try {
+              GoRouter.of(context).pop();
+            } catch (e) {
+              context.go('/home');
+            }
+          },
         ),
         actions: const [SizedBox(width: 12)],
       ),
@@ -388,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 100,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFFE0F2FE),
+                    color: _getRandomAvatarColor(),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
@@ -397,7 +365,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
-                  child: const MascotVisual(type: MascotType.bibo, size: 86),
+                  child: Center(
+                    child: Text(
+                      _getInitials(learner?.displayName ?? ''),
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -434,36 +411,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: LocalizationService.translate(pref, 'language_preference'),
                 subtitle: pref != null ? LocalizationService.translate(pref, pref.toLowerCase()) : 'N/A',
                 onTap: () => GoRouter.of(context).push('/language-preference'),
-              ),
-              _settingsTile(
-                icon: Icons.category_outlined,
-                title: 'Part of Speech Focus',
-                subtitle: learner?.posFocus == 'NOUN'
-                    ? 'Nouns only'
-                    : learner?.posFocus == 'VERB'
-                        ? 'Verbs only'
-                        : learner?.posFocus == 'ADJECTIVE'
-                            ? 'Adjectives only'
-                            : 'All Words',
-                onTap: () => _showPosFocusDialog(context, auth, pref),
-              ),
-              _settingsTile(
-                icon: Icons.toggle_on_outlined,
-                title: LocalizationService.translate(pref, 'apply_immediately'),
-                subtitle: LocalizationService.translate(pref, 'apply_immediately_desc'),
-                trailing: Switch(
-                  value: learner?.masteryApplyImmediately ?? true,
-                  onChanged: (val) async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    final success = await auth.updateMasteryApplyMode(val);
-                    if (!success) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(auth.error ?? 'Error updating preference')),
-                      );
-                    }
-                  },
-                  activeThumbColor: const Color(0xFF0EA5E9),
-                ),
               ),
               _settingsTile(
                 icon: Icons.bar_chart_rounded,

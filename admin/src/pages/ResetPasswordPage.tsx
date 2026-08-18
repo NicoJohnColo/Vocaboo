@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
-const API = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+const API = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8081';
 
 type Stage = 'form' | 'success' | 'invalid';
 

@@ -1,5 +1,6 @@
 package com.vocaboo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.OffsetDateTime;
@@ -7,6 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "vocabulary_categories")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter
 @NoArgsConstructor

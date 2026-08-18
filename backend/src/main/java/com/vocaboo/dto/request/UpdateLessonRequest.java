@@ -17,6 +17,6 @@ public class UpdateLessonRequest {
     @Size(max = 5000, message = "Lesson description cannot exceed 5000 characters")
     private String lessonDescription;
 
-    @Pattern(regexp = "GRADE_4|GRADE_5|GRADE_6|", message = "Grade level must be GRADE_4, GRADE_5, or GRADE_6")
+    @Pattern(regexp = "GRADE_3_4|GRADE_5_6|GRADE_6|", message = "Grade level must be GRADE_3_4, GRADE_5_6, or GRADE_6")
     private String gradeLevel;
 }

@@ -1,0 +1,2 @@
+ALTER TYPE grade_level_enum RENAME VALUE 'GRADE_4' TO 'GRADE_3_4';
+ALTER TYPE grade_level_enum RENAME VALUE 'GRADE_5' TO 'GRADE_5_6';

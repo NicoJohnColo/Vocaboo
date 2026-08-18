@@ -1,5 +1,6 @@
 package com.vocaboo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcType;
@@ -15,6 +16,7 @@ import java.util.UUID;
         @UniqueConstraint(columnNames = {"category_id", "lesson_order"})
     }
 )
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter
 @NoArgsConstructor

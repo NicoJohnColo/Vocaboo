@@ -5,6 +5,7 @@ import '../models/lesson_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/local_storage_service.dart';
+import '../services/localization_service.dart';
 import 'package:uuid/uuid.dart';
 import 'mastery_result_screen.dart';
 
@@ -23,11 +24,8 @@ class LessonPathScreen extends StatefulWidget {
 }
 
 class _LessonPathScreenState extends State<LessonPathScreen> {
-  Map<String, double> _localScores = {};
   Map<String, int> _localMasteredCounts = {};
   double? _cumulativeReviewScore;
-  int? _cumulativeReviewMastered;
-  int? _cumulativeReviewTotal;
   bool _cumulativeReviewCompleted = false;
 
   @override
@@ -49,40 +47,33 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         scores[lesson.lessonId] = localScore;
       }
       
-      final details = await LocalStorageService.getLessonScoreDetails(lesson.lessonId);
-      if (details != null) {
-        final correctRaw = details['wordPronunciationCorrect'];
-        final failedRaw = details['failedSentenceWordIds'];
-        
-        Map<String, bool> wordPronunciationCorrect = {};
-        if (correctRaw is Map) {
-          wordPronunciationCorrect = Map<String, bool>.from(correctRaw);
+      // Try backend word difficulties first to get true mastery status
+      final difficulties = await provider.loadWordDifficulties(lesson.lessonId);
+      if (difficulties.isNotEmpty) {
+        int backendMastered = difficulties.values.where((level) => level == 'MASTERED').length;
+        masteredCounts[lesson.lessonId] = backendMastered;
+      } else {
+        final details = await LocalStorageService.getLessonScoreDetails(lesson.lessonId);
+        if (details != null) {
+          final failedRaw = details['failedSentenceWordIds'];
+          Set<String> failedSentenceWordIds = {};
+          if (failedRaw is List) {
+            failedSentenceWordIds = Set<String>.from(failedRaw.map((e) => e.toString()));
+          }
+          int mastered = (lesson.totalWordCount - failedSentenceWordIds.length).clamp(0, lesson.totalWordCount);
+          masteredCounts[lesson.lessonId] = mastered;
         }
-        
-        Set<String> failedSentenceWordIds = {};
-        if (failedRaw is List) {
-          failedSentenceWordIds = Set<String>.from(failedRaw.map((e) => e.toString()));
-        }
-        
-        // Pronunciation correctness is fully excluded from mastery logic
-        int mastered = (lesson.totalWordCount - failedSentenceWordIds.length).clamp(0, lesson.totalWordCount);
-        masteredCounts[lesson.lessonId] = mastered;
       }
     }
     
     final isReviewCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
     final reviewScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId);
-    final reviewMastered = await LocalStorageService.getCumulativeReviewMasteredCount(widget.categoryId);
-    final reviewTotal = await LocalStorageService.getCumulativeReviewTotalItems(widget.categoryId);
     
     if (mounted) {
       setState(() {
-        _localScores = scores;
         _localMasteredCounts = masteredCounts;
         _cumulativeReviewCompleted = isReviewCompleted;
         _cumulativeReviewScore = reviewScore;
-        _cumulativeReviewMastered = reviewMastered;
-        _cumulativeReviewTotal = reviewTotal;
       });
     }
   }
@@ -91,6 +82,8 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = Provider.of<LessonProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
+    final pref = auth.learner?.languagePreference;
     
     // Find composite review lesson if present
     LessonModel? compositeReviewLesson = provider.lessons.cast<LessonModel?>().firstWhere(
@@ -138,14 +131,16 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
       }
     }
     
-    // Check if review is unlocked (all source lessons completed)
+    // Check if review is unlocked (all source lessons must have all words mastered)
     final reviewUnlocked = hasReviewNode && sourceLessonIds.isNotEmpty && 
         sourceLessonIds.every((id) {
           final found = provider.lessons.cast<LessonModel?>().firstWhere(
             (l) => l?.lessonId == id,
             orElse: () => null,
           );
-          return found != null && found.status == 'COMPLETED';
+          if (found == null) return false;
+          final mastered = _localMasteredCounts[id] ?? (found.status == 'COMPLETED' ? found.totalWordCount : 0);
+          return mastered >= found.totalWordCount;
         });
     
     final totalItems = provider.lessons.length + (hasReviewNode ? 1 : 0);
@@ -226,11 +221,16 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                     if (!isLeft) const Spacer(),
                                     GestureDetector(
                                       onTap: isEnabled
-                                          ? () {
+                                          ? () async {
                                               if (lesson.status == 'COMPLETED') {
                                                 _showCompletedLessonOptions(lesson);
                                               } else {
-                                                _showContextParagraphPrompt(lesson);
+                                                final activeSession = await LocalStorageService.getActiveLessonSession(lesson.lessonId);
+                                                if (activeSession != null && lesson.status == 'IN_PROGRESS' && mounted) {
+                                                  _showResumePrompt(lesson, activeSession);
+                                                } else {
+                                                  _showContextParagraphPrompt(lesson);
+                                                }
                                               }
                                             }
                                           : null,
@@ -305,16 +305,17 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${lesson.totalWordCount} words',
+                                                  '${lesson.totalWordCount} ${LocalizationService.translate(pref, 'words_count')}',
                                                   style: const TextStyle(
                                                     fontSize: 11,
                                                     color: Color(0xFF64748B),
                                                   ),
                                                 ),
-                                                if (isEnabled && (lesson.status == 'COMPLETED' || _localScores.containsKey(lesson.lessonId))) ...[
+                                                if (isEnabled) ...[
                                                   Builder(
                                                     builder: (context) {
-                                                      final mastered = _localMasteredCounts[lesson.lessonId] ?? (lesson.status == 'COMPLETED' ? lesson.totalWordCount : 0);
+                                                      final mastered = _localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount;
+                                                      
                                                       return Container(
                                                         margin: const EdgeInsets.only(top: 6),
                                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -328,6 +329,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                                             fontSize: 10,
                                                             color: nodeColor,
                                                             fontWeight: FontWeight.bold,
+                                                            fontFamily: 'Outfit',
                                                           ),
                                                         ),
                                                       );
@@ -502,9 +504,65 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     );
   }
 
+  void _showResumePrompt(LessonModel lesson, Map<String, String> activeSession) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'Resume Lesson',
+          style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w900, color: Color(0xFF0F172A), fontSize: 20),
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'You have an active session for this lesson. Would you like to resume where you left off or start over?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: Color(0xFF64748B), height: 1.5),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              LocalStorageService.clearActiveLessonSession(lesson.lessonId);
+              _showContextParagraphPrompt(lesson);
+            },
+            child: const Text('Start Over', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final provider = Provider.of<LessonProvider>(context, listen: false);
+              final words = await provider.loadVocabulary(lesson.lessonId);
+              if (!mounted) return;
+              context.push(
+                '/loading',
+                extra: {
+                  'duration': 13000,
+                  'redirectPath': activeSession['redirectPath'],
+                  'sessionId': activeSession['sessionId'],
+                  'lessonId': lesson.lessonId,
+                  'categoryId': widget.categoryId,
+                  'lessonTitle': lesson.lessonTitle,
+                  'allWords': words.map((w) => w.toJson()).toList(),
+                  'isSandbox': false,
+                },
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0EA5E9),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Resume', style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _retryLesson(LessonModel lesson) async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
-    final navContext = context;
 
     // Attempt backend reset
     await provider.resetLesson(lesson.lessonId);
@@ -535,22 +593,25 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
       return;
     }
 
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final pref = auth.learner?.languagePreference;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text(
-          'Lesson Context',
-          style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w900, color: Color(0xFF0F172A), fontSize: 20),
+        title: Text(
+          LocalizationService.translate(pref, 'lesson_context_title'),
+          style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w900, color: Color(0xFF0F172A), fontSize: 20),
           textAlign: TextAlign.center,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'The context paragraph you will be learning throughout the lesson is...',
+            Text(
+              LocalizationService.translate(pref, 'lesson_context_desc'),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Color(0xFF64748B), height: 1.5, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B), height: 1.5, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
             Container(
@@ -583,7 +644,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               textStyle: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            child: const Text('Continue'),
+            child: Text(LocalizationService.translate(pref, 'continue')),
           ),
         ],
       ),
@@ -663,27 +724,51 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                           width: isSelected ? 2 : 1,
                         ),
                       ),
-                      child: ListTile(
-                        onTap: () {
-                          setModalState(() {
-                            selectedFocus = key;
-                          });
-                        },
-                        title: Text(
-                          opt['label'] as String,
-                          style: TextStyle(
-                            fontFamily: 'Outfit',
-                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                            color: const Color(0xFF0F172A),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                          onTap: () {
+                            setModalState(() {
+                              selectedFocus = key;
+                            });
+                          },
+                          title: Text(
+                            opt['label'] as String,
+                            style: TextStyle(
+                              fontFamily: 'Outfit',
+                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              color: const Color(0xFF0F172A),
+                            ),
                           ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                opt['desc'] as String,
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                              ),
+                              if (key != 'ALL') ...[
+                                const SizedBox(height: 4),
+                                Builder(builder: (ctx) {
+                                  final total = lesson.posTotalWordCounts[key] ?? 0;
+                                  final mastered = lesson.posMasteredWordCounts[key] ?? 0;
+                                  
+                                  return Text(
+                                    'Mastered: $mastered / $total words',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: (mastered == total && total > 0) ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                    ),
+                                  );
+                                }),
+                              ]
+                            ],
+                          ),
+                          trailing: isSelected
+                              ? const Icon(Icons.check_circle_rounded, color: Color(0xFF0EA5E9))
+                              : const Icon(Icons.radio_button_unchecked_rounded, color: Color(0xFF94A3B8)),
                         ),
-                        subtitle: Text(
-                          opt['desc'] as String,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                        ),
-                        trailing: isSelected
-                            ? const Icon(Icons.check_circle_rounded, color: Color(0xFF0EA5E9))
-                            : const Icon(Icons.radio_button_unchecked_rounded, color: Color(0xFF94A3B8)),
                       ),
                     );
                   }),
@@ -701,8 +786,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                       await auth.updatePosFocus(selectedFocus);
                       if (mounted) {
                         context.push(
-                          '/lesson/${lesson.lessonId}/diagnostic',
+                          '/loading',
                           extra: {
+                            'duration': 13000,
+                            'redirectPath': '/lesson/${lesson.lessonId}/diagnostic',
                             'categoryId': widget.categoryId,
                           },
                         );
@@ -760,8 +847,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                         final reviewSessionId = 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
                         // ignore: use_build_context_synchronously
                         navContext.push(
-                          '/session/$reviewSessionId/cumulative-review',
+                          '/loading',
                           extra: {
+                            'duration': 13000,
+                            'redirectPath': '/session/$reviewSessionId/cumulative-review',
                             'categoryId': widget.categoryId,
                             'lessonIds': lessonIds,
                             'isSandbox': false,
@@ -960,8 +1049,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     // Navigate to cumulative review with a fresh session
     final reviewSessionId = 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
     context.push(
-      '/session/$reviewSessionId/cumulative-review',
+      '/loading',
       extra: {
+        'duration': 13000,
+        'redirectPath': '/session/$reviewSessionId/cumulative-review',
         'categoryId': widget.categoryId,
         'lessonIds': lessonIds,
         'isSandbox': false,

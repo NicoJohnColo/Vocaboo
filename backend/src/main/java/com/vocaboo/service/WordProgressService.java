@@ -12,6 +12,7 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -77,14 +78,16 @@ public class WordProgressService {
             return;
         }
 
+        // Only check for full lesson completion using the ENTIRE lesson word count, not just the focus subset
         List<VocabularyWord> totalWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(session.getLesson().getLessonId());
         int totalWordCount = totalWords.size();
 
+        // Check global progress for all words in the lesson for this learner
         long completedWordsCount = totalWords.stream()
                 .filter(w -> progressRepository
-                        .findBySessionSessionIdAndWordWordIdAndModuleNumber(session.getSessionId(), w.getWordId(), 3)
-                        .map(p -> p.getStepCompleted() == 4)
-                        .orElse(false))
+                        .findByLearnerLearnerIdAndWordWordIdAndModuleNumber(session.getLearner().getLearnerId(), w.getWordId(), 3)
+                        .stream()
+                        .anyMatch(p -> p.getStepCompleted() == 4))
                 .count();
 
         if (completedWordsCount == totalWordCount && totalWordCount > 0) {
@@ -125,7 +128,7 @@ public class WordProgressService {
                             .lesson(session.getLesson())
                             .build());
 
-            lessonStatus.setStatus(LessonStatus.COMPLETED);
+            lessonStatus.setStatus(LessonStatus.UNLOCKED);
             lessonStatus.setMasteryScore(score);
             lessonStatus.setAttempts(lessonStatus.getAttempts() + 1);
             lessonStatus.setCompletedAt(OffsetDateTime.now());
@@ -211,8 +214,9 @@ public class WordProgressService {
 
             List<WordPerformance> allPerfs = performanceRepository.findByLearnerLearnerId(session.getLearner().getLearnerId());
             long masteredCount = allPerfs.stream().filter(p -> {
-                var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), p.getWord().getWordId());
-                return dpOpt.map(dp -> dp.getCurrentLevel() == DifficultyLevel.MASTERED).orElseGet(() -> p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0);
+                var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(session.getLearner().getLearnerId(), p.getWord().getWordId(), 2);
+                DifficultyLevel currentLevel = dpOpt.map(DifficultyProgress::getCurrentLevel).orElse(DifficultyLevel.LEARNING);
+                return currentLevel == DifficultyLevel.MASTERED;
             }).count();
 
             mastery.setWordsMasteredCount((int) masteredCount);

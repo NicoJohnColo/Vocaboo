@@ -5,14 +5,24 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import 'cumulative_mixed_review_screen.dart';
+import 'loading_screen.dart';
 import '../models/vocabulary_word_model.dart';
 import '../models/pronunciation_attempt_model.dart';
 import '../services/audio_recorder_service.dart';
 import '../services/stt_service.dart';
 import '../services/tts_service.dart';
 import '../services/streaming_stt_service.dart';
-import '../services/pronunciation_matcher.dart';
 import '../services/local_storage_service.dart';
+import '../services/localization_service.dart';
+import '../widgets/mascot_bubble.dart';
+import '../widgets/cebuano_text_highlighter.dart';
+
+class CompletionToken {
+  final String text;
+  final bool isBlank;
+  final String? answer;
+  CompletionToken({required this.text, this.isBlank = false, this.answer});
+}
 
 enum Phase {
   sentenceActivity,
@@ -21,10 +31,7 @@ enum Phase {
   summary,
 }
 
-enum ActivityFormat {
-  completion,
-  rearrangement,
-}
+enum ActivityFormat { completion, rearrangement }
 
 class SentenceBuildingScreen extends StatefulWidget {
   final String sessionId;
@@ -50,12 +57,14 @@ class SentenceBuildingScreen extends StatefulWidget {
   State<SentenceBuildingScreen> createState() => _SentenceBuildingScreenState();
 }
 
-class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
+class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with WidgetsBindingObserver {
   final AudioRecorderService _recorderService = AudioRecorderService();
   final SttService _sttService = SttService();
   final TtsService _ttsService = TtsService();
   final StreamingSttService _streamingSttService = StreamingSttService();
-  final ValueNotifier<String> _liveTranscriptNotifier = ValueNotifier<String>('');
+  final ValueNotifier<String> _liveTranscriptNotifier = ValueNotifier<String>(
+    '',
+  );
   StreamSubscription<double>? _amplitudeSubscription;
   Timer? _silenceTimer;
   DateTime? _lastSpeechAt;
@@ -63,10 +72,23 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   bool _recordingSessionActive = false;
   bool _disposed = false;
 
+  // Active Time Tracking
+  DateTime? _moduleStartTime;
+  Duration _totalPausedDuration = Duration.zero;
+  DateTime? _pauseStartTime;
+
+  // Timer state
+  Timer? _activityTimer;
+  int _remainingSeconds = 0;
+  int _totalSeconds = 0;
+
   // Lesson data
   List<VocabularyWordModel> _words = [];
   bool _isLoading = true;
   String? _error;
+  Map<String, String> _wordDifficulties = {};
+  double _maxProgress = 0.0;
+  final Set<String> _sentenceMasteredWordIds = {};
 
   // Queues and Progression State
   List<VocabularyWordModel> _queue = [];
@@ -75,10 +97,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   bool _isReinforcementPass = false;
   Phase _currentPhase = Phase.sentenceActivity;
   int _totalUniqueWords = 0;
-  int _phaseWordCount = 0;
   int _initialPassCompletedCount = 0;
-  int _reinforcementCompletedCount = 0;
-  bool _confusableScreenShown = false;
 
   // Stats for Summary Screen
   int _initialPassCorrectCount = 0;
@@ -87,6 +106,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   final int _totalPronunciationWords = 0;
   List<Map<String, dynamic>> _confusablePairs = [];
   final Map<String, bool> _confusableMastery = {};
+  bool _pronunciationBatchCompleted = false;
 
   // Inline confusable distinction state
   Map<String, dynamic>? _activeConfusablePair;
@@ -96,18 +116,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   bool _confusableCorrect = false;
 
   // Per-word pronunciation tracking for score screen
+  List<String> _expectedArrangementTokens = [];
+  int _arrangementStartIndex = 0;
+  int _arrangementEndIndex = -1;
   final Map<String, bool> _wordPronunciationCorrect = {}; // wordId -> isCorrect
-  final Map<String, int> _wordPronunciationAttempts = {}; // wordId -> attemptCount
+  final Map<String, int> _wordPronunciationAttempts =
+      {}; // wordId -> attemptCount
 
   // Current item state
   late VocabularyWordModel _currentWord;
   ActivityFormat _currentFormat = ActivityFormat.completion;
   bool _isChecked = false;
+  bool _submittingAnswer = false; // Guard against duplicate answer submissions
   bool _isCorrect = false;
 
-  // Format 1: Completion Options
+  // Activity alternation index
+  int _activityIndex = 0;
+
+  // Format 1: Completion Options & Free-type Controllers
   List<String> _completionOptions = [];
-  String? _selectedCompletionWord;
+  final Map<int, String> _selectedCompletionWords = {};
+  final Map<int, TextEditingController> _completionControllers = {};
+  final List<CompletionToken> _completionTokens = [];
 
   // Format 2: Rearrangement Chips
   List<String> _assembledWords = [];
@@ -127,17 +157,37 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _moduleStartTime = DateTime.now();
+    
+    if (!widget.isSandbox) {
+      LocalStorageService.saveActiveLessonSession(
+        widget.lessonId,
+        widget.sessionId,
+        '/session/${widget.sessionId}/sentence-building',
+      );
+    }
+    
     _initializeTts();
     _loadLessonData();
   }
 
   Future<void> _initializeTts() async {
-    await _ttsService.initialize();
-    await _streamingSttService.initialize();
+    try {
+      await _ttsService.initialize();
+    } catch (e) {
+      debugPrint('TTS initialization warning: $e');
+    }
+    try {
+      await _streamingSttService.initialize();
+    } catch (e) {
+      debugPrint('STT initialization warning: $e');
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _recordingSessionActive = false;
     _amplitudeSubscription?.cancel();
@@ -147,7 +197,32 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _streamingSttService.dispose();
     _liveTranscriptNotifier.dispose();
     _recorderService.dispose();
+    _activityTimer?.cancel();
+    for (final c in _completionControllers.values) {
+      c.dispose();
+    }
+    _completionControllers.clear();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _pauseStartTime = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_pauseStartTime != null) {
+        _totalPausedDuration += DateTime.now().difference(_pauseStartTime!);
+        _pauseStartTime = null;
+      }
+    }
+  }
+
+  int _computeActiveSeconds() {
+    if (_moduleStartTime == null) return 0;
+    final elapsed = DateTime.now().difference(_moduleStartTime!) - _totalPausedDuration;
+    return elapsed.inSeconds.clamp(0, 86400);
   }
 
   Future<void> _loadLessonData() async {
@@ -157,25 +232,39 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     });
 
     try {
-      final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+      final lessonProvider = Provider.of<LessonProvider>(
+        context,
+        listen: false,
+      );
       List<VocabularyWordModel> fetchedWords = [];
       List<Map<String, dynamic>> fetchedConfusables = [];
 
       // Prefer words passed via navigation (fast path)
       if (widget.allWords.isNotEmpty) {
-        fetchedWords = widget.allWords.map((w) => VocabularyWordModel.fromJson(w)).toList();
+        fetchedWords = widget.allWords
+            .map((w) => VocabularyWordModel.fromJson(w))
+            .toList();
       } else if (widget.isSandbox) {
         // Sandbox: fetch the sandbox session words only; do NOT fall back to local assets or other endpoints.
         try {
-          final mixed = await lessonProvider.getCumulativeMixedReview(widget.sessionId, isSandbox: true);
+          final mixed = await lessonProvider.getCumulativeMixedReview(
+            widget.sessionId,
+            isSandbox: true,
+          );
           if (mixed.isNotEmpty) {
-            fetchedWords = mixed.map((m) => VocabularyWordModel.fromJson({
-                  'wordId': m['wordId'] ?? m['word'] ?? '',
-                  'lessonId': widget.lessonId,
-                  'englishWord': m['word'] ?? m['englishWord'] ?? '',
-                  'cebuanoMeaning': m['definition'] ?? m['cebuanoMeaning'] ?? '',
-                  'exampleSentenceEnglish': m['example'] ?? m['exampleSentenceEnglish'] ?? '',
-                })).toList();
+            fetchedWords = mixed
+                .map(
+                  (m) => VocabularyWordModel.fromJson({
+                    'wordId': m['wordId'] ?? m['word'] ?? '',
+                    'lessonId': widget.lessonId,
+                    'englishWord': m['word'] ?? m['englishWord'] ?? '',
+                    'cebuanoMeaning':
+                        m['definition'] ?? m['cebuanoMeaning'] ?? '',
+                    'exampleSentenceEnglish':
+                        m['example'] ?? m['exampleSentenceEnglish'] ?? '',
+                  }),
+                )
+                .toList();
           }
         } catch (e) {
           setState(() {
@@ -188,34 +277,67 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         // Primary backend fetch for non-sandbox
         final auth = Provider.of<AuthProvider>(context, listen: false);
         final posFocus = auth.learner?.posFocus;
-        final filter = (posFocus != null && posFocus != 'ALL') ? posFocus : null;
-        
-        fetchedWords = await lessonProvider.loadVocabulary(widget.lessonId, partOfSpeech: filter);
+        final filter = (posFocus != null && posFocus != 'ALL')
+            ? posFocus
+            : null;
+
+        fetchedWords = await lessonProvider.loadVocabulary(
+          widget.lessonId,
+          partOfSpeech: filter,
+        );
+
+        if (!widget.isSandbox) {
+          _wordDifficulties = await lessonProvider.loadWordDifficulties(widget.lessonId, moduleNumber: 3);
+          
+          int getTierPoints(String tier) {
+            switch (tier.toUpperCase()) {
+              case 'LEARNING': return 0;
+              case 'FAMILIAR': return 1;
+              case 'PROFICIENT': return 2;
+              case 'MASTERED': return 3;
+              default: return 0;
+            }
+          }
+          int totalMaxPoints = fetchedWords.length * 3;
+          int currentPoints = 0;
+          for (final w in fetchedWords) {
+            currentPoints += getTierPoints(_wordDifficulties[w.wordId] ?? 'LEARNING');
+          }
+          final calculatedProgress = totalMaxPoints == 0 ? 0.0 : (currentPoints / totalMaxPoints);
+          if (calculatedProgress > _maxProgress) _maxProgress = calculatedProgress;
+        }
 
         // Fallback 1: try lesson activity endpoint which sometimes contains word-like items
         if (fetchedWords.isEmpty) {
-          final activity = await lessonProvider.loadLessonActivity(widget.lessonId, partOfSpeech: filter);
+          final activity = await lessonProvider.loadLessonActivity(
+            widget.lessonId,
+            partOfSpeech: filter,
+          );
           if (activity.isNotEmpty) {
-            fetchedWords = activity.map((m) => VocabularyWordModel.fromJson({
-                  'wordId': m['wordId'] ?? m['id'] ?? '',
-                  'lessonId': widget.lessonId,
-                  'englishWord': m['word'] ?? m['englishWord'] ?? '',
-                  'cebuanoMeaning': m['definition'] ?? m['cebuanoMeaning'] ?? '',
-                  'exampleSentenceEnglish': m['example'] ?? m['exampleSentenceEnglish'] ?? '',
-                })).toList();
+            fetchedWords = activity
+                .map(
+                  (m) => VocabularyWordModel.fromJson({
+                    'wordId': m['wordId'] ?? m['id'] ?? '',
+                    'lessonId': widget.lessonId,
+                    'englishWord': m['word'] ?? m['englishWord'] ?? '',
+                    'cebuanoMeaning':
+                        m['definition'] ?? m['cebuanoMeaning'] ?? '',
+                    'exampleSentenceEnglish':
+                        m['example'] ?? m['exampleSentenceEnglish'] ?? '',
+                  }),
+                )
+                .toList();
           }
         }
       }
 
-        fetchedConfusables = (!widget.isSandbox && widget.moduleNumber == 3)
+      fetchedConfusables = (!widget.isSandbox && widget.moduleNumber == 3)
           ? await lessonProvider.loadConfusablePairs(widget.lessonId)
           : <Map<String, dynamic>>[];
 
-        if (fetchedConfusables.isEmpty && !widget.isSandbox && widget.moduleNumber == 3) {
-          fetchedConfusables = _buildFallbackConfusablePairs(fetchedWords);
-        }
-
-      debugPrint('SentenceBuilding: allWords=${widget.allWords.length}, fetchedWords=${fetchedWords.length}, confusables=${fetchedConfusables.length}');
+      debugPrint(
+        'SentenceBuilding: allWords=${widget.allWords.length}, fetchedWords=${fetchedWords.length}, confusables=${fetchedConfusables.length}',
+      );
 
       if (!mounted) return;
 
@@ -230,19 +352,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       setState(() {
         _words = fetchedWords;
         _totalUniqueWords = fetchedWords.length;
-        _phaseWordCount = _totalUniqueWords;
         _confusablePairs = fetchedConfusables;
 
-        // Build a queue that is sequential per-word: for each word add Completion then Rearrangement
-        final List<VocabularyWordModel> builtQueue = [];
-        final shuffled = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
-        for (var word in shuffled) {
-          builtQueue.add(word); // completion for this word
-          builtQueue.add(word); // rearrangement for this word
-        }
+        // Build a queue with all words in this lesson for sentence building and pronunciation practice
+        final List<VocabularyWordModel> builtQueue = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
 
         _queue = builtQueue;
-        
         _startNextItem();
         _isLoading = false;
       });
@@ -260,7 +375,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     final raw = (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
         ? word.sentenceCompletionSentence!.trim()
         : word.exampleSentenceEnglish;
-    return raw.replaceAll(RegExp(r'^Complete the sentence:\s*', caseSensitive: false), '');
+    return raw.replaceAll(
+      RegExp(r'^Complete the sentence:\s*', caseSensitive: false),
+      '',
+    );
   }
 
   String _activityAnswer(VocabularyWordModel word) {
@@ -279,94 +397,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     _ttsService.speak(textToSpeak);
   }
 
-  List<Map<String, dynamic>> _buildFallbackConfusablePairs(List<VocabularyWordModel> words) {
-    final confusableWords = words.where((word) => word.isConfusablePairMember).toList()
-      ..sort((a, b) => a.wordOrder.compareTo(b.wordOrder));
-
-    if (confusableWords.length < 2) {
-      return const [];
-    }
-
-    final wordA = confusableWords[0];
-    final wordB = confusableWords[1];
-
-    String buildSentence(VocabularyWordModel word) {
-      final sourceSentence = (word.sentenceCompletionSentence?.trim().isNotEmpty ?? false)
-          ? word.sentenceCompletionSentence!.trim()
-          : word.exampleSentenceEnglish.trim();
-      final replacement = word.englishWord.trim();
-      if (sourceSentence.isEmpty || replacement.isEmpty) {
-        return replacement;
-      }
-      final blanked = sourceSentence.replaceAll(
-        RegExp('\\b${RegExp.escape(replacement)}\\b', caseSensitive: false),
-        replacement,
-      );
-      return blanked.isNotEmpty ? blanked : sourceSentence;
-    }
-
-    return [
-      {
-        'pairId': '${widget.lessonId}_confusable_fallback',
-        'lessonId': widget.lessonId,
-        'wordA': wordA.toJson(),
-        'wordB': wordB.toJson(),
-        'contrastiveSentenceA': buildSentence(wordA),
-        'contrastiveSentenceB': buildSentence(wordB),
-      },
-    ];
-  }
-
-  List<String> _activityOptions(VocabularyWordModel word) {
-    final options = <String>{_activityAnswer(word)};
-    for (final value in [
-      word.sentenceCompletionOption1,
-      word.sentenceCompletionOption2,
-      word.sentenceCompletionOption3,
-    ]) {
-      if (value != null && value.trim().isNotEmpty) {
-        options.add(value.trim());
-      }
-    }
-    return options.toList();
-  }
 
   List<String> _activityArrangementTokens(VocabularyWordModel word) {
-    final sentence = word.exampleSentenceEnglish.trim().isEmpty
-        ? word.englishWord
-        : word.exampleSentenceEnglish;
-    final sentenceTokens = _tokensFromSentence(sentence);
-
-    if (word.sentenceArrangementTokens != null &&
-        word.sentenceArrangementTokens!.isNotEmpty) {
-      final provided = word.sentenceArrangementTokens!
-          .map((token) => token.trim())
-          .where((token) => token.isNotEmpty)
-          .toList();
-
-      if (provided.length >= 2) {
-        // Only accept DB tokens if they contain exactly the same words as
-        // the sentence (same multiset, case-insensitive). This prevents
-        // distractor words from other sentences polluting the word bank.
-        final lowerProvided = provided.map((t) => t.toLowerCase()).toList()
-          ..sort();
-        final lowerSentence = sentenceTokens.map((t) => t.toLowerCase()).toList()
-          ..sort();
-
-        if (lowerProvided.join(' ') == lowerSentence.join(' ')) {
-          // Exact same words as the sentence — use DB tokens (may have
-          // different capitalisation that the author intended).
-          return provided;
-        }
-
-        debugPrint(
-            'SentenceBuilding: DB tokens differ from sentence words; '
-            'using sentence tokens only. '
-            'DB: $provided | Sentence: $sentenceTokens');
-      }
-    }
-
-    return sentenceTokens;
+    final sentence =
+        (word.tileSentence != null && word.tileSentence!.trim().isNotEmpty)
+        ? word.tileSentence!
+        : (word.exampleSentenceEnglish.trim().isNotEmpty
+              ? word.exampleSentenceEnglish
+              : word.englishWord);
+    return _tokensFromSentence(sentence);
   }
 
   List<String> _tokensFromSentence(String sentence) {
@@ -378,13 +417,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         .toList();
   }
 
-  String _normalizeSentenceText(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r"[^\p{L}\p{N}' ]", unicode: true), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
 
   void _startNextItem() {
     if (_queue.isEmpty) {
@@ -395,14 +427,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
 
     _currentWord = _queue.removeAt(0);
-
-    final wordId = _currentWord.wordId ?? '';
-    if (wordId.isNotEmpty && _seenWordIds.contains(wordId)) {
-      _currentFormat = ActivityFormat.rearrangement;
-    } else {
-      _currentFormat = ActivityFormat.completion;
-      if (wordId.isNotEmpty) _seenWordIds.add(wordId);
+    
+    // Skip if the word became MASTERED during an earlier activity in this pass
+    if ((_wordDifficulties[_currentWord.wordId] ?? 'LEARNING') == 'MASTERED') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startNextItem();
+      });
+      return;
     }
+
+    // Pattern: Completion -> Voice Pronunciation -> Sentence Arrangement
+    _currentPhase = Phase.sentenceActivity;
+    _currentFormat = ActivityFormat.completion;
 
     setState(() {
       _resetItemState();
@@ -411,8 +447,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
   void _resetItemState() {
     _isChecked = false;
+    _submittingAnswer = false; // Reset dedupe guard for new question
     _isCorrect = false;
-    _selectedCompletionWord = null;
+    for (final c in _completionControllers.values) {
+      c.dispose();
+    }
+    _completionControllers.clear();
+    _selectedCompletionWords.clear();
+    _completionTokens.clear();
     _assembledWords = []; // clear previous sentence's answer
     final wordId = _currentWord.wordId;
     final priorAttempts = _wordPronunciationAttempts[wordId] ?? 0;
@@ -427,79 +469,302 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     } else {
       _generateRearrangementChips();
     }
+    
+    _startActivityTimer();
+  }
+  
+  void _startActivityTimer() {
+    _activityTimer?.cancel();
+    
+    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+    if (level == 'LEARNING') {
+      _totalSeconds = 0;
+    } else if (level == 'FAMILIAR') {
+      _totalSeconds = 30;
+    } else if (level == 'PROFICIENT') {
+      _totalSeconds = 20;
+    } else if (level == 'MASTERED') {
+      _totalSeconds = 15;
+    } else {
+      _totalSeconds = 0; // LEARNING
+    }
+    
+    _remainingSeconds = _totalSeconds;
+    
+    if (_totalSeconds <= 0) return;
+
+    _activityTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_isChecked) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+        } else {
+          timer.cancel();
+          _checkAnswer(timeUp: true);
+        }
+      });
+    });
+  }
+
+
+
+
+  void _parseDynamicBlanks() {
+    _completionTokens.clear();
+    final sentence = _currentWord.exampleSentenceEnglish.isNotEmpty 
+                     ? _currentWord.exampleSentenceEnglish 
+                     : (_currentWord.sentenceCompletionSentence?.isNotEmpty == true 
+                         ? _currentWord.sentenceCompletionSentence! 
+                         : _currentWord.englishWord);
+                     
+    final targetWord = _activityAnswer(_currentWord).toLowerCase();
+    
+    final RegExp wordExp = RegExp(r"[\w'-]+");
+    final matches = wordExp.allMatches(sentence).toList();
+    
+    int targetMatchIdx = -1;
+    for (int i = 0; i < matches.length; i++) {
+      if (matches[i].group(0)!.toLowerCase() == targetWord) {
+        targetMatchIdx = i;
+        break;
+      }
+    }
+    // If not found exactly, just pick the longest word as fallback target
+    if (targetMatchIdx == -1 && matches.isNotEmpty) {
+      int maxLen = 0;
+      for (int i = 0; i < matches.length; i++) {
+        if (matches[i].group(0)!.length > maxLen) {
+          maxLen = matches[i].group(0)!.length;
+          targetMatchIdx = i;
+        }
+      }
+    }
+
+    Set<int> blankIndices = {};
+    if (targetMatchIdx != -1) {
+      blankIndices.add(targetMatchIdx);
+    }
+
+    int lastEnd = 0;
+    for (int i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      if (match.start > lastEnd) {
+         _completionTokens.add(CompletionToken(text: sentence.substring(lastEnd, match.start), isBlank: false));
+      }
+      bool isBlank = blankIndices.contains(i);
+      _completionTokens.add(CompletionToken(
+        text: isBlank ? '____' : match.group(0)!, 
+        isBlank: isBlank, 
+        answer: isBlank ? match.group(0)! : null
+      ));
+      lastEnd = match.end;
+    }
+    if (lastEnd < sentence.length) {
+      _completionTokens.add(CompletionToken(text: sentence.substring(lastEnd), isBlank: false));
+    }
   }
 
   void _generateCompletionOptions() {
-    final correct = _activityAnswer(_currentWord);
-    final provided = _activityOptions(_currentWord)
-        .where((option) => option.toLowerCase() != correct.toLowerCase())
+    _parseDynamicBlanks();
+    
+    // The correct answers are all the blanked words
+    final correctAnswers = _completionTokens
+        .where((t) => t.isBlank && t.answer != null)
+        .map((t) => t.answer!)
         .toList();
 
-    if (provided.length >= 3) {
-      _completionOptions = [correct, ...provided.take(3)];
-    } else {
-      // Generate distractors from other words in session
-      final others = _words
-          .where((word) => word.wordId != _currentWord.wordId)
-          .map((word) => word.englishWord)
-          .toList();
-      
-      // Add fallback distractors if we don't have enough
-      final fallbackDistractors = ['apple', 'house', 'water', 'friend', 'school', 'book', 'tree', 'happy', 'run', 'big'];
-      if (others.length < 3) {
-        others.addAll(fallbackDistractors);
-      }
-      
-      others.shuffle();
-      // Always take 3 distractors to ensure 4 total options (1 correct + 3 distractors)
-      _completionOptions = [correct, ...others.take(3)];
+    // Build a pool from other words in the session
+    final pool = _words
+        .where((word) => word.wordId != _currentWord.wordId)
+        .map((word) => word.englishWord)
+        .toSet()
+        .toList();
+
+    final fallbackDistractors = [
+      'apple', 'house', 'water', 'friend', 'school',
+      'book', 'tree', 'happy', 'run', 'big', 'small', 'quickly'
+    ];
+    for (var w in fallbackDistractors) {
+      pool.add(w);
     }
+    
+    pool.removeWhere((w) => correctAnswers.any((ans) => ans.toLowerCase() == w.toLowerCase()));
+
+    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+    int numOptions = 3;
+    
+    if (level == 'LEARNING' || level == 'FAMILIAR') {
+      numOptions = 3; // correct(1) + 2 distractors
+    } else {
+      numOptions = 0; // Free-type (PROFICIENT & MASTERED)
+    }
+
+    pool.shuffle();
+    final distractors = pool.take(numOptions > correctAnswers.length ? numOptions - correctAnswers.length : 0).toList();
+
+    _completionOptions = [...correctAnswers, ...distractors];
     _completionOptions.shuffle();
   }
 
   void _generateRearrangementChips() {
-    final List<String> wordsInSentence = _activityArrangementTokens(_currentWord);
-
-    _scrambledWords = List.from(wordsInSentence);
-    _scrambledWords.shuffle();
-
-    if (_scrambledWords.length < 2) {
+    final List<String> allTokens = _activityArrangementTokens(_currentWord);
+    if (allTokens.length < 2) {
       _currentFormat = ActivityFormat.completion;
       _generateCompletionOptions();
+      return;
+    }
+
+    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+    int n = allTokens.length;
+    int tileCount = n;
+    int fakeCount = 0;
+
+    if (level == 'LEARNING') {
+      // 1 tile to place (the target word)
+      tileCount = 1;
+      fakeCount = 0;
+    } else if (level == 'FAMILIAR') {
+      // 2 tiles to place
+      tileCount = 2;
+      if (tileCount > n) tileCount = n;
+      fakeCount = 0;
+    } else if (level == 'PROFICIENT') {
+      // Most/all words
+      tileCount = n > 3 ? n - 1 : n;
+      fakeCount = 1;
+    } else if (level == 'MASTERED') {
+      // Full sentence scrambled
+      tileCount = n;
+      fakeCount = 3;
+    }
+
+    // Identify target index for centering the partial tiles
+    String targetWord = _currentWord.englishWord.trim();
+    int targetIdx = -1;
+    for (int i = 0; i < allTokens.length; i++) {
+      if (allTokens[i].toLowerCase() == targetWord.toLowerCase()) {
+        targetIdx = i;
+        break;
+      }
+    }
+    if (targetIdx == -1) targetIdx = 0;
+
+    int radiusLeft = ((tileCount - 1) / 2.0).floor();
+    int radiusRight = ((tileCount - 1) / 2.0).ceil();
+
+    int startIndex = targetIdx - radiusLeft;
+    int endIndex = targetIdx + radiusRight;
+
+    if (startIndex < 0) {
+      int shiftAmount = 0 - startIndex;
+      startIndex = 0;
+      endIndex = (endIndex + shiftAmount) < (n - 1)
+          ? (endIndex + shiftAmount)
+          : (n - 1);
+    } else if (endIndex >= n) {
+      int shiftAmount = endIndex - (n - 1);
+      endIndex = n - 1;
+      startIndex = (startIndex - shiftAmount) > 0
+          ? (startIndex - shiftAmount)
+          : 0;
+    }
+
+    _expectedArrangementTokens = allTokens.sublist(startIndex, endIndex + 1);
+    _arrangementStartIndex = startIndex;
+    _arrangementEndIndex = endIndex;
+    _scrambledWords = List.from(_expectedArrangementTokens);
+
+    if (fakeCount > 0) {
+      final ownDistractors = [
+        _currentWord.mcDistractor1,
+        _currentWord.mcDistractor2,
+        _currentWord.mcDistractor3,
+      ].whereType<String>().where((d) => d.trim().isNotEmpty).toList();
+      
+      ownDistractors.shuffle();
+      
+      int added = 0;
+      for (int i = 0; i < fakeCount && i < ownDistractors.length; i++) {
+        _scrambledWords.add(ownDistractors[i]);
+        added++;
+      }
+      
+      if (added < fakeCount) {
+        final fallback = ['apple', 'house', 'water', 'friend', 'school', 'book'];
+        fallback.shuffle();
+        for (int i = 0; i < (fakeCount - added) && i < fallback.length; i++) {
+          if (!_scrambledWords.contains(fallback[i]) && !_expectedArrangementTokens.contains(fallback[i])) {
+            _scrambledWords.add(fallback[i]);
+          }
+        }
+      }
+    }
+
+    // Keep scrambling until it's not the same as the original (or up to 10 tries)
+    int attempts = 0;
+    bool isSame = true;
+    while (isSame && attempts < 10) {
+      _scrambledWords.shuffle();
+      isSame = false;
+      if (_scrambledWords.length == _expectedArrangementTokens.length) {
+        for (int i = 0; i < _scrambledWords.length; i++) {
+          if (_scrambledWords[i] != _expectedArrangementTokens[i]) {
+            isSame = false;
+            break;
+          }
+          isSame = true;
+        }
+      }
+      attempts++;
     }
   }
 
   Future<void> _handleQueueEmpty() async {
-    debugPrint('Queue empty! isReinforcementPass: $_isReinforcementPass, failedWords: ${_failedSentenceWords.length}');
+    debugPrint(
+      'Queue empty! isReinforcementPass: $_isReinforcementPass, failedWords: ${_failedSentenceWords.length}',
+    );
     // 1. If we finished the initial pass
     if (!_isReinforcementPass) {
       // Transition to reinforcement pass if we failed any words
       if (_failedSentenceWords.isNotEmpty) {
-        debugPrint('Starting reinforcement pass with ${_failedSentenceWords.length} failed words');
-        final reinforcementWords = _failedSentenceWords.length;
+        debugPrint(
+          'Starting reinforcement pass with ${_failedSentenceWords.length} failed words',
+        );
         setState(() {
           _isReinforcementPass = true;
           _queue = List.from(_failedSentenceWords);
-          _phaseWordCount = reinforcementWords;
           _failedSentenceWords.clear();
           _startNextItem();
         });
       } else {
-        debugPrint('No failed words, completing module...');
-        await _completeModuleAndAdvance();
+        debugPrint('No failed words, checking mastery...');
+        await _checkMasteryAndLoopOrComplete();
       }
     } else {
-      debugPrint('Reinforcement pass complete, completing module...');
-      await _completeModuleAndAdvance();
+      debugPrint('Reinforcement pass complete, checking mastery...');
+      await _checkMasteryAndLoopOrComplete();
     }
+  }
+
+  Future<void> _checkMasteryAndLoopOrComplete() async {
+    await _completeModuleAndAdvance();
   }
 
   void _checkConfusableAnswers() {
     final pair = _activeConfusablePair!;
     final wordA = pair['wordA']['englishWord'] as String;
     final wordB = pair['wordB']['englishWord'] as String;
-    final isCorrectA = _confusableSelectedForA?.toLowerCase() == wordA.toLowerCase();
-    final isCorrectB = _confusableSelectedForB?.toLowerCase() == wordB.toLowerCase();
+    final isCorrectA =
+        _confusableSelectedForA?.toLowerCase() == wordA.toLowerCase();
+    final isCorrectB =
+        _confusableSelectedForB?.toLowerCase() == wordB.toLowerCase();
     final allCorrect = isCorrectA && isCorrectB;
     if (allCorrect) {
       _initialPassCorrectCount++;
@@ -521,11 +786,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       });
       // Now check if reinforcement pass is needed
       if (_failedSentenceWords.isNotEmpty) {
-        final reinforcementWords = _failedSentenceWords.length;
         setState(() {
           _isReinforcementPass = true;
           _queue = List.from(_failedSentenceWords);
-          _phaseWordCount = reinforcementWords;
           _failedSentenceWords.clear();
           _startNextItem();
         });
@@ -546,15 +809,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   Future<void> _completeModuleAndAdvance() async {
     final navContext = context;
 
-    final totalActivities = _totalUniqueWords * 2;
+    final totalActivities = _totalUniqueWords * 3;
+    final int activeSeconds = _computeActiveSeconds();
     try {
-      await Provider.of<LessonProvider>(context, listen: false).persistModuleScore(
+      await Provider.of<LessonProvider>(
+        context,
+        listen: false,
+      ).persistModuleScore(
         widget.lessonId,
         widget.isSandbox ? null : 3,
         _initialPassCompletedCount,
         totalActivities > 0 ? totalActivities : _totalUniqueWords,
         isSandbox: widget.isSandbox,
         sessionId: widget.sessionId,
+        timeSeconds: activeSeconds,
       );
     } catch (e) {
       debugPrint('Module 3 score sync failed, continuing anyway: $e');
@@ -562,28 +830,33 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     if (!mounted) return;
 
-    await _showConfusableDistinctionIfNeeded();
-
-    if (!mounted) return;
 
     // Calculate overall score using completed activities count against total activities
     // Each word has 2 activities (tile arrangement + voice validation)
-    final overallScore = (totalActivities > 0 
-        ? (_initialPassCompletedCount / totalActivities) * 100 
-        : 0.0).clamp(0.0, 100.0);
-    
-    debugPrint('Module 3 score: completedCount=$_initialPassCompletedCount, totalActivities=$totalActivities, totalWords=$_totalUniqueWords, score=$overallScore%');
+    final overallScore =
+        (totalActivities > 0
+                ? (_initialPassCompletedCount / totalActivities) * 100
+                : 0.0)
+            .clamp(0.0, 100.0);
+
+    debugPrint(
+      'Module 3 score: completedCount=$_initialPassCompletedCount, totalActivities=$totalActivities, totalWords=$_totalUniqueWords, score=$overallScore%',
+    );
 
     // Get failed sentence word IDs
-    final failedSentenceWordIds = _failedSentenceWords.map((w) => w.wordId).toSet();
+    final failedSentenceWordIds = _failedSentenceWords
+        .map((w) => w.wordId)
+        .toSet();
 
     // Use provided lessonTitle or fall back to formatted string
     final displayTitle = widget.isSandbox
         ? 'Sandbox Lesson Complete'
-        : (widget.lessonTitle?.isNotEmpty == true 
-            ? widget.lessonTitle! 
-            : 'Lesson Complete');
-    final confusableMasteredCount = _confusableMastery.values.where((v) => v).length;
+        : (widget.lessonTitle?.isNotEmpty == true
+              ? widget.lessonTitle!
+              : 'Lesson Complete');
+    final confusableMasteredCount = _confusableMastery.values
+        .where((v) => v)
+        .length;
 
     if (!widget.isSandbox) {
       // Persist full score details so the map screen can retrieve them later
@@ -600,9 +873,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
     debugPrint('Navigating to lesson score screen...');
     // ignore: use_build_context_synchronously
-    navContext.go(
-      '/session/${widget.sessionId}/lesson-score',
+    navContext.push(
+      '/loading',
       extra: {
+        'duration': 13000,
+        'redirectPath': '/session/${widget.sessionId}/lesson-score',
         'sessionId': widget.sessionId,
         'lessonId': widget.lessonId,
         'categoryId': widget.categoryId,
@@ -617,62 +892,40 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     );
   }
 
-  Future<void> _showConfusableDistinctionIfNeeded() async {
-    if (widget.isSandbox ||
-      widget.moduleNumber != 3 ||
-      widget.lessonId != 'b1000000-0000-0000-0000-000000000001' ||
-      widget.categoryId != 'a1000000-0000-0000-0000-000000000001') {
-      return;
-    }
 
-    if (_confusableScreenShown) {
-      return;
-    }
-
-    _confusableScreenShown = true;
-
-    final forcedPair = {
-      'pairId': 'd9000000-0000-0000-0000-000000000001',
-      'lessonId': widget.lessonId,
-      'wordA': {
-        'wordId': 'c1000000-0000-0000-0000-000000000005',
-        'englishWord': 'Ruler',
-        'cebuanoMeaning': 'Ruler',
-        'exampleSentenceEnglish': 'She used a ruler to draw a straight line.',
-        'exampleSentenceCebuano': 'Gigamit niya ang ruler sa pagdrowing og tul-id nga linya.',
-        'sentenceCompletionSentence': 'She used a ___ to draw a straight line.',
-        'sentenceCompletionAnswer': 'Ruler',
-      },
-      'wordB': {
-        'wordId': 'c9000000-0000-0000-0000-000000000001',
-        'englishWord': 'ruler',
-        'cebuanoMeaning': 'Magmamando',
-        'exampleSentenceEnglish': 'The ruler governed the kingdom with wisdom.',
-        'exampleSentenceCebuano': 'Ang magmamando nagdumala sa gingharian nga may kaalam.',
-        'sentenceCompletionSentence': 'The ___ governed the kingdom with wisdom.',
-        'sentenceCompletionAnswer': 'ruler',
-      },
-      'contrastiveSentenceA': 'She used a ruler to draw a straight line.',
-      'contrastiveSentenceB': 'The ruler governed the kingdom with wisdom.',
-    };
-
-    await context.push(
-      '/session/${widget.sessionId}/confusable-distinction',
-      extra: {
-        'lessonId': widget.lessonId,
-        'confusablePairs': [forcedPair],
-      },
-    );
-  }
-
-  void _checkAnswer() {
-    if (_currentFormat == ActivityFormat.completion) {
-      if (_selectedCompletionWord == null) return;
-      _isCorrect = _selectedCompletionWord!.toLowerCase() == _activityAnswer(_currentWord).toLowerCase();
+  void _checkAnswer({bool timeUp = false}) {
+    // Dedupe guard: prevent timer + button tap from both firing
+    if (_submittingAnswer || _isChecked) return;
+    _submittingAnswer = true;
+    if (timeUp) {
+      _isCorrect = false;
     } else {
-      final expected = _activityArrangementTokens(_currentWord).join(' ').toLowerCase().trim();
-      final learner = _assembledWords.join(' ').toLowerCase().trim();
-      _isCorrect = learner == expected;
+      if (_currentFormat == ActivityFormat.completion) {
+        final blanks = _completionTokens.where((t) => t.isBlank).toList();
+        if (_selectedCompletionWords.length < blanks.length) return; // not all filled
+        
+        bool allCorrect = true;
+        int blankIndex = 0;
+        for (final token in _completionTokens) {
+          if (token.isBlank) {
+            final userWord = _selectedCompletionWords[blankIndex]?.toLowerCase().trim();
+            final targetWord = token.answer?.toLowerCase().trim();
+            if (userWord != targetWord) {
+              allCorrect = false;
+              break;
+            }
+            blankIndex++;
+          }
+        }
+        _isCorrect = allCorrect;
+      } else {
+        final expected = _expectedArrangementTokens
+            .join(' ')
+            .toLowerCase()
+            .trim();
+        final learner = _assembledWords.join(' ').toLowerCase().trim();
+        _isCorrect = learner == expected;
+      }
     }
 
     // Keep statistics
@@ -703,6 +956,30 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         isCorrect: _isCorrect,
         confidence: 3,
       );
+      
+      // Wire up Difficulty API for both Module 2 and Module 3
+      provider.submitDifficultyResult(
+        _currentWord.wordId,
+        _isCorrect,
+        activityType: _currentFormat == ActivityFormat.completion ? 'SENTENCE_COMPLETION' : 'SENTENCE_REARRANGEMENT',
+        moduleNumber: 2,
+      );
+      provider.submitDifficultyResult(
+        _currentWord.wordId,
+        _isCorrect,
+        activityType: _currentFormat == ActivityFormat.completion ? 'SENTENCE_COMPLETION' : 'SENTENCE_REARRANGEMENT',
+        moduleNumber: widget.moduleNumber,
+      ).then((res) {
+        if (mounted && res != null) {
+          final newLevel = res['currentLevel']?.toString() ?? '';
+          setState(() {
+            _wordDifficulties[_currentWord.wordId] = newLevel;
+            if (newLevel == 'MASTERED') {
+              _sentenceMasteredWordIds.add(_currentWord.wordId);
+            }
+          });
+        }
+      });
     }
 
     setState(() {
@@ -711,64 +988,53 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _handleContinueFromSentence() async {
-    debugPrint('Continue button tapped in Module 3');
-    if (_isCorrect) {
-      final provider = Provider.of<LessonProvider>(context, listen: false);
-      if (widget.isSandbox) {
-        // Sandbox mode: skip pronunciation phase entirely
-        await provider.updateSandboxProgress(
-          sessionId: widget.sessionId,
-          wordId: _currentWord.wordId,
-          pathway: 'FULL',
-          stepCompleted: 4,
-          status: 'MASTERED',
-          moduleNumber: widget.moduleNumber,
-        );
+    debugPrint('Continue button tapped in Module 3 (format: $_currentFormat, phase: $_currentPhase)');
+    
+    if (_currentFormat == ActivityFormat.completion) {
+      // Step 1 (Sentence Completion) -> Step 2 (Voice Pronunciation)
+      setState(() {
+        _currentPhase = Phase.pronunciationFeedback;
+        _resetItemState();
+      });
+    } else {
+      // Step 3 (Sentence Arrangement) -> Finish this word and proceed to next word!
+      if (_isCorrect) {
+        final provider = Provider.of<LessonProvider>(context, listen: false);
+        if (widget.isSandbox) {
+          final currentLevel = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+          String nextLevel = 'FAMILIAR';
+          if (currentLevel == 'FAMILIAR') nextLevel = 'PROFICIENT';
+          if (currentLevel == 'PROFICIENT') nextLevel = 'MASTERED';
+          if (currentLevel == 'MASTERED') nextLevel = 'MASTERED';
 
-        if (_isReinforcementPass) {
-          _reinforcementCompletedCount++;
+          _wordDifficulties[_currentWord.wordId] = nextLevel;
+          if (nextLevel == 'MASTERED') {
+            _sentenceMasteredWordIds.add(_currentWord.wordId);
+          }
         } else {
+          provider.updateWordProgress(
+            widget.sessionId,
+            _currentWord.wordId,
+            'FULL',
+            4,
+            _wordDifficulties[_currentWord.wordId] ?? 'LEARNING',
+            moduleNumber: widget.moduleNumber,
+          );
+        }
+        
+        if (!_isReinforcementPass) {
           _initialPassCompletedCount++;
         }
-
-        debugPrint('Calling _startNextItem, queue length: ${_queue.length}');
-        _startNextItem();
-      } else {
-        // Non-sandbox: Advance to Pronunciation Mode for the current word
-        // Notify backend that Module 3 (pronunciation) has started for this word.
-        provider.updateWordProgress(
-          widget.sessionId,
-          _currentWord.wordId,
-          'FULL',
-          0,
-          'PRONUNCIATION_PENDING',
-          moduleNumber: widget.moduleNumber,
-        );
-
-        setState(() {
-          _currentPhase = Phase.pronunciationFeedback;
-        });
       }
-    } else {
-      // Swap format and go to next item in the queue (or place it back at the end)
-      _currentFormat = (_currentFormat == ActivityFormat.completion)
-          ? ActivityFormat.rearrangement
-          : ActivityFormat.completion;
-      _resetItemState();
-      
-      // Place it at the end of the active queue to review it later in the same pass
-      _queue.add(_currentWord);
       _startNextItem();
     }
   }
 
-  Widget _buildModule3Header(ThemeData theme) {
-    return const SizedBox.shrink();
-  }
-
   // Pronunciation flow
   Future<void> _startRecording() async {
-    if (_isRecording || _isEvaluating || _attemptResult != null || _disposed) return;
+    if (_isRecording || _isEvaluating || _attemptResult != null || _disposed) {
+      return;
+    }
 
     if (await _recorderService.hasPermission()) {
       if (_disposed || !mounted) return;
@@ -858,8 +1124,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _cancelRecordingSession() async {
-    final wasActiveAttempt = _recordingSessionActive && _isRecording && _attemptResult == null;
-    final shouldMarkFailure = wasActiveAttempt && _pronunciationAttempt >= _maxAttempts;
+    final wasActiveAttempt =
+        _recordingSessionActive && _isRecording && _attemptResult == null;
+    final shouldMarkFailure =
+        wasActiveAttempt && _pronunciationAttempt >= _maxAttempts;
 
     _recordingSessionActive = false;
     // Stop monitoring and listening immediately
@@ -888,14 +1156,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
             isInconclusive: true,
           );
         } else {
-          _pronunciationAttempt = _pronunciationAttempt < _maxAttempts ? _pronunciationAttempt + 1 : _maxAttempts;
+          _pronunciationAttempt = _pronunciationAttempt < _maxAttempts
+              ? _pronunciationAttempt + 1
+              : _maxAttempts;
           _attemptResult = null;
         }
       } else {
         _attemptResult = null;
       }
     });
-    
+
     _wordPronunciationAttempts[_currentWord.wordId] = _pronunciationAttempt;
     if (_attemptResult != null && _attemptResult!.isCorrect) {
       _wordPronunciationCorrect[_currentWord.wordId] = true;
@@ -907,81 +1177,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
   }
 
-  Future<void> _startStreamingRecognition(String targetWord) async {
-    _liveTranscriptNotifier.value = '';
 
-    try {
-      await _streamingSttService.startListening(
-        localeId: 'en_US',
-        onResult: (transcript, isFinal) {
-          if (!mounted || !_recordingSessionActive || _attemptResult != null) {
-            return;
-          }
-
-          final t = transcript.trim();
-          _liveTranscriptNotifier.value = t;
-
-          if (t.isNotEmpty && PronunciationMatcher.matchesTranscript(t, targetWord)) {
-            _handleStreamingMatch(t);
-          }
-        },
-        onStatus: (status) {
-          if (!mounted || !_recordingSessionActive || _attemptResult != null) {
-            return;
-          }
-
-          if (status == 'done' || status == 'notListening') {
-            _liveTranscriptNotifier.value = _liveTranscriptNotifier.value.trim();
-          }
-        },
-        onError: (errorMsg) {
-          if (!mounted) return;
-          _liveTranscriptNotifier.value = _liveTranscriptNotifier.value.trim();
-        },
-      );
-    } catch (_) {
-      // The fallback recorder remains available if device speech recognition is not available.
-    }
-  }
-
-  Future<void> _handleStreamingMatch(String transcript) async {
-    if (!_recordingSessionActive || _attemptResult != null || !_isRecording || _disposed) {
-      return;
-    }
-
-    _recordingSessionActive = false;
-    _stopAutoEvaluationMonitoring();
-    await _streamingSttService.stopListening();
-    await _recorderService.stopRecording();
-
-    if (_disposed || !mounted) {
-      return;
-    }
-
-    setState(() {
-      _attemptResult = PronunciationAttemptModel(
-        attemptId: '',
-        isCorrect: true,
-        transcribedText: transcript,
-        phoneticTarget: null,
-        phonologicalTip: null,
-        attemptNumber: _pronunciationAttempt,
-        isInconclusive: false,
-      );
-      _isRecording = false;
-      _isEvaluating = false;
-    });
-
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-  }
 
   void _startAutoEvaluationMonitoring() {
     _stopAutoEvaluationMonitoring();
     _recordingStartedAt = DateTime.now();
 
-    _amplitudeSubscription = _recorderService.onAmplitudeChanged.listen((amplitude) {
+    _amplitudeSubscription = _recorderService.onAmplitudeChanged.listen((
+      amplitude,
+    ) {
       if (!_isRecording || _isEvaluating || _attemptResult != null) return;
       if (amplitude > 0.18) {
         _lastSpeechAt = DateTime.now();
@@ -989,13 +1193,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     });
 
     _silenceTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (!mounted || !_isRecording || _isEvaluating || _attemptResult != null) return;
+      if (!mounted || !_isRecording || _isEvaluating || _attemptResult != null) {
+        return;
+      }
       final startedAt = _recordingStartedAt;
       if (startedAt == null) return;
 
       final elapsed = DateTime.now().difference(startedAt);
       final lastSpeechAt = _lastSpeechAt;
-      final shouldFinishForSilence = lastSpeechAt != null && DateTime.now().difference(lastSpeechAt) >= const Duration(milliseconds: 900);
+      final shouldFinishForSilence =
+          lastSpeechAt != null &&
+          DateTime.now().difference(lastSpeechAt) >=
+              const Duration(milliseconds: 900);
       final shouldFinishForTimeout = elapsed >= const Duration(seconds: 30);
 
       if (shouldFinishForSilence || shouldFinishForTimeout) {
@@ -1005,7 +1214,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   }
 
   Future<void> _finishRecordingAndEvaluate() async {
-    if (_isEvaluating || !_isRecording || _attemptResult != null || _disposed) return;
+    if (_isEvaluating || !_isRecording || _attemptResult != null || _disposed) {
+      return;
+    }
 
     // Minimum duration guard (1.5 seconds)
     final startedAt = _recordingStartedAt;
@@ -1055,7 +1266,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       _isEvaluating = false;
     });
 
-    final bool isPassed = result.isCorrect && ((result.similarityScore ?? 1.0) >= 0.80);
+    final bool isPassed =
+        result.isCorrect && ((result.similarityScore ?? 1.0) >= 0.80);
     if (isPassed) {
       _recordingSessionActive = false;
       if (Navigator.of(context).canPop()) {
@@ -1072,9 +1284,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       return;
     }
 
-    final shouldRetry = _recordingSessionActive && _pronunciationAttempt < _maxAttempts;
+    final shouldRetry =
+        _recordingSessionActive && _pronunciationAttempt < _maxAttempts;
     if (!shouldRetry) {
-      // Only pop if the session is still active but we reached max attempts. 
+      // Only pop if the session is still active but we reached max attempts.
       // If _recordingSessionActive was already set to false (by cancel), don't pop again.
       if (_recordingSessionActive) {
         _recordingSessionActive = false;
@@ -1113,25 +1326,26 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         activityType: 'VOICE_VALIDATION',
         attemptNumber: _pronunciationAttempt,
       );
+      await provider.updateWordProgress(
+        widget.sessionId,
+        _currentWord.wordId,
+        'FULL',
+        4,
+        'INTRODUCED',
+        moduleNumber: widget.moduleNumber,
+      );
     }
-    await provider.updateWordProgress(
-      widget.sessionId,
-      _currentWord.wordId,
-      'FULL',
-      4,
-      'INTRODUCED',
-      moduleNumber: widget.moduleNumber,
-    );
 
-    if (_isReinforcementPass) {
-      _reinforcementCompletedCount++;
-    } else {
+    if (!_isReinforcementPass) {
       _initialPassCompletedCount++;
     }
+
+    // Step 2 (Voice Pronunciation) -> Step 3 (Sentence Arrangement)
     setState(() {
       _currentPhase = Phase.sentenceActivity;
+      _currentFormat = ActivityFormat.rearrangement;
+      _resetItemState();
     });
-    _startNextItem();
   }
 
   void _handleContinueFromPronunciation() async {
@@ -1209,8 +1423,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1233,18 +1445,26 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.error_outline_rounded, size: 80, color: Colors.redAccent),
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 80,
+                color: Colors.redAccent,
+              ),
               const SizedBox(height: 24),
               Text(
                 _error!,
-                style: const TextStyle(fontSize: 16, color: Color(0xFF1E293B), fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF1E293B),
+                  fontWeight: FontWeight.w600,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: () => context.go('/home'),
                 child: const Text('Back to Home'),
-              )
+              ),
             ],
           ),
         ),
@@ -1255,10 +1475,27 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       return _buildSummaryScreen();
     }
 
-    final totalWords = _words.length;
-    final remainingWordIds = _queue.map((word) => word.wordId).toSet();
-    final completedWordsCount = _words.map((word) => word.wordId).toSet().difference(remainingWordIds).length;
-    final progressVal = totalWords > 0 ? (completedWordsCount / totalWords) : 0.0;
+    int getTierPoints(String tier) {
+      switch (tier.toUpperCase()) {
+        case 'LEARNING': return 0;
+        case 'FAMILIAR': return 1;
+        case 'PROFICIENT': return 2;
+        case 'MASTERED': return 3;
+        default: return 0;
+      }
+    }
+
+    int totalMaxPoints = _words.length * 3;
+    int currentPoints = 0;
+    for (final w in _words) {
+      final tier = _wordDifficulties[w.wordId] ?? 'LEARNING';
+      currentPoints += getTierPoints(tier);
+    }
+
+    final calculatedProgress = totalMaxPoints == 0 ? 0.0 : (currentPoints / totalMaxPoints);
+    if (calculatedProgress > _maxProgress) _maxProgress = calculatedProgress;
+    final progressVal = _maxProgress;
+    final progressPercent = (progressVal * 100).toInt();
 
     return PopScope(
       canPop: false,
@@ -1267,14 +1504,29 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         _showExitConfirmation();
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.close_rounded, color: Color(0xFF1E293B)),
+            icon: const Icon(Icons.close, color: Color(0xFF64748B)),
             onPressed: _showExitConfirmation,
           ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Center(
+                child: Text(
+                  '$progressPercent%',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF64748B),
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
           title: ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: SizedBox(
@@ -1287,58 +1539,25 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   return LinearProgressIndicator(
                     value: value,
                     backgroundColor: const Color(0xFFE2E8F0),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFFFBBF24),
+                    ),
                   );
                 },
               ),
             ),
           ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Center(
-                child: Text(
-                  '$completedWordsCount/$totalWords',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF64748B),
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
         body: _currentPhase == Phase.confusableDistinction
             ? _buildConfusableBody(theme)
             : _currentPhase == Phase.sentenceActivity
-                ? _buildSentenceActivityBody(theme)
-                : _buildPronunciationBody(theme),
+            ? _buildSentenceActivityBody(theme)
+            : _buildPronunciationBody(theme),
       ),
     );
   }
 
-  Widget _buildCompletionBlankSentence({
-    required List<String> parts,
-    required String answer,
-  }) {
-    String blankText = '_______';
-    Color blankColor = const Color(0xFF94A3B8);
-    Color blankBgColor = const Color(0xFFF1F5F9);
-
-    if (_selectedCompletionWord != null) {
-      blankText = _selectedCompletionWord!;
-      blankColor = const Color(0xFF06A6FF);
-      blankBgColor = const Color(0xFFEFF6FF);
-    }
-
-    if (_isChecked && _selectedCompletionWord != null) {
-      final correct = _selectedCompletionWord!.toLowerCase() == answer.toLowerCase();
-      blankText = _selectedCompletionWord!;
-      blankColor = correct ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
-      blankBgColor = correct ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2);
-    }
-
+  Widget _buildCompletionBlankSentence() {
     const wordStyle = TextStyle(
       fontSize: 18,
       fontWeight: FontWeight.w500,
@@ -1346,33 +1565,138 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       height: 1.5,
     );
 
+    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+    final isFreeType = level == 'PROFICIENT' || level == 'MASTERED';
+
+    int blankIndex = 0;
+    
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        if (parts[0].isNotEmpty) Text(parts[0], style: wordStyle),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: blankBgColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: blankColor, width: 2),
-          ),
-          child: Text(
-            blankText,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: blankColor == const Color(0xFF94A3B8)
-                  ? const Color(0xFF64748B)
-                  : blankColor,
+      spacing: 4,
+      runSpacing: 8,
+      children: _completionTokens.map((token) {
+        if (!token.isBlank) {
+          return Text(token.text, style: wordStyle);
+        }
+
+        final currentIndex = blankIndex;
+        blankIndex++;
+
+        if (isFreeType) {
+          final isCorrect = _isChecked &&
+              _selectedCompletionWords[currentIndex]?.toLowerCase().trim() ==
+                  token.answer?.toLowerCase().trim();
+
+          final controller = _completionControllers.putIfAbsent(
+            currentIndex,
+            () => TextEditingController(text: _selectedCompletionWords[currentIndex] ?? ''),
+          );
+
+          return Container(
+            constraints: const BoxConstraints(minWidth: 110, maxWidth: 170),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: TextField(
+              controller: controller,
+              enabled: !_isChecked,
+              textAlign: TextAlign.center,
+              autocorrect: false,
+              enableSuggestions: false,
+              textCapitalization: TextCapitalization.none,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                hintText: 'type word',
+                hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                isDense: true,
+                filled: true,
+                fillColor: _isChecked
+                    ? (isCorrect ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2))
+                    : Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+                    width: 2,
+                  ),
+                ),
+              ),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: _isChecked
+                    ? (isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444))
+                    : const Color(0xFF1E293B),
+              ),
+              onChanged: (val) {
+                setState(() {
+                  if (val.trim().isEmpty) {
+                    _selectedCompletionWords.remove(currentIndex);
+                  } else {
+                    _selectedCompletionWords[currentIndex] = val.trim();
+                  }
+                });
+              },
             ),
-          ),
-        ),
-        if (parts.length > 1 && parts[1].isNotEmpty) Text(parts[1], style: wordStyle),
-      ],
+          );
+        } else {
+          // Tap-to-choose Blank
+          final filledWord = _selectedCompletionWords[currentIndex];
+          final isCorrect = _isChecked &&
+              filledWord?.toLowerCase() == token.answer?.toLowerCase();
+          
+          Color blankColor = const Color(0xFF94A3B8);
+          Color blankBgColor = const Color(0xFFF1F5F9);
+          String displayText = '_______';
+
+          if (filledWord != null) {
+            displayText = filledWord;
+            blankColor = const Color(0xFF06A6FF);
+            blankBgColor = const Color(0xFFEFF6FF);
+          }
+          if (_isChecked && filledWord != null) {
+            blankColor = isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+            blankBgColor = isCorrect ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2);
+          }
+
+          return GestureDetector(
+            onTap: () {
+              if (_isChecked || filledWord == null) return;
+              setState(() {
+                _selectedCompletionWords.remove(currentIndex);
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: blankBgColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: blankColor, width: 2),
+              ),
+              child: Text(
+                displayText,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: blankColor == const Color(0xFF94A3B8)
+                      ? const Color(0xFF64748B)
+                      : blankColor,
+                ),
+              ),
+            ),
+          );
+        }
+      }).toList(),
     );
   }
 
@@ -1386,10 +1710,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     final wordBCebuano = wordB['cebuanoMeaning'] as String;
     final sentenceA = pair['contrastiveSentenceA'] as String;
     final sentenceB = pair['contrastiveSentenceB'] as String;
-    final sentenceAFrame = sentenceA.replaceAll(RegExp('(?i)\\b${RegExp.escape(wordAEnglish)}\\b'), '________');
-    final sentenceBFrame = sentenceB.replaceAll(RegExp('(?i)\\b${RegExp.escape(wordBEnglish)}\\b'), '________');
-    final isCorrectA = _confusableSelectedForA?.toLowerCase() == wordAEnglish.toLowerCase();
-    final isCorrectB = _confusableSelectedForB?.toLowerCase() == wordBEnglish.toLowerCase();
+    final sentenceAFrame = sentenceA.replaceAll(
+      RegExp('(?i)\\b${RegExp.escape(wordAEnglish)}\\b'),
+      '________',
+    );
+    final sentenceBFrame = sentenceB.replaceAll(
+      RegExp('(?i)\\b${RegExp.escape(wordBEnglish)}\\b'),
+      '________',
+    );
+    final isCorrectA =
+        _confusableSelectedForA?.toLowerCase() == wordAEnglish.toLowerCase();
+    final isCorrectB =
+        _confusableSelectedForB?.toLowerCase() == wordBEnglish.toLowerCase();
 
     return SafeArea(
       child: Column(
@@ -1401,29 +1733,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Phase badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                  // Mascot
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                    child: MascotBubble(
+                      speechText: 'These words look similar but mean different things. Fill in the blanks correctly.',
+                      mascotName: 'sippy',
                     ),
-                    child: const Text(
-                      'CONFUSABLE WORDS CHALLENGE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFF59E0B),
-                        letterSpacing: 0.5,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'These words look similar but mean different things. Fill in the blanks correctly.',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
 
@@ -1436,27 +1752,52 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFF0F9FF),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF0284C7), width: 1.5),
+                            border: Border.all(
+                              color: const Color(0xFF0284C7),
+                              width: 1.5,
+                            ),
                           ),
                           child: Column(
                             children: [
-                              Text(wordAEnglish,
-                                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0369A1))),
+                              Text(
+                                wordAEnglish,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0369A1),
+                                ),
+                              ),
                               const SizedBox(height: 6),
-                              Text('Cebuano: $wordACebuano',
-                                  style: const TextStyle(fontSize: 12, color: Color(0xFF0284C7), fontWeight: FontWeight.bold),
-                                  textAlign: TextAlign.center),
+                              Text(
+                                'Cebuano: $wordACebuano',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF0284C7),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
                               const SizedBox(height: 10),
                               ElevatedButton.icon(
-                                onPressed: () => _ttsService.speak(wordAEnglish),
-                                icon: const Icon(Icons.volume_up_rounded, size: 15),
+                                onPressed: () =>
+                                    _ttsService.speak(wordAEnglish),
+                                icon: const Icon(
+                                  Icons.volume_up_rounded,
+                                  size: 15,
+                                ),
                                 label: const Text('Listen'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF0284C7),
                                   foregroundColor: Colors.white,
                                   elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1470,27 +1811,52 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF7ED),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFD97706), width: 1.5),
+                            border: Border.all(
+                              color: const Color(0xFFD97706),
+                              width: 1.5,
+                            ),
                           ),
                           child: Column(
                             children: [
-                              Text(wordBEnglish,
-                                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFFB45309))),
+                              Text(
+                                wordBEnglish,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFB45309),
+                                ),
+                              ),
                               const SizedBox(height: 6),
-                              Text('Cebuano: $wordBCebuano',
-                                  style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.bold),
-                                  textAlign: TextAlign.center),
+                              Text(
+                                'Cebuano: $wordBCebuano',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFFD97706),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
                               const SizedBox(height: 10),
                               ElevatedButton.icon(
-                                onPressed: () => _ttsService.speak(wordBEnglish),
-                                icon: const Icon(Icons.volume_up_rounded, size: 15),
+                                onPressed: () =>
+                                    _ttsService.speak(wordBEnglish),
+                                icon: const Icon(
+                                  Icons.volume_up_rounded,
+                                  size: 15,
+                                ),
                                 label: const Text('Listen'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFFD97706),
                                   foregroundColor: Colors.white,
                                   elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1511,10 +1877,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                     isCorrect: isCorrectA,
                     correctSentence: sentenceA,
                     onSelectA: () {
-                      if (!_confusableChecked) setState(() => _confusableSelectedForA = wordAEnglish);
+                      if (!_confusableChecked) {
+                        setState(() => _confusableSelectedForA = wordAEnglish);
+                      }
                     },
                     onSelectB: () {
-                      if (!_confusableChecked) setState(() => _confusableSelectedForA = wordBEnglish);
+                      if (!_confusableChecked) {
+                        setState(() => _confusableSelectedForA = wordBEnglish);
+                      }
                     },
                   ),
                   const SizedBox(height: 16),
@@ -1529,10 +1899,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                     isCorrect: isCorrectB,
                     correctSentence: sentenceB,
                     onSelectA: () {
-                      if (!_confusableChecked) setState(() => _confusableSelectedForB = wordAEnglish);
+                      if (!_confusableChecked) {
+                        setState(() => _confusableSelectedForB = wordAEnglish);
+                      }
                     },
                     onSelectB: () {
-                      if (!_confusableChecked) setState(() => _confusableSelectedForB = wordBEnglish);
+                      if (!_confusableChecked) {
+                        setState(() => _confusableSelectedForB = wordBEnglish);
+                      }
                     },
                   ),
                 ],
@@ -1545,7 +1919,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
             decoration: BoxDecoration(
               color: Colors.white,
-              border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+              border: Border(
+                top: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+              ),
             ),
             child: _confusableChecked
                 ? Column(
@@ -1553,36 +1929,57 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                       if (!_confusableCorrect)
                         Container(
                           margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFEF2F2),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
+                            border: Border.all(
+                              color: const Color(
+                                0xFFEF4444,
+                              ).withValues(alpha: 0.4),
+                            ),
                           ),
                           child: const Text(
                             'Not quite! Review the meanings above and try again.',
-                            style: TextStyle(color: Color(0xFFEF4444), fontSize: 13, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ),
                       ElevatedButton(
                         onPressed: _handleConfusableContinue,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _confusableCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                          backgroundColor: _confusableCorrect
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFEF4444),
                           foregroundColor: Colors.white,
                           minimumSize: const Size(double.infinity, 56),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                           elevation: 0,
                         ),
                         child: Text(
                           _confusableCorrect ? 'CONTINUE' : 'TRY AGAIN',
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                          ),
                         ),
                       ),
                     ],
                   )
                 : ElevatedButton(
-                    onPressed: (_confusableSelectedForA != null && _confusableSelectedForB != null)
+                    onPressed:
+                        (_confusableSelectedForA != null &&
+                            _confusableSelectedForB != null)
                         ? _checkConfusableAnswers
                         : null,
                     style: ElevatedButton.styleFrom(
@@ -1591,12 +1988,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                       disabledBackgroundColor: const Color(0xFFE2E8F0),
                       disabledForegroundColor: const Color(0xFF94A3B8),
                       minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       elevation: 0,
                     ),
                     child: const Text(
                       'CHECK ANSWERS',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
                     ),
                   ),
           ),
@@ -1635,7 +2038,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
         children: [
           Text(
             sentenceFrame,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -1644,12 +2051,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                 child: OutlinedButton(
                   onPressed: onSelectA,
                   style: OutlinedButton.styleFrom(
-                    backgroundColor: selectedWord == wordAEnglish ? const Color(0xFFEFF6FF) : Colors.white,
+                    backgroundColor: selectedWord == wordAEnglish
+                        ? const Color(0xFFEFF6FF)
+                        : Colors.white,
                     side: BorderSide(
-                      color: selectedWord == wordAEnglish ? const Color(0xFF06A6FF) : const Color(0xFFCBD5E1),
+                      color: selectedWord == wordAEnglish
+                          ? const Color(0xFF06A6FF)
+                          : const Color(0xFFCBD5E1),
                       width: selectedWord == wordAEnglish ? 2 : 1.5,
                     ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: Text(
@@ -1657,7 +2070,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: selectedWord == wordAEnglish ? const Color(0xFF06A6FF) : const Color(0xFF475569),
+                      color: selectedWord == wordAEnglish
+                          ? const Color(0xFF06A6FF)
+                          : const Color(0xFF475569),
                     ),
                   ),
                 ),
@@ -1667,12 +2082,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                 child: OutlinedButton(
                   onPressed: onSelectB,
                   style: OutlinedButton.styleFrom(
-                    backgroundColor: selectedWord == wordBEnglish ? const Color(0xFFEFF6FF) : Colors.white,
+                    backgroundColor: selectedWord == wordBEnglish
+                        ? const Color(0xFFEFF6FF)
+                        : Colors.white,
                     side: BorderSide(
-                      color: selectedWord == wordBEnglish ? const Color(0xFF06A6FF) : const Color(0xFFCBD5E1),
+                      color: selectedWord == wordBEnglish
+                          ? const Color(0xFF06A6FF)
+                          : const Color(0xFFCBD5E1),
                       width: selectedWord == wordBEnglish ? 2 : 1.5,
                     ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: Text(
@@ -1680,7 +2101,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: selectedWord == wordBEnglish ? const Color(0xFF06A6FF) : const Color(0xFF475569),
+                      color: selectedWord == wordBEnglish
+                          ? const Color(0xFF06A6FF)
+                          : const Color(0xFF475569),
                     ),
                   ),
                 ),
@@ -1692,7 +2115,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               padding: const EdgeInsets.only(top: 10.0),
               child: Text(
                 'Correct: "$correctSentence"',
-                style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Color(0xFFEF4444),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           if (isChecked && isCorrect)
@@ -1700,9 +2127,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               padding: EdgeInsets.only(top: 8.0),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 16),
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF22C55E),
+                    size: 16,
+                  ),
                   SizedBox(width: 6),
-                  Text('Correct!', style: TextStyle(color: Color(0xFF22C55E), fontSize: 12, fontWeight: FontWeight.bold)),
+                  Text(
+                    'Correct!',
+                    style: TextStyle(
+                      color: Color(0xFF22C55E),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1711,77 +2149,173 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
     );
   }
 
-  Widget _buildSentenceActivityBody(ThemeData theme) {
 
+
+  Widget _buildSentenceActivityBody(ThemeData theme) {
     final sentence = _activitySentence(_currentWord);
 
-    // Pre-split the sentence for the completion format so both the instruction
-    // text and the sentence display widget share the same computed state.
-    List<String> completionParts = const [];
-    if (_currentFormat == ActivityFormat.completion) {
-      final answer = _activityAnswer(_currentWord);
-      if (sentence.contains('___')) {
-        final split = sentence.split('___');
-        completionParts = [split.first, split.skip(1).join('___')];
-      } else {
-        final regex = RegExp(RegExp.escape(answer), caseSensitive: false);
-        final split = sentence.split(regex);
-        if (split.length >= 2) {
-          completionParts = [split.first, split.skip(1).join(answer)];
-        }
-      }
+
+    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+    final isFreeType = level == 'PROFICIENT' || level == 'MASTERED';
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final pref = auth.learner?.languagePreference;
+
+    String mascotText;
+    if (_isReinforcementPass) {
+      mascotText = LocalizationService.translate(pref, 'prompt_sentence_review');
+    } else if (_currentFormat == ActivityFormat.completion) {
+      mascotText = isFreeType
+          ? LocalizationService.translate(pref, 'prompt_sentence_type')
+          : LocalizationService.translate(pref, 'prompt_sentence_select');
+    } else {
+      mascotText = LocalizationService.translate(pref, 'prompt_sentence_build');
     }
-    final completionHasBlank = completionParts.length >= 2;
+
+    String instructionText;
+    if (_currentFormat == ActivityFormat.completion) {
+      instructionText = isFreeType
+          ? LocalizationService.translate(pref, 'instruction_sentence_type')
+          : LocalizationService.translate(pref, 'instruction_sentence_select');
+    } else {
+      instructionText = LocalizationService.translate(pref, 'instruction_sentence_drag');
+    }
 
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildModule3Header(theme),
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Phase indicator
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _isReinforcementPass ? Colors.purple.withValues(alpha: 0.08) : Colors.blue.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _isReinforcementPass
-                          ? "REINFORCEMENT PASS (PRACTICE FAILS)"
-                          : "INITIAL SENTENCE PRACTICE",
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: _isReinforcementPass ? Colors.purple : Colors.blue,
-                        letterSpacing: 0.5,
-                      ),
-                      textAlign: TextAlign.center,
+                  // Mascot
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                    child: MascotBubble(
+                      speechText: mascotText,
+                      mascotName: 'sippy',
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
-                  // Instructions text
-                  Text(
-                    _currentFormat == ActivityFormat.completion
-                        ? (completionHasBlank
-                            ? 'Select the correct word to fill the blank:'
-                            : 'Select the correct word that matches the sentence:')
-                        : 'Drag or tap the words to build the sentence:',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
+                  if (_totalSeconds > 0 && !_isChecked) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                LocalizationService.translate(pref, 'time_remaining'),
+                                style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              Text(
+                                '${_remainingSeconds}s',
+                                style: TextStyle(
+                                  color: _remainingSeconds <= 5 ? Colors.redAccent : const Color(0xFF06A6FF),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: _totalSeconds > 0 ? (_remainingSeconds / _totalSeconds) : 0.0,
+                              backgroundColor: const Color(0xFFE2E8F0),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                _remainingSeconds <= 5 ? Colors.redAccent : const Color(0xFF06A6FF),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Instructions text and Level indicator dot
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          instructionText,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      () {
+                        final String lvl = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+                        Color dotColor;
+                        String label;
+                        switch (lvl.toUpperCase()) {
+                          case 'FAMILIAR':
+                            dotColor = const Color(0xFF3B82F6);
+                            label = 'Familiar';
+                            break;
+                          case 'PROFICIENT':
+                            dotColor = const Color(0xFFF59E0B);
+                            label = 'Proficient';
+                            break;
+                          case 'MASTERED':
+                            dotColor = const Color(0xFF10B981);
+                            label = 'Mastered';
+                            break;
+                          default:
+                            dotColor = const Color(0xFF94A3B8);
+                            label = 'Learning';
+                            break;
+                        }
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: dotColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: dotColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: dotColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: dotColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }(),
+                    ],
                   ),
                   const SizedBox(height: 32),
 
-                  if (_currentFormat == ActivityFormat.rearrangement && !_isChecked) ...[
+                  if (_currentFormat == ActivityFormat.rearrangement &&
+                      !_isChecked) ...[
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
@@ -1823,7 +2357,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                       ),
                                     ),
                                     backgroundColor: Colors.white,
-                                    side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                                    side: const BorderSide(
+                                      color: Color(0xFF06A6FF),
+                                      width: 1.5,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -1841,7 +2378,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                       ),
                                     ),
                                     backgroundColor: Colors.white,
-                                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                                    side: const BorderSide(
+                                      color: Color(0xFFCBD5E1),
+                                      width: 1.5,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -1857,11 +2397,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                     ),
                                   ),
                                   backgroundColor: Colors.white,
-                                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                                  side: const BorderSide(
+                                    color: Color(0xFFCBD5E1),
+                                    width: 1.5,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  shadowColor: Colors.black.withValues(alpha: 0.04),
+                                  shadowColor: Colors.black.withValues(
+                                    alpha: 0.04,
+                                  ),
                                   elevation: 2,
                                   onPressed: () {
                                     setState(() {
@@ -1902,96 +2447,131 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             Expanded(
                               child: _currentFormat == ActivityFormat.completion
                                   ? Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                      child: completionHasBlank
-                                          ? _buildCompletionBlankSentence(
-                                              parts: completionParts,
-                                              answer: _activityAnswer(_currentWord),
-                                            )
-                                          : Text(
-                                              sentence,
-                                              textAlign: TextAlign.center,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8.0,
+                                      ),
+                                      child: _buildCompletionBlankSentence(),
+                                    )
+                                  : Builder(
+                                      builder: (context) {
+                                        final allTokens = _activityArrangementTokens(_currentWord);
+                                        int startIndex = _arrangementStartIndex;
+                                        int endIndex = _arrangementEndIndex;
+                                        
+                                        if (_expectedArrangementTokens.isEmpty) {
+                                          startIndex = 0;
+                                          endIndex = -1;
+                                        }
+                                        
+                                        final prefix = startIndex > 0 ? allTokens.sublist(0, startIndex) : <String>[];
+                                        final suffix = endIndex != -1 && endIndex < allTokens.length - 1 ? allTokens.sublist(endIndex + 1) : <String>[];
+                                        
+                                        Widget buildLockedChip(String text) {
+                                          return Container(
+                                            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFE0F2FE),
+                                              border: Border.all(color: const Color(0xFFBAE6FD), width: 1.5),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              text,
                                               style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.w500,
-                                                color: Color(0xFF1E293B),
-                                                height: 1.5,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 15,
+                                                color: Color(0xFF0369A1),
                                               ),
                                             ),
-                                    )
-                                  : DragTarget<String>(
-                                      onWillAcceptWithDetails: (_) => !_isChecked,
-                                      onAcceptWithDetails: (details) {
-                                        if (_isChecked) return;
-                                        final word = details.data;
-                                        if (_assembledWords.contains(word)) return;
-                                        setState(() {
-                                          _scrambledWords.remove(word);
-                                          _assembledWords.add(word);
-                                        });
-                                      },
-                                      builder: (context, candidateData, rejectedData) {
-                                        return Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color: candidateData.isNotEmpty ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
-                                            borderRadius: BorderRadius.circular(18),
-                                            border: Border.all(
-                                              color: candidateData.isNotEmpty ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
-                                              width: 1.5,
-                                            ),
-                                          ),
-                                          child: Wrap(
-                                            alignment: WrapAlignment.center,
-                                            spacing: 8,
-                                            runSpacing: 10,
-                                            children: _assembledWords.isEmpty
-                                                ? [
-                                                    const Padding(
-                                                      padding: EdgeInsets.symmetric(vertical: 16),
-                                                      child: Text(
-                                                        "Drop or tap words here",
-                                                        textAlign: TextAlign.center,
-                                                        style: TextStyle(
-                                                          color: Color(0xFF94A3B8),
-                                                          fontSize: 15,
-                                                          fontStyle: FontStyle.italic,
-                                                        ),
-                                                      ),
+                                          );
+                                        }
+
+                                        return Wrap(
+                                          alignment: WrapAlignment.center,
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          spacing: 6,
+                                          runSpacing: 10,
+                                          children: [
+                                            ...prefix.map((w) => buildLockedChip(w)),
+                                            DragTarget<String>(
+                                              onWillAcceptWithDetails: (_) => !_isChecked,
+                                              onAcceptWithDetails: (details) {
+                                                if (_isChecked) return;
+                                                final word = details.data;
+                                                if (_assembledWords.contains(word)) return;
+                                                setState(() {
+                                                  _scrambledWords.remove(word);
+                                                  _assembledWords.add(word);
+                                                });
+                                              },
+                                              builder: (context, candidateData, rejectedData) {
+                                                return Container(
+                                                  padding: const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: candidateData.isNotEmpty ? const Color(0xFFE0F2FE) : const Color(0xFFF8FAFC),
+                                                    borderRadius: BorderRadius.circular(18),
+                                                    border: Border.all(
+                                                      color: candidateData.isNotEmpty ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
+                                                      width: 1.5,
+                                                      style: _assembledWords.isEmpty ? BorderStyle.solid : BorderStyle.none,
                                                     ),
-                                                  ]
-                                                : _assembledWords.map((word) {
-                                                    return ActionChip(
-                                                      label: Text(
-                                                        word,
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          fontSize: 15,
-                                                          color: Color(0xFF06A6FF),
-                                                        ),
-                                                      ),
-                                                      backgroundColor: const Color(0xFFEFF6FF),
-                                                      side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-                                                      shape: RoundedRectangleBorder(
-                                                        borderRadius: BorderRadius.circular(12),
-                                                      ),
-                                                      onPressed: () {
-                                                        if (_isChecked) return;
-                                                        setState(() {
-                                                          _assembledWords.remove(word);
-                                                          _scrambledWords.add(word);
-                                                        });
-                                                      },
-                                                    );
-                                                  }).toList(),
-                                          ),
+                                                  ),
+                                                  child: Wrap(
+                                                    alignment: WrapAlignment.center,
+                                                    spacing: 8,
+                                                    runSpacing: 10,
+                                                    children: _assembledWords.isEmpty
+                                                        ? [
+                                                            const Padding(
+                                                              padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                                              child: Text(
+                                                                "Drop words here",
+                                                                textAlign: TextAlign.center,
+                                                                style: TextStyle(
+                                                                  color: Color(0xFF94A3B8),
+                                                                  fontSize: 14,
+                                                                  fontStyle: FontStyle.italic,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ]
+                                                        : _assembledWords.map((word) {
+                                                            return ActionChip(
+                                                              label: Text(
+                                                                word,
+                                                                style: const TextStyle(
+                                                                  fontWeight: FontWeight.bold,
+                                                                  fontSize: 15,
+                                                                  color: Color(0xFF06A6FF),
+                                                                ),
+                                                              ),
+                                                              backgroundColor: const Color(0xFFEFF6FF),
+                                                              side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
+                                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                              onPressed: () {
+                                                                if (_isChecked) return;
+                                                                setState(() {
+                                                                  _assembledWords.remove(word);
+                                                                  _scrambledWords.add(word);
+                                                                });
+                                                              },
+                                                            );
+                                                          }).toList(),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            ...suffix.map((w) => buildLockedChip(w)),
+                                          ],
                                         );
                                       },
                                     ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
+                              icon: const Icon(
+                                Icons.volume_up_rounded,
+                                color: Color(0xFF06A6FF),
+                              ),
                               onPressed: _speakFullSentence,
                               tooltip: "Listen to full sentence",
                             ),
@@ -2001,199 +2581,247 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                         const Divider(color: Color(0xFFE2E8F0)),
                         const SizedBox(height: 12),
 
-                        // Cebuano Translation Scaffold
-                        Row(
-                          children: [
-                            const Text(
-                              '🇵🇭',
-                              style: TextStyle(fontSize: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _currentWord.exampleSentenceCebuano ?? _currentWord.cebuanoMeaning,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontStyle: FontStyle.italic,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF64748B),
-                                  height: 1.4,
+                        // Cebuano Translation Scaffold (Always shown with target word underlined)
+                        ...[
+                          Row(
+                            children: [
+                              const Text('🇵🇭', style: TextStyle(fontSize: 20)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: CebuanoTextHighlighter(
+                                  text: _currentWord.exampleSentenceCebuano ??
+                                      _currentWord.cebuanoMeaning,
+                                  highlightWord: _currentWord.cebuanoMeaning,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                    height: 1.4,
+                                  ),
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
-                              onPressed: () => _ttsService.speakCebuano(_currentWord.exampleSentenceCebuano ?? _currentWord.cebuanoMeaning),
-                              tooltip: "Listen to sentence translation",
-                            ),
-                          ],
-                        ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.volume_up_rounded,
+                                  color: Color(0xFF06A6FF),
+                                ),
+                                onPressed: () => _ttsService.speakCebuano(
+                                  _currentWord.exampleSentenceCebuano ??
+                                      _currentWord.cebuanoMeaning,
+                                ),
+                                tooltip: "Listen to sentence translation",
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
                   const SizedBox(height: 36),
 
-                  if (!_isChecked && _currentFormat == ActivityFormat.completion) ...[
+                  if (!_isChecked &&
+                      _currentFormat == ActivityFormat.completion) ...[
                     const SizedBox(height: 36),
-                    Column(
-                      children: _completionOptions.map((opt) {
-                        final isSel = _selectedCompletionWord == opt;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12.0),
-                          child: InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedCompletionWord = opt;
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(16),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                color: isSel ? const Color(0xFFEFF6FF) : Colors.white,
+                    Builder(
+                      builder: (context) {
+                        final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+                        if (level == 'PROFICIENT' || level == 'MASTERED') {
+                          return const SizedBox.shrink(); // No word bank for free-type
+                        }
+
+                        return Column(
+                          children: _completionOptions.map((opt) {
+                            final isSel = _selectedCompletionWords.values.contains(opt);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: InkWell(
+                                onTap: () {
+                                  if (_isChecked || isSel) return;
+                                  
+                                  // Find the first empty blank
+                                  int firstEmpty = -1;
+                                  int blankCount = 0;
+                                  for (int i = 0; i < _completionTokens.length; i++) {
+                                    if (_completionTokens[i].isBlank) {
+                                      if (!_selectedCompletionWords.containsKey(blankCount)) {
+                                        firstEmpty = blankCount;
+                                        break;
+                                      }
+                                      blankCount++;
+                                    }
+                                  }
+
+                                  if (firstEmpty != -1) {
+                                    setState(() {
+                                      _selectedCompletionWords[firstEmpty] = opt;
+                                    });
+                                  }
+                                },
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isSel ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
-                                  width: isSel ? 2.5 : 1.5,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  padding: const EdgeInsets.all(18),
+                                  decoration: BoxDecoration(
+                                    color: isSel ? const Color(0xFFEFF6FF) : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isSel ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
+                                      width: isSel ? 2.5 : 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isSel ? const Color(0xFF06A6FF) : const Color(0xFF94A3B8),
+                                            width: isSel ? 7 : 2,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Text(
+                                        opt,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: isSel ? const Color(0xFF06A6FF) : const Color(0xFF1E293B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 24,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isSel ? const Color(0xFF06A6FF) : const Color(0xFF94A3B8),
-                                        width: isSel ? 7 : 2,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Text(
-                                    opt,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: isSel ? const Color(0xFF06A6FF) : const Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                            );
+                          }).toList(),
                         );
-                      }).toList(),
+                      },
                     ),
                   ],
 
-                  // Feedbacks
-                  if (_isChecked) ...[
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: _isCorrect ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _isCorrect ? const Color(0xFF10B981).withValues(alpha: 0.3) : const Color(0xFFEF4444).withValues(alpha: 0.3),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                _isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                                color: _isCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                size: 28,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _isCorrect ? "Correct!" : "Let's review the correct structure:",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: _isCorrect ? const Color(0xFF065F46) : const Color(0xFF991B1B),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (!_isCorrect) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              sentence,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1E293B),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "Remember: '${_currentWord.englishWord}' means '${_currentWord.cebuanoMeaning}' in Cebuano.",
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF64748B),
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ]
                 ],
               ),
             ),
           ),
 
-          // Footer action bar
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
-            ),
-            child: _isChecked
-                ? ElevatedButton(
+          // Bottom action bar / Feedback banner
+          (() {
+            bool isActionEnabled = false;
+            if (_currentFormat == ActivityFormat.completion) {
+              final blanksCount = _completionTokens.where((t) => t.isBlank).length;
+              isActionEnabled = blanksCount > 0 &&
+                  _selectedCompletionWords.length >= blanksCount &&
+                  _selectedCompletionWords.values.every((w) => w.trim().isNotEmpty);
+            } else {
+              isActionEnabled = _assembledWords.length == _expectedArrangementTokens.length;
+            }
+
+            if (!_isChecked) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (isActionEnabled && !_submittingAnswer && !_isChecked) ? _checkAnswer : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3B82F6),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          LocalizationService.translate(pref, 'check'),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            final Color panelBg = _isCorrect ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2);
+            final Color textColor = _isCorrect ? const Color(0xFF15803D) : const Color(0xFFB91C1C);
+            final Color btnBg = _isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+
+            return Container(
+              color: panelBg,
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        _isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                        color: textColor,
+                        size: 32,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isCorrect 
+                                  ? LocalizationService.translate(pref, 'feedback_correct')
+                                  : LocalizationService.translate(pref, 'feedback_incorrect'),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
+                            ),
+                            if (!_isCorrect) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Correct sentence: "$sentence"',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: textColor.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
                     onPressed: _handleContinueFromSentence,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      backgroundColor: btnBg,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      minimumSize: const Size(double.infinity, 50),
                       elevation: 0,
                     ),
                     child: Text(
-                      widget.isSandbox ? "CONTINUE" : (_isCorrect ? "CONTINUE TO PRONUNCIATION" : "CONTINUE"),
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                    ),
-                  )
-                : ElevatedButton(
-                    onPressed: (_currentFormat == ActivityFormat.completion
-                            ? _selectedCompletionWord != null
-                            : _scrambledWords.isEmpty)
-                        ? _checkAnswer
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06A6FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      "CHECK ANSWER",
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                      LocalizationService.translate(pref, 'continue'),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
                     ),
                   ),
-          ),
+                ],
+              ),
+            );
+          })(),
         ],
       ),
     );
@@ -2210,7 +2838,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildModule3Header(theme),
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
@@ -2218,8 +2846,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    widget.isSandbox ? "Speech Feedback" : "Module 3 Speech Feedback",
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.8),
+                    widget.isSandbox
+                        ? "Speech Feedback"
+                        : "Module 3 Speech Feedback",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6B7280),
+                      letterSpacing: 0.8,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
@@ -2237,14 +2872,24 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                       spacing: 6,
                       runSpacing: 8,
                       children: parts.map((part) {
-                        final cleanPart = part.replaceAll(RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~(?)]'), '');
-                        final isTarget = cleanPart.toLowerCase() == target.toLowerCase();
+                        final cleanPart = part.replaceAll(
+                          RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~(?)]'),
+                          '',
+                        );
+                        final isTarget =
+                            cleanPart.toLowerCase() == target.toLowerCase();
                         if (isTarget) {
                           return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFECFDF5),
-                              border: Border.all(color: const Color(0xFF10B981), width: 1.5),
+                              border: Border.all(
+                                color: const Color(0xFF10B981),
+                                width: 1.5,
+                              ),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -2273,19 +2918,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   const Text(
                     "Give it a try — say the sentence aloud. Tap skip if you would rather move on.",
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 12),
 
                   // Premium card with the target word
                   Container(
-                    padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 36,
+                      horizontal: 24,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
                         color: _attemptResult != null
-                            ? (_attemptResult!.isCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444))
+                            ? (_attemptResult!.isCorrect
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFEF4444))
                             : const Color(0xFFE2E8F0),
                         width: _attemptResult != null ? 3.0 : 1.5,
                       ),
@@ -2294,7 +2948,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
-                        )
+                        ),
                       ],
                     ),
                     child: Column(
@@ -2313,15 +2967,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             ),
                             const SizedBox(width: 12),
                             IconButton(
-                              icon: const Icon(Icons.volume_up_rounded, size: 28, color: Color(0xFF06A6FF)),
+                              icon: const Icon(
+                                Icons.volume_up_rounded,
+                                size: 28,
+                                color: Color(0xFF06A6FF),
+                              ),
                               onPressed: () => _ttsService.speak(target),
                             ),
                           ],
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // Phonologicalinterference tip helper displayed on attempt 1 and 2
-                        if (_pronunciationAttempt <= 2 && _attemptResult == null)
+                        if (_pronunciationAttempt <= 2 &&
+                            _attemptResult == null)
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -2329,9 +2988,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Text(
-                              widget.isSandbox && _currentWord.phonologicalTipKey != null
+                              widget.isSandbox &&
+                                      _currentWord.phonologicalTipKey != null
                                   ? _currentWord.phonologicalTipKey!
-                                  : _getPhonologicalTip(_currentWord.phonologicalTipKey),
+                                  : _getPhonologicalTip(
+                                      _currentWord.phonologicalTipKey,
+                                    ),
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: Color(0xFF1D4ED8),
@@ -2350,21 +3012,33 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               children: [
                                 const Text(
                                   'Excellent! You said it correctly.',
-                                  style: TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold, fontSize: 15),
+                                  style: TextStyle(
+                                    color: Color(0xFF047857),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
                                   '🎉',
                                   style: TextStyle(fontSize: 32),
                                 ),
-                                if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                                if (_attemptResult!.transcribedText != null &&
+                                    _attemptResult!.transcribedText!
+                                        .trim()
+                                        .isNotEmpty) ...[
                                   const SizedBox(height: 12),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 10,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF0FDF4),
                                       borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                      border: Border.all(
+                                        color: const Color(0xFFBBF7D0),
+                                      ),
                                     ),
                                     child: Column(
                                       children: [
@@ -2378,7 +3052,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
-                                        if (_attemptResult!.similarityScore != null) ...[
+                                        if (_attemptResult!.similarityScore !=
+                                            null) ...[
                                           const SizedBox(height: 6),
                                           Text(
                                             'Match score: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}%',
@@ -2400,15 +3075,21 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 28),
+                                const Icon(
+                                  Icons.cancel_rounded,
+                                  color: Color(0xFFEF4444),
+                                  size: 28,
+                                ),
                                 const SizedBox(width: 8),
                                 Flexible(
                                   child: Text(
                                     _attemptResult!.isInconclusive
                                         ? "Couldn't hear you clearly. Please try again."
                                         : _pronunciationAttempt >= 3
-                                            ? 'No attempts left — keep practicing!'
-                                            : _buildFailureMessage(_attemptResult!.similarityScore),
+                                        ? 'No attempts left — keep practicing!'
+                                        : _buildFailureMessage(
+                                            _attemptResult!.similarityScore,
+                                          ),
                                     style: const TextStyle(
                                       color: Color(0xFFB91C1C),
                                       fontWeight: FontWeight.bold,
@@ -2419,14 +3100,22 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                 ),
                               ],
                             ),
-                            if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
+                            if (_attemptResult!.transcribedText != null &&
+                                _attemptResult!.transcribedText!
+                                    .trim()
+                                    .isNotEmpty) ...[
                               const SizedBox(height: 12),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFEF2F2),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  border: Border.all(
+                                    color: const Color(0xFFFCA5A5),
+                                  ),
                                 ),
                                 child: Column(
                                   children: [
@@ -2440,7 +3129,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                       ),
                                       textAlign: TextAlign.center,
                                     ),
-                                    if (_attemptResult!.similarityScore != null) ...[
+                                    if (_attemptResult!.similarityScore !=
+                                        null) ...[
                                       const SizedBox(height: 6),
                                       Text(
                                         'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% — need 80% to pass',
@@ -2459,12 +3149,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
 
                             // --- IPA phonetic target ---
                             if (_attemptResult!.phoneticTarget != null &&
-                                _attemptResult!.phoneticTarget!.trim().isNotEmpty) ...[
+                                _attemptResult!.phoneticTarget!
+                                    .trim()
+                                    .isNotEmpty) ...[
                               const SizedBox(height: 12),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.record_voice_over_rounded, color: Color(0xFF7C3AED), size: 18),
+                                  const Icon(
+                                    Icons.record_voice_over_rounded,
+                                    color: Color(0xFF7C3AED),
+                                    size: 18,
+                                  ),
                                   const SizedBox(width: 6),
                                   const Text(
                                     'Target pronunciation:',
@@ -2495,14 +3191,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFFF7ED),
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: const Color(0xFFFED7AA)),
+                                border: Border.all(
+                                  color: const Color(0xFFFED7AA),
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Row(
                                     children: [
-                                      Icon(Icons.tips_and_updates_rounded, color: Color(0xFFD97706), size: 18),
+                                      Icon(
+                                        Icons.tips_and_updates_rounded,
+                                        color: Color(0xFFD97706),
+                                        size: 18,
+                                      ),
                                       SizedBox(width: 6),
                                       Text(
                                         'HOW TO IMPROVE',
@@ -2519,9 +3221,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                   Text(
                                     // Priority: use backend tip → fallback to local tip
                                     (_attemptResult!.phonologicalTip != null &&
-                                            _attemptResult!.phonologicalTip!.trim().isNotEmpty)
+                                            _attemptResult!.phonologicalTip!
+                                                .trim()
+                                                .isNotEmpty)
                                         ? _attemptResult!.phonologicalTip!
-                                        : _getPhonologicalTip(_currentWord.phonologicalTipKey),
+                                        : _getPhonologicalTip(
+                                            _currentWord.phonologicalTipKey,
+                                          ),
                                     style: const TextStyle(
                                       fontSize: 13,
                                       color: Color(0xFF92400E),
@@ -2538,7 +3244,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                             const SizedBox(height: 10),
                             TextButton.icon(
                               onPressed: () => _ttsService.speak(target),
-                              icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF), size: 18),
+                              icon: const Icon(
+                                Icons.volume_up_rounded,
+                                color: Color(0xFF06A6FF),
+                                size: 18,
+                              ),
                               label: const Text(
                                 'Hear correct pronunciation',
                                 style: TextStyle(
@@ -2548,7 +3258,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                                 ),
                               ),
                             ),
-                          ]
+                          ],
                         ],
                       ],
                     ),
@@ -2567,13 +3277,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E8F0),
+                                  width: 2,
+                                ),
                               ),
                               child: Column(
                                 children: const [
-                                  Icon(Icons.skip_next_rounded, size: 36, color: Color(0xFF64748B)),
+                                  Icon(
+                                    Icons.skip_next_rounded,
+                                    size: 36,
+                                    color: Color(0xFF64748B),
+                                  ),
                                   SizedBox(height: 8),
-                                  Text("SKIP", style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                                  Text(
+                                    "SKIP",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -2588,13 +3313,28 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFEFF6FF),
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: const Color(0xFF06A6FF), width: 2),
+                                border: Border.all(
+                                  color: const Color(0xFF06A6FF),
+                                  width: 2,
+                                ),
                               ),
                               child: Column(
                                 children: const [
-                                  Icon(Icons.mic_rounded, size: 36, color: Color(0xFF06A6FF)),
+                                  Icon(
+                                    Icons.mic_rounded,
+                                    size: 36,
+                                    color: Color(0xFF06A6FF),
+                                  ),
                                   SizedBox(height: 8),
-                                  Text("SPEAK", style: TextStyle(fontSize: 14, color: Color(0xFF06A6FF), fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                                  Text(
+                                    "SPEAK",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF06A6FF),
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -2611,7 +3351,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           SizedBox(height: 16),
                           Text(
                             "Evaluating speech accuracy...",
-                            style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontStyle: FontStyle.italic),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF64748B),
+                              fontStyle: FontStyle.italic,
+                            ),
                           ),
                         ],
                       ),
@@ -2627,22 +3371,32 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+                border: Border(
+                  top: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+                ),
               ),
               child: ElevatedButton(
                 onPressed: _handleContinueFromPronunciation,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _attemptResult!.isCorrect ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  backgroundColor: _attemptResult!.isCorrect
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   elevation: 0,
                 ),
                 child: Text(
                   (_attemptResult!.isCorrect || _pronunciationAttempt >= 3)
                       ? "CONTINUE TO NEXT WORD"
                       : "TRY AGAIN",
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
                 ),
               ),
             ),
@@ -2666,7 +3420,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                 blurRadius: 24,
                 spreadRadius: 3,
                 offset: Offset(0, -6),
-              )
+              ),
             ],
           ),
           child: SingleChildScrollView(
@@ -2684,19 +3438,30 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                 const SizedBox(height: 24),
                 const Text(
                   'Listening...',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   'Pronounce: ${_currentWord.englishWord}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Color(0xFF64748B)),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF64748B),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 const Text(
                   'Speak naturally. It will score automatically when you pause, or stop after 30 seconds.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), height: 1.4),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF94A3B8),
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 36),
                 StreamBuilder<double>(
@@ -2710,18 +3475,30 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                       height: 132,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isSpeechActive 
-                            ? const Color(0xFF10B981).withValues(alpha: 0.15 + (amplitude * 0.15))
-                            : const Color(0xFF06A6FF).withValues(alpha: 0.08 + (amplitude * 0.12)),
+                        color: isSpeechActive
+                            ? const Color(
+                                0xFF10B981,
+                              ).withValues(alpha: 0.15 + (amplitude * 0.15))
+                            : const Color(
+                                0xFF06A6FF,
+                              ).withValues(alpha: 0.08 + (amplitude * 0.12)),
                         border: Border.all(
-                          color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
-                          width: isSpeechActive ? 4 + (amplitude * 8) : 3 + (amplitude * 7),
+                          color: isSpeechActive
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF06A6FF),
+                          width: isSpeechActive
+                              ? 4 + (amplitude * 8)
+                              : 3 + (amplitude * 7),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: isSpeechActive 
-                                ? const Color(0xFF10B981).withValues(alpha: 0.25 + (amplitude * 0.20))
-                                : const Color(0xFF06A6FF).withValues(alpha: 0.18 + (amplitude * 0.12)),
+                            color: isSpeechActive
+                                ? const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.25 + (amplitude * 0.20))
+                                : const Color(0xFF06A6FF).withValues(
+                                    alpha: 0.18 + (amplitude * 0.12),
+                                  ),
                             blurRadius: isSpeechActive ? 28 : 20,
                             spreadRadius: isSpeechActive ? 4 : 2,
                           ),
@@ -2730,7 +3507,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                       child: Icon(
                         Icons.mic_rounded,
                         size: 54 + (amplitude * 12),
-                        color: isSpeechActive ? const Color(0xFF10B981) : const Color(0xFF06A6FF),
+                        color: isSpeechActive
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF06A6FF),
                       ),
                     );
                   },
@@ -2745,11 +3524,17 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           foregroundColor: const Color(0xFF64748B),
                           side: const BorderSide(color: Color(0xFFCBD5E1)),
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
                         ),
                         child: const Text(
                           'CANCEL',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                          ),
                         ),
                       ),
                     ),
@@ -2761,12 +3546,18 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                           backgroundColor: const Color(0xFF06A6FF),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
                           elevation: 0,
                         ),
                         child: const Text(
                           'DONE',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                          ),
                         ),
                       ),
                     ),
@@ -2783,10 +3574,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
   Widget _buildSummaryScreen() {
     // Computes stats
     final averageAttempts = _totalPronunciationWords > 0
-        ? (_totalPronunciationAttempts / _totalPronunciationWords).toStringAsFixed(1)
+        ? (_totalPronunciationAttempts / _totalPronunciationWords)
+              .toStringAsFixed(1)
         : '0.0';
 
-    final confusableMasteredCount = _confusableMastery.values.where((v) => v).length;
+    final confusableMasteredCount = _confusableMastery.values
+        .where((v) => v)
+        .length;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -2861,7 +3655,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                  border: Border.all(
+                    color: const Color(0xFFE2E8F0),
+                    width: 1.5,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.04),
@@ -2874,53 +3671,86 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   children: [
                     _buildStatRow('Total Words Applied', '$_totalUniqueWords'),
                     const Divider(height: 24),
-                    _buildStatRow('Initial-Pass Correct', '$_initialPassCorrectCount / $_totalUniqueWords'),
+                    _buildStatRow(
+                      'Initial-Pass Correct',
+                      '$_initialPassCorrectCount / $_totalUniqueWords',
+                    ),
                     const Divider(height: 24),
-                    _buildStatRow('Reinforcement Correct', '$_reinforcementPassCorrectCount'),
+                    _buildStatRow(
+                      'Reinforcement Correct',
+                      '$_reinforcementPassCorrectCount',
+                    ),
                     if (_confusablePairs.isNotEmpty) ...[
                       const Divider(height: 24),
-                      _buildStatRow('Confusable Pairs Mastered', '$confusableMasteredCount / ${_confusablePairs.length}'),
+                      _buildStatRow(
+                        'Confusable Pairs Mastered',
+                        '$confusableMasteredCount / ${_confusablePairs.length}',
+                      ),
                     ],
                     const Divider(height: 24),
-                    _buildStatRow('Avg. Pronunciation Attempts', '$averageAttempts per word'),
+                    _buildStatRow(
+                      'Avg. Pronunciation Attempts',
+                      '$averageAttempts per word',
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 28),
               ElevatedButton(
                 onPressed: () {
-                  // Push cumulative review with a small slide+fade animation so user can go back to Module 3 without restarting
-                  Navigator.of(context).push(PageRouteBuilder(
-                    transitionDuration: const Duration(milliseconds: 420),
-                    reverseTransitionDuration: const Duration(milliseconds: 350),
-                    pageBuilder: (context, animation, secondaryAnimation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(begin: const Offset(0.04, 0.0), end: Offset.zero).animate(
-                            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                  // Push loading screen before cumulative review
+                  Navigator.of(context).push(
+                    PageRouteBuilder(
+                      transitionDuration: const Duration(milliseconds: 420),
+                      reverseTransitionDuration: const Duration(
+                        milliseconds: 350,
+                      ),
+                      pageBuilder: (context, animation, secondaryAnimation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position:
+                                Tween<Offset>(
+                                  begin: const Offset(0.04, 0.0),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ),
+                                ),
+                            child: LoadingScreen(
+                              duration: const Duration(seconds: 5),
+                              redirectPath: '/cumulative-mixed-review',
+                              extraParams: {
+                                'sessionId': widget.sessionId,
+                                'allWords': widget.allWords,
+                                'categoryId': widget.categoryId,
+                                'isSandbox': widget.isSandbox,
+                              },
+                            ),
                           ),
-                          child: CumulativeMixedReviewScreen(
-                            sessionId: widget.sessionId,
-                            allWords: widget.allWords,
-                            categoryId: widget.categoryId,
-                            isSandbox: widget.isSandbox,
-                          ),
-                        ),
-                      );
-                    },
-                  ));
+                        );
+                      },
+                    ),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF10B981),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
                   'PROCEED CUMULATIVE REVIEW',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -2930,11 +3760,17 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
                   foregroundColor: const Color(0xFF0F172A),
                   side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
                   padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 child: const Text(
                   'BACK TO HOME',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.4),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.4,
+                  ),
                 ),
               ),
             ],
@@ -2950,11 +3786,19 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
         ),
         Text(
           value,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          ),
         ),
       ],
     );
@@ -2965,7 +3809,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Exit Activity?'),
-        content: const Text('Leaving now will discard your progress in this sentence building module.'),
+        content: const Text(
+          'Leaving now will discard your progress in this sentence building module.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -2973,10 +3819,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> {
           ),
           TextButton(
             onPressed: () {
+              final provider = Provider.of<LessonProvider>(context, listen: false);
+              provider.recordPartialModuleTime(widget.sessionId, 3, _computeActiveSeconds(), lessonId: widget.lessonId);
               Navigator.of(context).pop();
               context.go('/home');
             },
-            child: const Text('EXIT', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'EXIT',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),

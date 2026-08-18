@@ -14,6 +14,7 @@ import '../models/pronunciation_attempt_model.dart';
 import '../services/localization_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../widgets/custom_image_viewer.dart';
+import '../widgets/cebuano_text_highlighter.dart';
 import '../config/app_config.dart';
 
 class VocabularyIntroductionScreen extends StatefulWidget {
@@ -676,10 +677,12 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         });
         _initializeWordState();
       } else {
-        // Automatically transition to Module 2
-        context.go(
-          '/session/${widget.sessionId}/practice',
+        // Automatically transition to Module 2 with loading screen
+        context.push(
+          '/loading',
           extra: {
+            'duration': 13000,
+            'redirectPath': '/session/${widget.sessionId}/practice',
             'lessonId': widget.lessonId,
             'categoryId': widget.categoryId,
             'knownWordIds': widget.knownWordIds,
@@ -986,8 +989,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                     if (word.exampleSentenceCebuano != null &&
                         word.exampleSentenceCebuano!.trim().isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Text(
-                        word.exampleSentenceCebuano!,
+                      CebuanoTextHighlighter(
+                        text: word.exampleSentenceCebuano!,
+                        highlightWord: word.cebuanoMeaning,
                         style: const TextStyle(
                           fontSize: 14,
                           fontStyle: FontStyle.italic,
@@ -1185,8 +1189,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                     letterSpacing: 0.5),
               ),
               const SizedBox(height: 8),
-              Text(
-                word.exampleSentenceCebuano!,
+              CebuanoTextHighlighter(
+                text: word.exampleSentenceCebuano!,
+                highlightWord: word.cebuanoMeaning,
                 style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -1327,8 +1332,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               const SizedBox(height: 24),
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 12),
-              Text(
-                word.exampleSentenceCebuano!,
+              CebuanoTextHighlighter(
+                text: word.exampleSentenceCebuano!,
+                highlightWord: word.cebuanoMeaning,
                 style: const TextStyle(fontSize: 15, color: Color(0xFF64748B), fontStyle: FontStyle.italic),
                 textAlign: TextAlign.center,
               ),
@@ -1714,8 +1720,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
               ),
               if (word.exampleSentenceCebuano != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  word.exampleSentenceCebuano!,
+                CebuanoTextHighlighter(
+                  text: word.exampleSentenceCebuano!,
+                  highlightWord: word.cebuanoMeaning,
                   style: const TextStyle(fontSize: 14, color: Color(0xFF475569), fontStyle: FontStyle.italic),
                   textAlign: TextAlign.center,
                 ),

@@ -11,4 +11,5 @@ public interface PracticeSessionRepository extends JpaRepository<PracticeSession
     List<PracticeSession> findByLearnerLearnerId(UUID learnerId);
     List<PracticeSession> findByLearnerLearnerIdOrderByCreatedAtDesc(UUID learnerId);
     void deleteByLearnerLearnerId(UUID learnerId);
+    java.util.Optional<PracticeSession> findFirstByLearnerLearnerIdAndLessonLessonIdOrderByCreatedAtDesc(UUID learnerId, UUID lessonId);
 }

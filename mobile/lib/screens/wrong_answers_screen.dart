@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'package:mobile/config/app_config.dart';
 import '../services/tts_service.dart';
+import '../widgets/cebuano_text_highlighter.dart';
 
 class WrongAnswersScreen extends StatefulWidget {
   const WrongAnswersScreen({super.key});
@@ -56,27 +57,28 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
   Color _errorCountColor(int count) {
     if (count >= 5) return const Color(0xFFEF4444);
     if (count >= 3) return const Color(0xFFF97316);
-    return const Color(0xFFFBBF24);
+    return const Color(0xFFEAB308);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Words I Need Help With',
+          'Words You Need Help With',
           style: TextStyle(
             fontFamily: 'Outfit',
             fontWeight: FontWeight.w800,
             fontSize: 20,
-            color: Colors.white,
+            color: Color(0xFF0F172A),
           ),
         ),
       ),
@@ -85,7 +87,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFF97316)),
+              child: CircularProgressIndicator(color: Color(0xFF06A6FF)),
             );
           }
           if (snapshot.hasError || snapshot.data == null) {
@@ -138,9 +140,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: const Color(0xFFEF4444).withValues(alpha: 0.25),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -150,7 +152,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(Icons.warning_amber_rounded,
@@ -186,7 +188,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                   style: TextStyle(
                     fontFamily: 'Outfit',
                     fontSize: 13,
-                    color: Colors.white.withValues(alpha: 0.8),
+                    color: Colors.white.withValues(alpha: 0.9),
                   ),
                 ),
               ],
@@ -212,18 +214,18 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
       child: Container(
         margin: const EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: currentlyCorrect
-                ? const Color(0xFF22C55E).withValues(alpha: 0.4)
-                : accentColor.withValues(alpha: 0.35),
+                ? const Color(0xFF22C55E).withValues(alpha: 0.35)
+                : const Color(0xFFE2E8F0),
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 8,
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
@@ -237,10 +239,10 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.15),
+                  color: accentColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                      color: accentColor.withValues(alpha: 0.5), width: 1.5),
+                      color: accentColor.withValues(alpha: 0.4), width: 1.5),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -259,8 +261,8 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       errorCount == 1 ? 'error' : 'errors',
                       style: TextStyle(
                         fontSize: 9,
-                        color: accentColor.withValues(alpha: 0.8),
-                        fontWeight: FontWeight.w600,
+                        color: accentColor,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
@@ -281,7 +283,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                               fontFamily: 'Outfit',
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                              color: Color(0xFF0F172A),
                             ),
                           ),
                         ),
@@ -291,8 +293,8 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: currentlyCorrect
-                                ? const Color(0xFF22C55E).withValues(alpha: 0.15)
-                                : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                                ? const Color(0xFFDCFCE7)
+                                : const Color(0xFFFEE2E2),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
@@ -304,8 +306,8 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                                     : Icons.cancel_rounded,
                                 size: 13,
                                 color: currentlyCorrect
-                                    ? const Color(0xFF22C55E)
-                                    : const Color(0xFFEF4444),
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFDC2626),
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -314,8 +316,8 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   color: currentlyCorrect
-                                      ? const Color(0xFF22C55E)
-                                      : const Color(0xFFEF4444),
+                                      ? const Color(0xFF16A34A)
+                                      : const Color(0xFFDC2626),
                                 ),
                               ),
                             ],
@@ -324,31 +326,32 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      cebuano,
+                    CebuanoTextHighlighter(
+                      text: cebuano,
+                      highlightWord: cebuano,
                       style: const TextStyle(
                         fontFamily: 'Outfit',
                         fontSize: 14,
-                        color: Color(0xFF94A3B8),
+                        color: Color(0xFF64748B),
                         fontStyle: FontStyle.italic,
                       ),
                     ),
                     if (partOfSpeech.isNotEmpty || lessonTitle.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.only(top: 8),
                         child: Row(
                           children: [
                             if (partOfSpeech.isNotEmpty)
                               _buildTag(partOfSpeech,
-                                  const Color(0xFF7C3AED), const Color(0xFF4C1D95)),
+                                  const Color(0xFF7C3AED), const Color(0xFFF3E8FF)),
                             if (partOfSpeech.isNotEmpty && lessonTitle.isNotEmpty)
                               const SizedBox(width: 6),
                             if (lessonTitle.isNotEmpty && categoryName.isNotEmpty)
                               Flexible(
                                 child: _buildTag(
                                   '$categoryName · $lessonTitle',
-                                  const Color(0xFF0EA5E9),
-                                  const Color(0xFF0C4A6E),
+                                  const Color(0xFF0369A1),
+                                  const Color(0xFFE0F2FE),
                                 ),
                               ),
                           ],
@@ -359,7 +362,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               ),
               const SizedBox(width: 8),
               const Icon(Icons.chevron_right_rounded,
-                  color: Color(0xFF475569), size: 22),
+                  color: Color(0xFF94A3B8), size: 22),
             ],
           ),
         ),
@@ -371,9 +374,8 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: bgColor.withValues(alpha: 0.4),
+        color: bgColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: textColor.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
@@ -404,7 +406,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
       builder: (_) => Container(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
         decoration: const BoxDecoration(
-          color: Color(0xFF1E293B),
+          color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: Column(
@@ -416,7 +418,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 width: 44,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF475569),
+                  color: const Color(0xFFCBD5E1),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -431,24 +433,25 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       fontFamily: 'Outfit',
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
-                      color: Colors.white,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.volume_up_rounded, color: Color(0xFFF97316), size: 28),
+                  icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF), size: 28),
                   onPressed: () => _ttsService.speak(english),
                   tooltip: "Listen to word",
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              cebuano,
+            CebuanoTextHighlighter(
+              text: cebuano,
+              highlightWord: cebuano,
               style: const TextStyle(
                 fontFamily: 'Outfit',
                 fontSize: 18,
-                color: Color(0xFF94A3B8),
+                color: Color(0xFF64748B),
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -472,7 +475,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               child: ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF334155),
+                  backgroundColor: const Color(0xFF06A6FF),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -480,7 +483,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                   elevation: 0,
                 ),
                 child: const Text('Close',
-                    style: TextStyle(fontFamily: 'Outfit', fontSize: 16)),
+                    style: TextStyle(fontFamily: 'Outfit', fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -505,7 +508,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             child: Text(
               value,
               style: const TextStyle(
-                color: Colors.white,
+                color: Color(0xFF0F172A),
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -541,7 +544,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 fontFamily: 'Outfit',
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: Colors.white,
+                color: Color(0xFF0F172A),
               ),
             ),
             const SizedBox(height: 12),
@@ -550,7 +553,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
-                color: Color(0xFF94A3B8),
+                color: Color(0xFF64748B),
               ),
             ),
           ],
@@ -567,12 +570,12 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.wifi_off_rounded,
-                color: Color(0xFF475569), size: 52),
+                color: Color(0xFF94A3B8), size: 52),
             const SizedBox(height: 16),
             const Text(
               'Could not load your progress.\nPlease try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
+              style: TextStyle(color: Color(0xFF64748B), fontSize: 15),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -580,7 +583,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 _future = _loadData();
               }),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF97316),
+                backgroundColor: const Color(0xFF06A6FF),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),

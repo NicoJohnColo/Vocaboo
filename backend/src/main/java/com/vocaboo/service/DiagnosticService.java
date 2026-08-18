@@ -23,6 +23,7 @@ public class DiagnosticService {
     private final LearnerRepository learnerRepository;
     private final LessonRepository lessonRepository;
     private final VocabularyWordRepository wordRepository;
+    private final DifficultyAdjustmentService difficultyAdjustmentService;
 
     @Transactional
     public DiagnosticResponse submitDiagnostic(UUID learnerId, DiagnosticRequest request) {
@@ -85,8 +86,12 @@ public class DiagnosticService {
 
             if (isKnown) {
                 knownWordIds.add(wordId);
+                // Elevate known words directly to FAMILIAR tier for Module 2 practice
+                difficultyAdjustmentService.diagnosticBoost(learnerId, wordId, "DIAGNOSTIC", 2);
             } else {
                 unknownWordIds.add(wordId);
+                // Set unknown words to LEARNING tier to undergo Module 1 then start at LEARNING in Module 2
+                difficultyAdjustmentService.recordDiagnosticFail(learnerId, wordId, "DIAGNOSTIC", 2);
             }
         }
 

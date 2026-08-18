@@ -15,8 +15,8 @@ public class PracticeResultRequest {
     @NotNull(message = "Word ID is required")
     private UUID wordId;
 
-    @NotNull(message = "isCorrect is required")
-    private Boolean isCorrect;
+    @NotNull(message = "correct is required")
+    private Boolean correct;
 
     private Integer attemptNumber;
     private String activityType;

@@ -41,7 +41,7 @@ public class ProgressController {
         return ResponseEntity.ok(practiceSessionService.record(
                 sessionId,
                 request.getWordId(),
-                request.getIsCorrect(),
+                request.getCorrect(),
                 request.getActivityType(),
                 request.getAttemptNumber()
         ));

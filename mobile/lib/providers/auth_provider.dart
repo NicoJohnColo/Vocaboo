@@ -175,7 +175,8 @@ class AuthProvider with ChangeNotifier {
       } else {
         _error = body['message'] ?? 'Incorrect ID or PIN. Please try again.';
       }
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('Login connection exception: $e\n$stack');
       _error = 'Connection error. Please check your internet connection.';
     }
 

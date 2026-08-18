@@ -10,6 +10,9 @@ enum ActivityFormat {
   listeningTyping,
   translationMatching,
   flashcardRecall,
+  wordScramble,
+  imageLabeling,
+  trueOrFalse,
 }
 
 enum ReinforcementStatus {
@@ -21,8 +24,10 @@ enum ReinforcementStatus {
 class PracticeItemModel {
   final String wordId;
   final String englishWord;
+  final String? displayWord;
   final String cebuanoMeaning;
   final String exampleSentenceEnglish;
+  final String? hintText;
   final String? exampleSentenceCebuano;
   ActivityFormat activityFormat;
   final List<String> distractors;
@@ -33,6 +38,7 @@ class PracticeItemModel {
   final String? fitbAnswer;
   final List<Map<String, dynamic>>? matchingSet;
   final List<String>? sentenceArrangementTokens;
+  final String? tileSentence;
   final String? sentenceCompletionSentence;
   final String? sentenceCompletionAnswer;
   final String? sentenceCompletionOption1;
@@ -41,15 +47,22 @@ class PracticeItemModel {
   final String? imageAssetPath;
   final int? timeLimitSeconds;
   final String? difficultyLevel;
+  /// Whether hints/cebuano meaning are shown (LEARNING tier only).
+  final bool showHint;
+  /// For SENTENCE_ARRANGEMENT at LEARNING tier: the pre-placed word token.
+  final String? anchoredWord;
+  final String? eligibleActivityTypes;
 
   PracticeItemModel({
     required this.wordId,
     required this.englishWord,
+    this.displayWord,
     required this.cebuanoMeaning,
     required this.exampleSentenceEnglish,
     this.exampleSentenceCebuano,
     required this.activityFormat,
     required this.distractors,
+    this.eligibleActivityTypes,
     this.mcDistractor1,
     this.mcDistractor2,
     this.mcDistractor3,
@@ -57,6 +70,7 @@ class PracticeItemModel {
     this.fitbAnswer,
     this.matchingSet,
     this.sentenceArrangementTokens,
+    this.tileSentence,
     this.sentenceCompletionSentence,
     this.sentenceCompletionAnswer,
     this.sentenceCompletionOption1,
@@ -65,12 +79,16 @@ class PracticeItemModel {
     this.imageAssetPath,
     this.timeLimitSeconds,
     this.difficultyLevel,
+    this.hintText,
+    this.showHint = false,
+    this.anchoredWord,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'wordId': wordId,
       'englishWord': englishWord,
+      'displayWord': displayWord,
       'cebuanoMeaning': cebuanoMeaning,
       'exampleSentenceEnglish': exampleSentenceEnglish,
       'exampleSentenceCebuano': exampleSentenceCebuano,
@@ -83,6 +101,7 @@ class PracticeItemModel {
       'fitbAnswer': fitbAnswer,
       'matchingSet': matchingSet,
       'sentenceArrangementTokens': sentenceArrangementTokens,
+      'tileSentence': tileSentence,
       'sentenceCompletionSentence': sentenceCompletionSentence,
       'sentenceCompletionAnswer': sentenceCompletionAnswer,
       'sentenceCompletionOption1': sentenceCompletionOption1,
@@ -91,6 +110,9 @@ class PracticeItemModel {
       'imageAssetPath': imageAssetPath,
       'timeLimitSeconds': timeLimitSeconds,
       'difficultyLevel': difficultyLevel,
+      'hintText': hintText,
+      'showHint': showHint,
+      'anchoredWord': anchoredWord,
     };
   }
 
@@ -99,6 +121,7 @@ class PracticeItemModel {
     return PracticeItemModel(
       wordId: json['wordId'],
       englishWord: json['englishWord'],
+      displayWord: json['displayWord'],
       cebuanoMeaning: json['cebuanoMeaning'],
       exampleSentenceEnglish: _readString(json, 'exampleSentenceEnglish', 'englishExampleSentence', 'example'),
       exampleSentenceCebuano: _readString(json, 'exampleSentenceCebuano', 'cebuanoExampleSentence', 'cebuanoExample'),
@@ -113,7 +136,8 @@ class PracticeItemModel {
           ?.whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList(),
-      sentenceArrangementTokens: (json['sentenceArrangementTokens'] as List<dynamic>?)?.map((item) => item.toString()).toList(),
+      sentenceArrangementTokens: ((json['sentenceArrangementTokens'] ?? json['scrambledTokens']) as List<dynamic>?)?.map((item) => item.toString()).toList(),
+      tileSentence: _readString(json, 'tileSentence', 'sentenceCompletionSentence'),
       sentenceCompletionSentence: _readString(json, 'sentenceCompletionSentence', 'sentenceCompletionBlank', 'fillInTheBlankSentence'),
       sentenceCompletionAnswer: _readString(json, 'sentenceCompletionAnswer', 'fitbAnswer', 'englishWord'),
       sentenceCompletionOption1: _readSentenceCompletionOption(json, sentenceCompletionOptions, 0),
@@ -122,6 +146,9 @@ class PracticeItemModel {
       imageAssetPath: json['imageAssetPath'],
       timeLimitSeconds: json['timeLimitSeconds'] as int?,
       difficultyLevel: json['difficultyLevel'] as String?,
+      hintText: json['hintText'],
+      showHint: json['showHint'] == true,
+      anchoredWord: json['anchoredWord'] as String?,
     );
   }
 
@@ -438,6 +465,29 @@ class LocalStorageService {
   static Future<void> clearReviewCompletionState(String sessionId) async {
     await init();
     await _prefs!.remove('review_completion_state_$sessionId');
+  }
+
+  // --- Active Lesson Session Resuming ---
+  static Future<void> saveActiveLessonSession(String lessonId, String sessionId, String redirectPath) async {
+    await init();
+    await _prefs!.setString('active_session_id_$lessonId', sessionId);
+    await _prefs!.setString('active_session_route_$lessonId', redirectPath);
+  }
+
+  static Future<Map<String, String>?> getActiveLessonSession(String lessonId) async {
+    await init();
+    final sid = _prefs!.getString('active_session_id_$lessonId');
+    final route = _prefs!.getString('active_session_route_$lessonId');
+    if (sid != null && route != null) {
+      return {'sessionId': sid, 'redirectPath': route};
+    }
+    return null;
+  }
+
+  static Future<void> clearActiveLessonSession(String lessonId) async {
+    await init();
+    await _prefs!.remove('active_session_id_$lessonId');
+    await _prefs!.remove('active_session_route_$lessonId');
   }
 
   // --- Cumulative Review Completion ---

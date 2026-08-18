@@ -52,7 +52,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
         provider.fetchLearnerProgressDetails(learnerId),
         provider.fetchLearnerLessonProgress(learnerId),
         provider.fetchLearnerCategoryProgress(learnerId),
-        provider.fetchLearnerRecentWords(learnerId, limit: 5),
+        provider.fetchLearnerRecentWords(learnerId, limit: 50),
       ]);
 
       if (!mounted) return;
@@ -143,6 +143,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
                       _buildPerLessonSection(),
                       const SizedBox(height: 24),
                       _buildPerCategorySection(),
+                      const SizedBox(height: 24),
+                      _buildPOSProgressSection(),
                       const SizedBox(height: 24),
                       _buildRecentWordsSection(),
                       const SizedBox(height: 32),
@@ -456,6 +458,112 @@ class _ProgressScreenState extends State<ProgressScreen> {
               );
             },
           ),
+      ],
+    );
+  }
+
+  Widget _buildPOSProgressSection() {
+    final Map<String, List<RecentWordProgressModel>> groupedByPOS = {
+      'NOUN': [],
+      'VERB': [],
+      'ADJECTIVE': [],
+    };
+    for (var w in _recentWords) {
+      final pos = w.partOfSpeech?.toUpperCase() ?? '';
+      if (groupedByPOS.containsKey(pos)) {
+        groupedByPOS[pos]!.add(w);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Part of Speech Progress',
+          style: TextStyle(
+            fontFamily: 'Outfit',
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (groupedByPOS.values.every((list) => list.isEmpty))
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12.0),
+            child: Text('No POS data available.', style: TextStyle(color: Color(0xFF64748B))),
+          )
+        else
+          ...groupedByPOS.entries.where((e) => e.value.isNotEmpty).map((e) {
+            final pos = e.key;
+            final words = e.value;
+            final avgAccuracy = words.fold(0.0, (sum, w) => sum + w.accuracy) / words.length;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.category_rounded,
+                      color: Color(0xFF06A6FF),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pos,
+                          style: const TextStyle(
+                            fontFamily: 'Outfit',
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${words.length} words introduced',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${avgAccuracy.toStringAsFixed(0)}% accuracy',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: avgAccuracy >= 80 ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }

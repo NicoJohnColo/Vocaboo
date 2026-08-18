@@ -1,4 +1,4 @@
-import React from 'react';
+// import React
 
 interface Props {
   progress: number; // 0 to 100

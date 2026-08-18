@@ -232,7 +232,7 @@ class DifficultyAdjustmentServiceTest {
     }
 
     @Test
-    void calculateNext_learningLevel_threeIncorrect_offersHints() {
+    void calculateNext_learningLevel_singleIncorrect_incrementsCounter() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -243,7 +243,7 @@ class DifficultyAdjustmentServiceTest {
                 .word(word)
                 .currentLevel(DifficultyLevel.LEARNING)
                 .consecutiveCorrect(0)
-                .consecutiveIncorrect(2)
+                .consecutiveIncorrect(0)
                 .build();
 
         when(progressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wordId))
@@ -254,12 +254,12 @@ class DifficultyAdjustmentServiceTest {
 
         assertNotNull(response);
         assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
-        assertEquals(3, response.getConsecutiveIncorrect());
-        assertTrue(response.getShowHints());
+        assertEquals(1, response.getConsecutiveIncorrect());
+        assertFalse(response.getShowHints());
     }
 
     @Test
-    void calculateNext_learningLevel_fourIncorrect_triggersShortReintroduction() {
+    void calculateNext_learningLevel_twoIncorrect_triggersShortReintroduction() {
         UUID learnerId = UUID.randomUUID();
         UUID wordId = UUID.randomUUID();
 
@@ -270,7 +270,7 @@ class DifficultyAdjustmentServiceTest {
                 .word(word)
                 .currentLevel(DifficultyLevel.LEARNING)
                 .consecutiveCorrect(0)
-                .consecutiveIncorrect(3)
+                .consecutiveIncorrect(1)
                 .reintroductionCount(0)
                 .needsReintroduction(false)
                 .build();

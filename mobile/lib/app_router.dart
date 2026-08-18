@@ -13,13 +13,15 @@ import 'screens/success_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/lesson_path_screen.dart';
 import 'screens/vocabulary_introduction_screen.dart';
+import 'screens/cumulative_review_screen.dart';
+import 'screens/cumulative_mixed_review_screen.dart';
+import 'screens/cumulative_review_summary_screen.dart';
 import 'screens/diagnostic_check_screen.dart';
 import 'screens/diagnostic_summary_screen.dart';
 import 'screens/round_one_completed_screen.dart';
 import 'screens/active_practice_screen.dart';
 import 'screens/sentence_building_screen.dart';
 import 'screens/confusable_words_distinction_screen.dart';
-import 'screens/cumulative_mixed_review_screen.dart';
 import 'screens/mastery_result_screen.dart';
 import 'screens/sandbox_mode_screen.dart';
 import 'screens/user_dashboard_screen.dart';
@@ -27,6 +29,8 @@ import 'screens/settings_screen.dart';
 import 'screens/lesson_score_screen.dart';
 import 'screens/wrong_answers_screen.dart';
 import 'screens/progress_screen.dart';
+import 'screens/leaderboard_screen.dart';
+import 'screens/loading_screen.dart';
 
 class _AuthListenable extends ChangeNotifier {
   final AuthProvider _auth;
@@ -81,7 +85,26 @@ class AppRouter {
         builder: (c, s) => LanguagePreferenceScreen(learnerData: s.extra as Map<String, dynamic>?),
       ),
       GoRoute(path: '/success', builder: (c, s) => const SuccessScreen()),
+      GoRoute(
+        path: '/loading',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>?;
+          final duration = e?['duration'] != null 
+              ? Duration(milliseconds: e!['duration'] as int)
+              : const Duration(seconds: 13);
+          final redirectPath = e?['redirectPath'] as String? ?? '/home';
+          final extraParams = Map<String, dynamic>.from(e ?? {});
+          extraParams.remove('duration');
+          extraParams.remove('redirectPath');
+          return LoadingScreen(
+            duration: duration, 
+            redirectPath: redirectPath,
+            extraParams: extraParams.isNotEmpty ? extraParams : null,
+          );
+        },
+      ),
       GoRoute(path: '/home', builder: (c, s) => const HomeScreen()),
+      GoRoute(path: '/leaderboard', builder: (c, s) => const LeaderboardScreen()),
       GoRoute(
         path: '/category/:categoryId/lessons',
         builder: (c, s) => LessonPathScreen(
@@ -212,14 +235,33 @@ class AppRouter {
         path: '/session/:sessionId/cumulative-review',
         builder: (c, s) {
           final e = s.extra as Map<String, dynamic>?;
-          return CumulativeMixedReviewScreen(
+          return CumulativeReviewScreen(
             sessionId: s.pathParameters['sessionId']!,
-            lessonId: e?['lessonId']?.toString(),
-            allWords: List<Map<String, dynamic>>.from(e?['allWords'] ?? const []),
-            categoryId: e?['categoryId']?.toString() ?? '',
-            isSandbox: e?['isSandbox'] as bool? ?? false,
             lessonIds: List<String>.from(e?['lessonIds'] ?? const []),
-            priorityWordIds: List<String>.from(e?['priorityWordIds'] ?? const []),
+            categoryId: e?['categoryId'] ?? '',
+          );
+        },
+      ),
+      GoRoute(
+        path: '/session/:sessionId/cumulative-summary',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>;
+          return CumulativeReviewSummaryScreen(
+            sessionId: s.pathParameters['sessionId']!,
+            correct: e['correct'] as int,
+            total: e['total'] as int,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/cumulative-mixed-review',
+        builder: (c, s) {
+          final e = s.extra as Map<String, dynamic>?;
+          return CumulativeMixedReviewScreen(
+            sessionId: e?['sessionId'] as String? ?? '',
+            allWords: List<Map<String, dynamic>>.from(e?['allWords'] ?? const []),
+            categoryId: e?['categoryId'] as String? ?? '',
+            isSandbox: e?['isSandbox'] as bool? ?? false,
           );
         },
       ),

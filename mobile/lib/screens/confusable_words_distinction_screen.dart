@@ -305,10 +305,10 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                           ),
                           if (sentenceACebuano.trim().isNotEmpty) ...[
                             const SizedBox(height: 6),
-                            Text(
-                              'Bisaya: $sentenceACebuano',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF0284C7), fontStyle: FontStyle.italic),
-                            ),
+                             Text(
+                               'Cebuano: $sentenceACebuano',
+                               style: const TextStyle(fontSize: 12, color: Color(0xFF0284C7), fontStyle: FontStyle.italic),
+                             ),
                           ],
                           const SizedBox(height: 12),
                           Row(
@@ -354,10 +354,10 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                           ),
                           if (sentenceBCebuano.trim().isNotEmpty) ...[
                             const SizedBox(height: 6),
-                            Text(
-                              'Bisaya: $sentenceBCebuano',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontStyle: FontStyle.italic),
-                            ),
+                             Text(
+                               'Cebuano: $sentenceBCebuano',
+                               style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontStyle: FontStyle.italic),
+                             ),
                           ],
                           const SizedBox(height: 12),
                           Row(

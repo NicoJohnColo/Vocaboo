@@ -8,6 +8,7 @@ import com.vocaboo.dto.response.LessonResponse;
 import com.vocaboo.dto.response.MasteryResponse;
 import com.vocaboo.dto.response.VocabularyWordResponse;
 import com.vocaboo.dto.response.ConfusableWordPairResponse;
+import com.vocaboo.dto.response.LessonMasteryStatusResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vocaboo.entity.Learner;
@@ -17,12 +18,15 @@ import com.vocaboo.entity.LessonStatus;
 import com.vocaboo.entity.VocabularyCategory;
 import com.vocaboo.entity.VocabularyWord;
 import com.vocaboo.entity.ConfusableWordPair;
+import com.vocaboo.entity.DifficultyLevel;
+import com.vocaboo.entity.DifficultyProgress;
 import com.vocaboo.repository.LearnerLessonStatusRepository;
 import com.vocaboo.repository.LearnerRepository;
 import com.vocaboo.repository.LessonRepository;
 import com.vocaboo.repository.VocabularyCategoryRepository;
 import com.vocaboo.repository.VocabularyWordRepository;
 import com.vocaboo.repository.ConfusableWordPairRepository;
+import com.vocaboo.repository.DifficultyProgressRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -47,6 +51,7 @@ public class LessonService {
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final LearnerRepository learnerRepository;
     private final ConfusableWordPairRepository confusableRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -106,7 +111,34 @@ public class LessonService {
                 }
             }
 
-            int actualWordCount = (int) wordRepository.countByLessonLessonIdAndIsDeletedFalse(lesson.getLessonId());
+            Learner learner = learnerRepository.findById(learnerId).orElse(null);
+
+            List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lesson.getLessonId());
+
+            int actualWordCount = lessonWords.size();
+
+            List<DifficultyProgress> progressList = difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonIdAndModuleNumber(learnerId, lesson.getLessonId(), 3);
+            Map<UUID, DifficultyProgress> progressMap = progressList.stream()
+                    .collect(Collectors.toMap(
+                            p -> p.getWord().getWordId(),
+                            p -> p,
+                            (p1, p2) -> p1
+                    ));
+
+            int masteredWordCount = 0;
+            Map<String, Integer> posTotalWordCounts = new java.util.HashMap<>();
+            Map<String, Integer> posMasteredWordCounts = new java.util.HashMap<>();
+
+            for (VocabularyWord w : lessonWords) {
+                String pos = w.getPartOfSpeech() != null ? w.getPartOfSpeech().toUpperCase() : "UNKNOWN";
+                posTotalWordCounts.merge(pos, 1, Integer::sum);
+
+                DifficultyProgress dp = progressMap.get(w.getWordId());
+                if (dp != null && dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
+                    masteredWordCount++;
+                    posMasteredWordCounts.merge(pos, 1, Integer::sum);
+                }
+            }
 
             responses.add(LessonResponse.builder()
                     .lessonId(lesson.getLessonId())
@@ -116,6 +148,9 @@ public class LessonService {
                     .gradeLevel(lesson.getGradeLevel())
                     .lessonOrder(lesson.getLessonOrder())
                     .totalWordCount(actualWordCount > 0 ? actualWordCount : (lesson.getTotalWordCount() != null ? lesson.getTotalWordCount() : 0))
+                    .masteredWordCount(masteredWordCount)
+                    .posTotalWordCounts(posTotalWordCounts)
+                    .posMasteredWordCounts(posMasteredWordCounts)
                     .status(status)
                     .masteryScore(masteryScore)
                     .lessonType(lesson.getLessonType() != null ? lesson.getLessonType().name() : "REGULAR")
@@ -149,6 +184,8 @@ public class LessonService {
                         .hintText(word.getHintText())
                         .audioTextCebuano(word.getAudioTextCebuano())
                         .audioTextEnglish(word.getAudioTextEnglish())
+                        .activityType(word.getActivityType())
+                        .eligibleActivityTypes(word.getEligibleActivityTypes())
                         .build())
                 .collect(Collectors.toList());
     }
@@ -292,6 +329,8 @@ public class LessonService {
                                 .exampleSentenceEnglish(pair.getWordA().getExampleSentenceEnglish())
                                 .exampleSentenceCebuano(pair.getWordA().getExampleSentenceCebuano())
                                 .phonologicalTipKey(pair.getWordA().getPhonologicalTipKey())
+                                .activityType(pair.getWordA().getActivityType())
+                                .eligibleActivityTypes(pair.getWordA().getEligibleActivityTypes())
                                 .build())
                         .wordB(VocabularyWordResponse.builder()
                                 .wordId(pair.getWordB().getWordId())
@@ -303,6 +342,8 @@ public class LessonService {
                                 .exampleSentenceEnglish(pair.getWordB().getExampleSentenceEnglish())
                                 .exampleSentenceCebuano(pair.getWordB().getExampleSentenceCebuano())
                                 .phonologicalTipKey(pair.getWordB().getPhonologicalTipKey())
+                                .activityType(pair.getWordB().getActivityType())
+                                .eligibleActivityTypes(pair.getWordB().getEligibleActivityTypes())
                                 .build())
                         .contrastiveSentenceA(pair.getContrastiveSentenceA())
                         .contrastiveSentenceB(pair.getContrastiveSentenceB())
@@ -452,5 +493,36 @@ public class LessonService {
                         lessonStatusRepository.save(nextStatus);
                     }
                 });
+    }
+
+    @Transactional(readOnly = true)
+    public LessonMasteryStatusResponse getLessonMasteryStatus(UUID lessonId, UUID learnerId, Integer moduleNumber) {
+        Learner learner = learnerRepository.findById(learnerId)
+                .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
+        String posFocus = learner.getPosFocus();
+
+        List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId).stream()
+                .filter(w -> posFocus == null || "ALL".equalsIgnoreCase(posFocus) || posFocus.equalsIgnoreCase(w.getPartOfSpeech()))
+                .collect(Collectors.toList());
+
+        long totalWords = lessonWords.size();
+        long masteredWords = 0;
+        
+        int modNum = moduleNumber != null ? moduleNumber : 2;
+
+        for (VocabularyWord w : lessonWords) {
+            DifficultyProgress dp = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, w.getWordId(), modNum).orElse(null);
+            if (dp != null && dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
+                masteredWords++;
+            }
+        }
+
+        boolean allMastered = (totalWords > 0 && masteredWords >= totalWords);
+        
+        return LessonMasteryStatusResponse.builder()
+                .allMastered(allMastered)
+                .totalWords(totalWords)
+                .masteredWords(masteredWords)
+                .build();
     }
 }

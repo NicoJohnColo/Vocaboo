@@ -32,6 +32,15 @@ public class PracticeSessionService {
     private final DifficultyProgressRepository difficultyProgressRepository;
     private final ReviewItemRepository reviewItemRepository;
 
+    // Activities excluded from all scoring (no pts, no accuracy count)
+    private static final java.util.Set<String> SCORING_EXCLUDED = java.util.Set.of(
+        "CONFUSABLE_DISTINCTION", "PRONUNCIATION_FEEDBACK"
+    );
+    // TRUE_FALSE uses flat rate, excluded from streak/tier but counted in accuracy
+    private static final java.util.Set<String> TRUE_FALSE_TYPES = java.util.Set.of(
+        "TRUE_OR_FALSE", "TRUE_FALSE"
+    );
+
     @Transactional
     public PracticeSessionResponse start(UUID learnerId, UUID lessonId, int moduleNumber) {
         Learner learner = learnerRepository.findById(learnerId)
@@ -40,6 +49,7 @@ public class PracticeSessionService {
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
 
         PracticeSession session = PracticeSession.builder()
+                .sessionId(UUID.randomUUID())
                 .learner(learner)
                 .lesson(lesson)
                 .moduleNumber(moduleNumber)
@@ -81,6 +91,49 @@ public class PracticeSessionService {
         VocabularyWord word = wordRepository.findById(wordId)
                 .orElseThrow(() -> new IllegalArgumentException("Word not found"));
 
+        String resolvedActivityType = activityType != null && !activityType.isBlank()
+                ? activityType.toUpperCase()
+                : "MULTIPLE_CHOICE";
+
+        // Activities fully excluded from all scoring
+        if (SCORING_EXCLUDED.contains(resolvedActivityType)) {
+            // Still record the result row for audit, but with 0 points and no accuracy impact
+            PracticeResult result = PracticeResult.builder()
+                    .session(session)
+                    .word(word)
+                    .isCorrect(isCorrect)
+                    .attemptNumber(1)
+                    .activityType(resolvedActivityType)
+                    .points(0)
+                    .recordedAt(OffsetDateTime.now())
+                    .build();
+            return toResultResponse(resultRepository.save(result));
+        }
+
+        // TRUE_FALSE: flat 5 pts correct, 0 wrong — no tier/streak effect
+        boolean isTrueFalse = TRUE_FALSE_TYPES.contains(resolvedActivityType);
+
+        // Determine points:
+        // TRUE_FALSE: flat 5/0
+        // All others: use attemptCountAtCurrentTier from DifficultyProgress (resets on tier change)
+        int pointsEarned = 0;
+        if (isCorrect) {
+            if (isTrueFalse) {
+                pointsEarned = 5;
+            } else {
+                int mod = session.getModuleNumber() != null ? session.getModuleNumber() : 2;
+                // Look up the attempt count at current tier from DifficultyProgress
+                int attemptCount = difficultyProgressRepository
+                        .findByLearnerLearnerIdAndWordWordIdAndModuleNumber(session.getLearner().getLearnerId(), wordId, mod)
+                        .map(dp -> dp.getAttemptCountAtCurrentTier() != null ? dp.getAttemptCountAtCurrentTier() : 1)
+                        .orElse(1);
+                if (attemptCount == 1) pointsEarned = 10;
+                else if (attemptCount == 2) pointsEarned = 7;
+                else pointsEarned = 5; // 3rd+ attempt, floor at 5
+            }
+        }
+
+        // Determine attempt number for audit record
         int attemptNumber;
         if (explicitAttemptNumber != null && explicitAttemptNumber > 0) {
             attemptNumber = explicitAttemptNumber;
@@ -91,18 +144,6 @@ public class PracticeSessionService {
                     .count();
             attemptNumber = (int) attemptsOnThisWord + 1;
         }
-
-        int pointsEarned = 0;
-        if (isCorrect) {
-            if (attemptNumber == 1) pointsEarned = 10;
-            else if (attemptNumber == 2) pointsEarned = 7;
-            else if (attemptNumber == 3) pointsEarned = 5;
-            else pointsEarned = 0;
-        }
-
-        String resolvedActivityType = activityType != null && !activityType.isBlank()
-                ? activityType
-                : "MULTIPLE_CHOICE";
 
         PracticeResult result = PracticeResult.builder()
                 .session(session)
@@ -116,7 +157,7 @@ public class PracticeSessionService {
 
         result = resultRepository.save(result);
 
-        if (isCorrect) {
+        if (isCorrect && pointsEarned > 0) {
             PointTransaction transaction = PointTransaction.builder()
                     .learner(session.getLearner())
                     .actionType(PointActionType.CORRECT_ANSWER)
@@ -128,7 +169,15 @@ public class PracticeSessionService {
             pointTransactionRepository.save(transaction);
         }
 
-        // Update WordPerformance
+        // Only advance tier state via API call since DifficultyAdjustmentService handles the gate rules.
+        // We do NOT modify difficulty state here anymore, but we can query it if needed.
+        difficultyProgressRepository
+                .findByLearnerLearnerIdAndWordWordIdAndModuleNumber(session.getLearner().getLearnerId(), wordId, session.getModuleNumber() != null ? session.getModuleNumber() : 2)
+                .ifPresent(dp -> {
+                    // Just touching it so it's fresh if needed for metrics elsewhere
+                });
+
+        // Update WordPerformance (track accuracy for word rating)
         WordPerformance performance = performanceRepository
                 .findByLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), wordId)
                 .orElseGet(() -> WordPerformance.builder()
@@ -137,6 +186,7 @@ public class PracticeSessionService {
                         .correctCount(0)
                         .incorrectCount(0)
                         .totalAttempts(0)
+                        .tierDropCount(0)
                         .accuracy(BigDecimal.ZERO)
                         .createdAt(OffsetDateTime.now())
                         .build());
@@ -223,13 +273,14 @@ public class PracticeSessionService {
 
         // Recalculate mastered words (difficulty level MASTERED or accuracy >= 80%)
         List<WordPerformance> performances = performanceRepository.findByLearnerLearnerId(learner.getLearnerId());
+        final int modNum = session.getModuleNumber() != null ? session.getModuleNumber() : 2;
         long masteredCount = performances.stream().filter(p -> {
             if (p.getWord() == null) {
                 return p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0;
             }
-            var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(learner.getLearnerId(), p.getWord().getWordId());
-            return dpOpt.map(dp -> dp.getCurrentLevel() == DifficultyLevel.MASTERED)
-                    .orElseGet(() -> p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0);
+            var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learner.getLearnerId(), p.getWord().getWordId(), modNum);
+            DifficultyLevel currentLevel = dpOpt.map(DifficultyProgress::getCurrentLevel).orElse(DifficultyLevel.LEARNING);
+            return currentLevel == DifficultyLevel.MASTERED;
         }).count();
 
         mastery.setWordsMasteredCount((int) masteredCount);
@@ -240,6 +291,11 @@ public class PracticeSessionService {
         return toSessionResponse(session);
     }
 
+    /**
+     * Lesson accuracy score: correct / total for all SCORED activities in the session.
+     * Confusable Distinction and Pronunciation Feedback are excluded from both numerator
+     * and denominator per scoring plan §5.
+     */
     @Transactional(readOnly = true)
     public BigDecimal calculateScore(UUID sessionId) {
         List<PracticeResult> results = resultRepository.findBySessionSessionId(sessionId);
@@ -247,8 +303,20 @@ public class PracticeSessionService {
             return BigDecimal.ZERO;
         }
 
-        long totalCount = results.size();
-        long correctCount = results.stream().filter(PracticeResult::getIsCorrect).count();
+        // Filter out excluded activity types
+        List<PracticeResult> scoredResults = results.stream()
+                .filter(r -> {
+                    String t = r.getActivityType();
+                    if (t == null) return true; // default include
+                    String upper = t.toUpperCase();
+                    return !upper.equals("CONFUSABLE_DISTINCTION") && !upper.equals("PRONUNCIATION_FEEDBACK");
+                })
+                .collect(java.util.stream.Collectors.toList());
+
+        if (scoredResults.isEmpty()) return BigDecimal.ZERO;
+
+        long totalCount = scoredResults.size();
+        long correctCount = scoredResults.stream().filter(PracticeResult::getIsCorrect).count();
 
         return BigDecimal.valueOf(correctCount * 100.0 / totalCount).setScale(2, RoundingMode.HALF_UP);
     }
@@ -312,9 +380,10 @@ public class PracticeSessionService {
             if (p.getWord() == null) {
                 return p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0;
             }
-            var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, p.getWord().getWordId());
-            return dpOpt.map(dp -> dp.getCurrentLevel() == DifficultyLevel.MASTERED)
-                    .orElseGet(() -> p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0);
+            int modNum = 2; // Default for non-session context
+            var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, p.getWord().getWordId(), modNum);
+            DifficultyLevel currentLevel = dpOpt.map(DifficultyProgress::getCurrentLevel).orElse(DifficultyLevel.LEARNING);
+            return currentLevel == DifficultyLevel.MASTERED;
         }).count();
 
         List<PracticeSession> sessions = sessionRepository.findByLearnerLearnerId(learnerId);
@@ -364,14 +433,7 @@ public class PracticeSessionService {
                 ? BigDecimal.valueOf(totalCorrect * 100.0 / totalQuestions).setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        long masteredCount = performances.stream().filter(p -> {
-            if (p.getWord() == null) {
-                return p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0;
-            }
-            var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, p.getWord().getWordId());
-            return dpOpt.map(dp -> dp.getCurrentLevel() == DifficultyLevel.MASTERED)
-                    .orElseGet(() -> p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0);
-        }).count();
+        long masteredCount = difficultyProgressRepository.countTotalMasteredWordsByLearner(learnerId);
 
         mastery.setTotalQuestionsAnswered(totalQuestions);
         mastery.setTotalCorrectAnswers(totalCorrect);
@@ -383,6 +445,13 @@ public class PracticeSessionService {
         return toProgressResponse(mastery);
     }
 
+    /**
+     * Non-overlapping star bands per scoring plan §6:
+     *   90%+    → 3 ★ Gold
+     *   80–89%  → 2 ★ Silver
+     *   70–79%  → 1 ★ Bronze
+     *   < 70%   → 0 ★
+     */
     public static int calculateStars(BigDecimal accuracy) {
         if (accuracy == null) return 0;
         double val = accuracy.doubleValue();
@@ -393,12 +462,12 @@ public class PracticeSessionService {
     }
 
     public static String calculateMasteryLevel(BigDecimal accuracy) {
-        if (accuracy == null) return "LEARNING";
+        if (accuracy == null) return "Learning";
         double val = accuracy.doubleValue();
-        if (val >= 90.0) return "MASTERED";
-        if (val >= 80.0) return "PROFICIENT";
-        if (val >= 70.0) return "FAMILIAR";
-        return "LEARNING";
+        if (val >= 90.0) return "Gold";
+        if (val >= 80.0) return "Silver";
+        if (val >= 70.0) return "Bronze";
+        return "Learning";
     }
 
     private PracticeSessionResponse toSessionResponse(PracticeSession session) {
@@ -506,7 +575,10 @@ public class PracticeSessionService {
 
         List<RecentWordProgressResponse> list = new ArrayList<>();
         for (WordPerformance wp : performances) {
-            Optional<DifficultyProgress> dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wp.getWord().getWordId());
+            int modNum = 2; // Default for learner word stats
+            Optional<DifficultyProgress> dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, wp.getWord().getWordId(), modNum);
+            DifficultyLevel currentLevel = dpOpt.map(DifficultyProgress::getCurrentLevel)
+                    .orElse(DifficultyLevel.LEARNING);
             String level = dpOpt.isPresent() ? dpOpt.get().getCurrentLevel().name() : calculateMasteryLevel(wp.getAccuracy());
 
             list.add(RecentWordProgressResponse.builder()
@@ -515,6 +587,7 @@ public class PracticeSessionService {
                     .cebuanoMeaning(wp.getWord().getCebuanoMeaning())
                     .accuracy(wp.getAccuracy())
                     .currentLevel(level)
+                    .partOfSpeech(wp.getWord().getPartOfSpeech())
                     .lastPracticedAt(wp.getLastPracticedAt())
                     .build());
         }

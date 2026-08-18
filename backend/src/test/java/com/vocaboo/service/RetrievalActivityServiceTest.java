@@ -97,21 +97,50 @@ class RetrievalActivityServiceTest {
                 .build();
 
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(difficultyService.getCurrentLevel(learnerId, wordId)).thenReturn(DifficultyLevel.LEARNING);
+        when(difficultyService.calculateNext(eq(learnerId), eq(wordId), anyBoolean()))
+                .thenReturn(com.vocaboo.dto.response.DifficultyProgressResponse.builder().currentLevel("FAMILIAR").build());
 
         // Submit correct answer
-        service.submitAnswer(sessionId, wordId, true, null, null);
+        Map<String, Object> res1 = service.submitAnswer(sessionId, wordId, true, null, null);
 
         verify(practiceSessionService).record(sessionId, wordId, true, null, null);
         verify(difficultyService).calculateNext(learnerId, wordId, true);
         verify(reinforcementEngine).resolve(learnerId, wordId);
+        assertEquals(true, res1.get("leveledUp"));
+        assertEquals("LEARNING", res1.get("oldLevel"));
+        assertEquals("FAMILIAR", res1.get("currentLevel"));
 
         // Submit incorrect answer
         service.submitAnswer(sessionId, wordId, false, "pencil", "MULTIPLE_CHOICE");
 
         verify(practiceSessionService).record(sessionId, wordId, false, "MULTIPLE_CHOICE", null);
         verify(difficultyService).calculateNext(learnerId, wordId, false);
-        verify(reinforcementEngine).enqueue(learnerId, wordId);
         verify(wrongAnswerTrackingService).trackWrongAnswer(learnerId, wordId, "pencil", "MULTIPLE_CHOICE");
-        verify(reinforcementEngine).enqueue(learnerId, wordId);
+    }
+
+    @Test
+    void submitAnswer_trueOrFalseStillUpdatesDifficulty() {
+        UUID sessionId = UUID.randomUUID();
+        UUID wordId = UUID.randomUUID();
+        UUID learnerId = UUID.randomUUID();
+
+        Learner learner = Learner.builder().learnerId(learnerId).build();
+        PracticeSession session = PracticeSession.builder()
+                .sessionId(sessionId)
+                .learner(learner)
+                .build();
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(difficultyService.getCurrentLevel(learnerId, wordId)).thenReturn(DifficultyLevel.LEARNING);
+        when(difficultyService.calculateNext(eq(learnerId), eq(wordId), anyBoolean()))
+                .thenReturn(com.vocaboo.dto.response.DifficultyProgressResponse.builder().currentLevel("FAMILIAR").build());
+
+        service.submitAnswer(sessionId, wordId, true, null, "TRUE_OR_FALSE");
+
+        verify(practiceSessionService).record(sessionId, wordId, true, "TRUE_OR_FALSE", null);
+        verify(difficultyService).calculateNext(learnerId, wordId, true);
+        verify(reinforcementEngine).resolve(learnerId, wordId);
+        verifyNoInteractions(wrongAnswerTrackingService);
     }
 }

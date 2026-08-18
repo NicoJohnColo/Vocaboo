@@ -19,6 +19,17 @@ public class ReinforcementEngineService {
     private final ReinforcementQueueRepository queueRepository;
     private final LearnerRepository learnerRepository;
     private final VocabularyWordRepository wordRepository;
+    private final com.vocaboo.repository.PracticeResultRepository practiceResultRepository;
+
+    public boolean isWordWeak(UUID learnerId, UUID wordId) {
+        java.util.List<com.vocaboo.entity.PracticeResult> recentAttempts = practiceResultRepository.findTop5BySessionLearnerLearnerIdAndWordWordIdOrderByRecordedAtDesc(learnerId, wordId);
+        if (recentAttempts.isEmpty()) {
+            return false; // Not enough data
+        }
+        long correctCount = recentAttempts.stream().filter(com.vocaboo.entity.PracticeResult::getIsCorrect).count();
+        double accuracy = (double) correctCount / recentAttempts.size();
+        return accuracy < 0.70;
+    }
 
     @Transactional
     public void enqueue(UUID learnerId, UUID wordId) {

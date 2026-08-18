@@ -23,3 +23,19 @@ export interface AdminAccount {
   created_at: string;
   last_login?: string;
 }
+
+export interface VocabularyWord {
+  wordId: string;
+  englishWord: string;
+  cebuanoMeaning: string;
+  partOfSpeech?: string;
+}
+
+export interface CrossLessonSentence {
+  id?: string;
+  sentenceText: string;
+  sentenceTranslation: string;
+  wordA: VocabularyWord;
+  wordB: VocabularyWord;
+  lessonPairId: string;
+}

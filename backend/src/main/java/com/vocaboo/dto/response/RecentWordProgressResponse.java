@@ -18,5 +18,6 @@ public class RecentWordProgressResponse {
     private String cebuanoMeaning;
     private BigDecimal accuracy;
     private String currentLevel; // 'LEARNING', 'FAMILIAR', 'PROFICIENT', 'MASTERED'
+    private String partOfSpeech;
     private OffsetDateTime lastPracticedAt;
 }

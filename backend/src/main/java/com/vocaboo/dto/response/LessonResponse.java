@@ -5,6 +5,7 @@ import com.vocaboo.entity.LessonStatus;
 import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Getter
@@ -20,6 +21,9 @@ public class LessonResponse {
     private GradeLevel gradeLevel;
     private Integer lessonOrder;
     private Integer totalWordCount;
+    private Integer masteredWordCount;
+    private Map<String, Integer> posTotalWordCounts;
+    private Map<String, Integer> posMasteredWordCounts;
     private LessonStatus status;
     private BigDecimal masteryScore;
     private String lessonType;

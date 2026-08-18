@@ -1,9 +1,24 @@
 {
+    "java.jdt.ls.java.home": "C:\\Program Files\\Java\\jdk-23",
+    "java.import.gradle.java.home": "C:\\Program Files\\Android\\Android Studio\\jbr",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-17",
+            "path": "C:\\Program Files\\Android\\Android Studio\\jbr",
+            "default": true
+        },
+        {
+            "name": "JavaSE-23",
+            "path": "C:\\Program Files\\Java\\jdk-23"
+        }
+    ],
     "java.compile.nullAnalysis.mode": "automatic",
-    "java.configuration.updateBuildConfiguration": "interactive",
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.maven.enabled": true,
     "java.debug.settings.onBuildFailureProceed": true,
     "terminal.integrated.env.windows": {
-        "DART_VM_OPTIONS": "--old_gen_heap_size=4096"
+        "DART_VM_OPTIONS": "--old_gen_heap_size=4096",
+        "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr"
     },
     "editor.fontSize": 16
 }

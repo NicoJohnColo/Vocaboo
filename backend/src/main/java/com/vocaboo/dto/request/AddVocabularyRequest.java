@@ -23,7 +23,7 @@ public class AddVocabularyRequest {
     private String partOfSpeech;
 
     @NotBlank(message = "Grade level is required")
-    @Pattern(regexp = "GRADE_4|GRADE_5|GRADE_6", message = "Grade level must be GRADE_4, GRADE_5, or GRADE_6")
+    @Pattern(regexp = "GRADE_3_4|GRADE_5_6|GRADE_6", message = "Grade level must be GRADE_3_4, GRADE_5_6, or GRADE_6")
     private String gradeLevel;
 
     @NotBlank(message = "English example sentence is required")
@@ -55,4 +55,6 @@ public class AddVocabularyRequest {
 
     /** Exact text fed to English TTS */
     private String audioTextEnglish;
+    
+    private String eligibleActivityTypes;
 }

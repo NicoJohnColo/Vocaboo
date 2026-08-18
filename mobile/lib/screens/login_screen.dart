@@ -55,7 +55,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final success = await auth.login(id, pin);
       
       if (success && mounted) {
-        context.go('/home');
+        context.go('/loading', extra: {
+          'duration': 13000,
+          'redirectPath': '/home',
+        });
       }
     } else {
       setState(() {});

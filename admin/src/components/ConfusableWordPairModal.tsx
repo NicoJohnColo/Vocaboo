@@ -33,7 +33,7 @@ interface WordComboboxProps {
 function WordCombobox({
   id, label, badge, words, excludeId, selectedId,
   onSelect, onNotInLesson, onClearNotInLesson,
-  notInLessonTerm, loading, error,
+  loading, error,
 }: WordComboboxProps) {
   const [query, setQuery]     = useState('');
   const [open, setOpen]       = useState(false);

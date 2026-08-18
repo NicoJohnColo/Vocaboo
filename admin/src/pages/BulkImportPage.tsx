@@ -27,7 +27,7 @@ const CSV_HEADERS = [
   'english_word', 'cebuano_meaning', 'part_of_speech', 'grade_level',
   'example_sentence_english', 'example_sentence_cebuano', 'audio_path', 'image_path',
   'distractor_pool', 'fill_blank_sentence', 'tile_sentence', 'hint_text',
-  'audio_text_cebuano', 'audio_text_english',
+  'audio_text_cebuano', 'audio_text_english', 'context_paragraph', 'eligible_activity_types'
 ];
 
 function parseCSV(text: string): ImportRow[] {

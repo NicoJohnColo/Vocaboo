@@ -20,6 +20,7 @@ class MasteryBadgeServiceTest {
     @Mock LearnerRepository learnerRepo;
     @Mock LessonRepository lessonRepo;
     @Mock VocabularyWordRepository wordRepo;
+    @Mock LearnerLessonStatusRepository lessonStatusRepo;
 
     MasteryBadgeService service;
 
@@ -36,7 +37,7 @@ class MasteryBadgeServiceTest {
         MockitoAnnotations.openMocks(this);
         service = new MasteryBadgeService(
                 performanceRepo, difficultyRepo, rewardRepo,
-                learnerRepo, lessonRepo, wordRepo);
+                learnerRepo, lessonRepo, wordRepo, lessonStatusRepo);
 
         learner = new Learner();
         lesson  = new Lesson();

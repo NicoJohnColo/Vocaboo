@@ -31,6 +31,8 @@ public class PracticeSessionService {
     private final SessionSummaryRepository summaryRepository;
     private final DifficultyProgressRepository difficultyProgressRepository;
     private final ReviewItemRepository reviewItemRepository;
+    private final LearnerLessonStatusRepository lessonStatusRepository;
+    private final LessonModuleScoreRepository lessonModuleScoreRepository;
 
     // Activities excluded from all scoring (no pts, no accuracy count)
     private static final java.util.Set<String> SCORING_EXCLUDED = java.util.Set.of(
@@ -276,7 +278,7 @@ public class PracticeSessionService {
         final int modNum = session.getModuleNumber() != null ? session.getModuleNumber() : 2;
         long masteredCount = performances.stream().filter(p -> {
             if (p.getWord() == null) {
-                return p.getAccuracy() != null && p.getAccuracy().compareTo(BigDecimal.valueOf(80.0)) >= 0;
+                return false;
             }
             var dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learner.getLearnerId(), p.getWord().getWordId(), modNum);
             DifficultyLevel currentLevel = dpOpt.map(DifficultyProgress::getCurrentLevel).orElse(DifficultyLevel.LEARNING);
@@ -462,12 +464,12 @@ public class PracticeSessionService {
     }
 
     public static String calculateMasteryLevel(BigDecimal accuracy) {
-        if (accuracy == null) return "Learning";
+        if (accuracy == null) return "LEARNING";
         double val = accuracy.doubleValue();
-        if (val >= 90.0) return "Gold";
-        if (val >= 80.0) return "Silver";
-        if (val >= 70.0) return "Bronze";
-        return "Learning";
+        if (val >= 90.0) return "MASTERED";
+        if (val >= 80.0) return "PROFICIENT";
+        if (val >= 70.0) return "FAMILIAR";
+        return "LEARNING";
     }
 
     private PracticeSessionResponse toSessionResponse(PracticeSession session) {
@@ -500,6 +502,8 @@ public class PracticeSessionService {
     public List<LearnerLessonProgressResponse> getLessonProgress(UUID learnerId) {
         List<Lesson> lessons = lessonRepository.findAll();
         List<SessionSummary> summaries = summaryRepository.findByLearnerLearnerId(learnerId);
+        List<LearnerLessonStatus> lessonStatuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
+        List<LessonModuleScore> moduleScores = lessonModuleScoreRepository.findByLearnerLearnerId(learnerId);
 
         Map<UUID, SessionSummary> latestSummaryMap = new HashMap<>();
         for (SessionSummary summary : summaries) {
@@ -510,14 +514,70 @@ public class PracticeSessionService {
             }
         }
 
+        Map<UUID, LearnerLessonStatus> statusMap = lessonStatuses.stream()
+                .collect(Collectors.toMap(s -> s.getLesson().getLessonId(), s -> s, (s1, s2) -> s1));
+
+        Map<UUID, List<LessonModuleScore>> moduleScoreMap = moduleScores.stream()
+                .collect(Collectors.groupingBy(m -> m.getLesson().getLessonId()));
+
         List<LearnerLessonProgressResponse> list = new ArrayList<>();
         for (Lesson lesson : lessons) {
             SessionSummary summary = latestSummaryMap.get(lesson.getLessonId());
-            BigDecimal accuracy = summary != null ? summary.getAccuracyRate() : BigDecimal.ZERO;
+            LearnerLessonStatus lls = statusMap.get(lesson.getLessonId());
+            List<LessonModuleScore> lmsList = moduleScoreMap.getOrDefault(lesson.getLessonId(), Collections.emptyList());
+
+            List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lesson.getLessonId());
+            int totalLessonAttempts = 0;
+            int totalLessonCorrect = 0;
+            for (VocabularyWord lw : lessonWords) {
+                WordPerformance wp = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, lw.getWordId()).orElse(null);
+                if (wp != null && wp.getTotalAttempts() > 0) {
+                    totalLessonAttempts += wp.getTotalAttempts();
+                    totalLessonCorrect += wp.getCorrectCount();
+                }
+            }
+
+            BigDecimal accuracy = null;
+            if (totalLessonAttempts > 0) {
+                accuracy = BigDecimal.valueOf(totalLessonCorrect * 100.0 / totalLessonAttempts).setScale(2, RoundingMode.HALF_UP);
+            } else if (lls != null && lls.getMasteryScore() != null) {
+                accuracy = lls.getMasteryScore();
+            } else if (summary != null && summary.getAccuracyRate() != null) {
+                accuracy = summary.getAccuracyRate();
+            }
+
+            if (accuracy == null) {
+                if (!lmsList.isEmpty()) {
+                    double avg = lmsList.stream()
+                            .filter(m -> m.getScore() != null)
+                            .mapToDouble(m -> m.getScore().doubleValue())
+                            .average()
+                            .orElse(0.0);
+                    if (avg > 0.0) {
+                        accuracy = BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP);
+                    }
+                }
+            }
+            if (accuracy == null) {
+                accuracy = BigDecimal.ZERO;
+            }
+
             int stars = calculateStars(accuracy);
-            int totalAttempts = summary != null ? summary.getTotalAttempts() : 0;
-            OffsetDateTime completedAt = summary != null ? summary.getCompletedAt() : null;
-            String status = summary != null && summary.getCompletedAt() != null ? "COMPLETED" : "UNLOCKED";
+            int totalAttempts = summary != null ? summary.getTotalAttempts() : (lls != null && lls.getAttempts() != null ? lls.getAttempts() : totalLessonAttempts);
+            OffsetDateTime completedAt = summary != null ? summary.getCompletedAt() : (lls != null ? lls.getUpdatedAt() : null);
+            
+            long masteredInLesson = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lesson.getLessonId());
+            boolean hasCompletedMod3 = lmsList.stream()
+                    .anyMatch(m -> m.getModuleNumber() != null && m.getModuleNumber() == 3 && m.getTotalCount() != null && m.getTotalCount() > 0);
+
+            boolean isCompleted = (lls != null && lls.getStatus() == LessonStatus.COMPLETED) ||
+                    (summary != null && summary.getCompletedAt() != null) ||
+                    (hasCompletedMod3 && (
+                        (lesson.getTotalWordCount() != null && lesson.getTotalWordCount() > 0 && masteredInLesson >= lesson.getTotalWordCount()) ||
+                        (accuracy.compareTo(BigDecimal.valueOf(70.0)) >= 0 && totalLessonAttempts > 0)
+                    ));
+
+            String status = isCompleted ? "COMPLETED" : (lls != null && lls.getStatus() != null ? lls.getStatus().name() : "UNLOCKED");
 
             list.add(LearnerLessonProgressResponse.builder()
                     .lessonId(lesson.getLessonId())

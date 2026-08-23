@@ -195,14 +195,21 @@ public class RetrievalActivityService {
                 .map(String::toUpperCase)
                 .filter(f -> tierFormats.stream().anyMatch(t -> t.equalsIgnoreCase(f)))
                 .filter(f -> !excludes.contains(f))
+                .filter(f -> !(f.equalsIgnoreCase("MATCHING") && globalUsage.getOrDefault("MATCHING", 0) >= 1))
                 .collect(Collectors.toList());
 
         if (candidates.isEmpty()) {
             candidates = tierFormats.stream()
                     .filter(f -> !excludes.contains(f))
+                    .filter(f -> !(f.equalsIgnoreCase("MATCHING") && globalUsage.getOrDefault("MATCHING", 0) >= 1))
                     .collect(Collectors.toList());
             if (candidates.isEmpty()) {
-                candidates = tierFormats;
+                candidates = tierFormats.stream()
+                    .filter(f -> !(f.equalsIgnoreCase("MATCHING") && globalUsage.getOrDefault("MATCHING", 0) >= 1))
+                    .collect(Collectors.toList());
+                if (candidates.isEmpty()) {
+                    candidates = tierFormats; // Fallback to all if literally nothing is left
+                }
             }
         }
 

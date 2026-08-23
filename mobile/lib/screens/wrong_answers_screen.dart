@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'package:mobile/config/app_config.dart';
 import '../services/tts_service.dart';
+import '../services/localization_service.dart';
 import '../widgets/cebuano_text_highlighter.dart';
 
 class WrongAnswersScreen extends StatefulWidget {
@@ -20,6 +21,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   final TtsService _ttsService = TtsService();
+
+  // Tab filter: 0 = Today's Picks (Top 5), 1 = All Words
+  int _selectedFilterIndex = 0;
 
   @override
   void initState() {
@@ -44,7 +48,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
     if (res.statusCode == 200) {
       return jsonDecode(res.body) as Map<String, dynamic>;
     }
-    throw Exception('Failed to load wrong answers: ${res.statusCode}');
+    throw Exception('Failed to load practice words: ${res.statusCode}');
   }
 
   @override
@@ -54,14 +58,11 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
     super.dispose();
   }
 
-  Color _errorCountColor(int count) {
-    if (count >= 5) return const Color(0xFFEF4444);
-    if (count >= 3) return const Color(0xFFF97316);
-    return const Color(0xFFEAB308);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context);
+    final pref = auth.learner?.languagePreference;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -72,13 +73,13 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
           icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Words You Need Help With',
-          style: TextStyle(
+        title: Text(
+          LocalizationService.translate(pref, 'words_to_practice_title'),
+          style: const TextStyle(
             fontFamily: 'Outfit',
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
             fontSize: 20,
-            color: Color(0xFF0F172A),
+            color: Color(0xFF06A6FF),
           ),
         ),
       ),
@@ -87,7 +88,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF06A6FF)),
+              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
             );
           }
           if (snapshot.hasError || snapshot.data == null) {
@@ -95,52 +96,65 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
           }
 
           final data = snapshot.data!;
-          final demeritPoints = data['demeritPoints'] as int? ?? 0;
-          final words = (data['words'] as List<dynamic>?)
+          final allWords = (data['words'] as List<dynamic>?)
                   ?.cast<Map<String, dynamic>>() ??
               [];
 
+          if (allWords.isEmpty) {
+            return FadeTransition(
+              opacity: _fadeAnim,
+              child: _buildEmptyState(pref),
+            );
+          }
+
+          // Capped subset for "Today's Picks" (up to 5 words)
+          final displayedWords = _selectedFilterIndex == 0
+              ? allWords.take(5).toList()
+              : allWords;
+
           return FadeTransition(
             opacity: _fadeAnim,
-            child: words.isEmpty
-                ? _buildEmptyState()
-                : CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: _buildDemeritBanner(demeritPoints, words.length),
-                      ),
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) =>
-                                _buildWordCard(words[index], index),
-                            childCount: words.length,
-                          ),
-                        ),
-                      ),
-                    ],
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _buildEncouragementBanner(allWords.length, pref),
+                ),
+                SliverToBoxAdapter(
+                  child: _buildFilterChips(allWords.length, pref),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) =>
+                          _buildWordCard(displayedWords[index], index, pref),
+                      childCount: displayedWords.length,
+                    ),
                   ),
+                ),
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildDemeritBanner(int demeritPoints, int wordCount) {
+  /// Positive encouragement banner replacing the old punitive demerit banner
+  Widget _buildEncouragementBanner(int wordCount, String? pref) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.25),
+            color: const Color(0xFF6366F1).withValues(alpha: 0.28),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -149,46 +163,43 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
       child: Row(
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 60,
+            height: 60,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(Icons.warning_amber_rounded,
-                color: Colors.white, size: 36),
+            child: const Center(
+              child: Text(
+                '🌟',
+                style: TextStyle(fontSize: 30),
+              ),
+            ),
           ),
-          const SizedBox(width: 20),
+          const SizedBox(width: 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$demeritPoints',
+                  LocalizationService.translate(pref, 'practice_together_title'),
                   style: const TextStyle(
                     fontFamily: 'Outfit',
-                    fontSize: 40,
+                    fontSize: 18,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
-                    height: 1.0,
-                  ),
-                ),
-                const Text(
-                  'Demerit Points',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white70,
+                    height: 1.2,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '$wordCount word${wordCount == 1 ? '' : 's'} need review',
+                  LocalizationService.translate(pref, 'practice_together_sub'),
                   style: TextStyle(
                     fontFamily: 'Outfit',
                     fontSize: 13,
-                    color: Colors.white.withValues(alpha: 0.9),
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.92),
+                    height: 1.35,
                   ),
                 ),
               ],
@@ -199,172 +210,267 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
     );
   }
 
-  Widget _buildWordCard(Map<String, dynamic> word, int index) {
-    final errorCount = word['errorCount'] as int? ?? 0;
+  /// Filter chips allowing child to focus on 5 words or view all
+  Widget _buildFilterChips(int totalCount, String? pref) {
+    final picksLabel = LocalizationService.translate(pref, 'todays_picks');
+    final allLabel = '${LocalizationService.translate(pref, 'all_words')} ($totalCount)';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          _buildFilterChip(
+            index: 0,
+            label: picksLabel,
+            icon: Icons.star_rounded,
+          ),
+          const SizedBox(width: 10),
+          _buildFilterChip(
+            index: 1,
+            label: allLabel,
+            icon: Icons.list_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required int index,
+    required String label,
+    required IconData icon,
+  }) {
+    final isSelected = _selectedFilterIndex == index;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedFilterIndex = index;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF6366F1) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF6366F1) : const Color(0xFFE2E8F0),
+            width: 1.5,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : const Color(0xFF64748B),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Outfit',
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF475569),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWordCard(Map<String, dynamic> word, int index, String? pref) {
     final currentlyCorrect = word['currentlyCorrect'] as bool? ?? false;
     final english = word['englishWord'] as String? ?? '';
     final cebuano = word['cebuanoMeaning'] as String? ?? '';
     final partOfSpeech = word['partOfSpeech'] as String? ?? '';
     final lessonTitle = word['lessonTitle'] as String? ?? '';
     final categoryName = word['categoryName'] as String? ?? '';
-    final accentColor = _errorCountColor(errorCount);
 
-    return GestureDetector(
-      onTap: () => _showWordDetails(word),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: currentlyCorrect
-                ? const Color(0xFF22C55E).withValues(alpha: 0.35)
-                : const Color(0xFFE2E8F0),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: currentlyCorrect
+              ? const Color(0xFF22C55E).withValues(alpha: 0.35)
+              : const Color(0xFFE2E8F0),
+          width: 1.5,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              // Error count badge
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                      color: accentColor.withValues(alpha: 0.4), width: 1.5),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '$errorCount',
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: accentColor,
-                        height: 1.0,
-                      ),
-                    ),
-                    Text(
-                      errorCount == 1 ? 'error' : 'errors',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: accentColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // Cheerful Word Avatar
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: currentlyCorrect
+                    ? const Color(0xFFDCFCE7)
+                    : const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  currentlyCorrect ? '🌟' : '📖',
+                  style: const TextStyle(fontSize: 22),
                 ),
               ),
-              const SizedBox(width: 16),
-              // Word info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            english,
-                            style: const TextStyle(
-                              fontFamily: 'Outfit',
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
+            ),
+            const SizedBox(width: 14),
+
+            // Word info & context
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          english,
+                          style: const TextStyle(
+                            fontFamily: 'Outfit',
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
                           ),
                         ),
-                        // Status chip
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: currentlyCorrect
-                                ? const Color(0xFFDCFCE7)
-                                : const Color(0xFFFEE2E2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                currentlyCorrect
-                                    ? Icons.check_circle_rounded
-                                    : Icons.cancel_rounded,
-                                size: 13,
+                      ),
+                      // Positive celebratory marker
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: currentlyCorrect
+                              ? const Color(0xFFDCFCE7)
+                              : const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              currentlyCorrect
+                                  ? Icons.check_circle_rounded
+                                  : Icons.auto_awesome_rounded,
+                              size: 13,
+                              color: currentlyCorrect
+                                  ? const Color(0xFF16A34A)
+                                  : const Color(0xFF6366F1),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              currentlyCorrect
+                                  ? LocalizationService.translate(pref, 'you_got_this')
+                                  : LocalizationService.translate(pref, 'in_practice'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                                 color: currentlyCorrect
                                     ? const Color(0xFF16A34A)
-                                    : const Color(0xFFDC2626),
+                                    : const Color(0xFF6366F1),
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                currentlyCorrect ? 'Recovered' : 'Struggling',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: currentlyCorrect
-                                      ? const Color(0xFF16A34A)
-                                      : const Color(0xFFDC2626),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    CebuanoTextHighlighter(
-                      text: cebuano,
-                      highlightWord: cebuano,
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 14,
-                        color: Color(0xFF64748B),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    if (partOfSpeech.isNotEmpty || lessonTitle.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          children: [
-                            if (partOfSpeech.isNotEmpty)
-                              _buildTag(partOfSpeech,
-                                  const Color(0xFF7C3AED), const Color(0xFFF3E8FF)),
-                            if (partOfSpeech.isNotEmpty && lessonTitle.isNotEmpty)
-                              const SizedBox(width: 6),
-                            if (lessonTitle.isNotEmpty && categoryName.isNotEmpty)
-                              Flexible(
-                                child: _buildTag(
-                                  '$categoryName · $lessonTitle',
-                                  const Color(0xFF0369A1),
-                                  const Color(0xFFE0F2FE),
-                                ),
-                              ),
+                            ),
                           ],
                         ),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  CebuanoTextHighlighter(
+                    text: cebuano,
+                    highlightWord: cebuano,
+                    style: const TextStyle(
+                      fontFamily: 'Outfit',
+                      fontSize: 14,
+                      color: Color(0xFF64748B),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  if (partOfSpeech.isNotEmpty || lessonTitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          if (partOfSpeech.isNotEmpty)
+                            _buildTag(partOfSpeech,
+                                const Color(0xFF7C3AED), const Color(0xFFF3E8FF)),
+                          if (partOfSpeech.isNotEmpty && lessonTitle.isNotEmpty)
+                            const SizedBox(width: 6),
+                          if (lessonTitle.isNotEmpty && categoryName.isNotEmpty)
+                            Flexible(
+                              child: _buildTag(
+                                '$categoryName · $lessonTitle',
+                                const Color(0xFF0369A1),
+                                const Color(0xFFE0F2FE),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded,
-                  color: Color(0xFF94A3B8), size: 22),
-            ],
-          ),
+            ),
+            const SizedBox(width: 10),
+
+            // Action: TTS & Practice Button
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.volume_up_rounded,
+                      color: Color(0xFF6366F1), size: 24),
+                  onPressed: () => _ttsService.speak(english),
+                  tooltip: 'Listen',
+                ),
+                ElevatedButton(
+                  onPressed: () => _showWordDetails(word, pref),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    minimumSize: const Size(60, 30),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    LocalizationService.translate(pref, 'practice_btn'),
+                    style: const TextStyle(
+                      fontFamily: 'Outfit',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -390,13 +496,13 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
     );
   }
 
-  void _showWordDetails(Map<String, dynamic> word) {
+  /// Interactive practice modal with pronunciation, context, and positive reinforcement
+  void _showWordDetails(Map<String, dynamic> word, String? pref) {
     final english = word['englishWord'] as String? ?? '';
     final cebuano = word['cebuanoMeaning'] as String? ?? '';
     final partOfSpeech = word['partOfSpeech'] as String? ?? '';
     final lessonTitle = word['lessonTitle'] as String? ?? '';
     final categoryName = word['categoryName'] as String? ?? '';
-    final errorCount = word['errorCount'] as int? ?? 0;
     final currentlyCorrect = word['currentlyCorrect'] as bool? ?? false;
 
     showModalBottomSheet(
@@ -423,7 +529,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -438,9 +544,10 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF), size: 28),
+                  icon: const Icon(Icons.volume_up_rounded,
+                      color: Color(0xFF6366F1), size: 30),
                   onPressed: () => _ttsService.speak(english),
-                  tooltip: "Listen to word",
+                  tooltip: 'Listen to word',
                 ),
               ],
             ),
@@ -456,35 +563,94 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               ),
             ),
             const SizedBox(height: 20),
+
+            // Context details
             _buildDetailRow(
                 Icons.category_rounded, 'Part of speech', partOfSpeech),
             _buildDetailRow(Icons.menu_book_rounded, 'Lesson', lessonTitle),
             _buildDetailRow(Icons.folder_rounded, 'Category', categoryName),
-            _buildDetailRow(Icons.close_rounded, 'Total errors',
-                '$errorCount time${errorCount == 1 ? '' : 's'}'),
-            _buildDetailRow(
-              currentlyCorrect
-                  ? Icons.check_circle_rounded
-                  : Icons.cancel_rounded,
-              'Latest attempt',
-              currentlyCorrect ? 'Correct ✓' : 'Still struggling ❌',
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF06A6FF),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
-                ),
-                child: const Text('Close',
-                    style: TextStyle(fontFamily: 'Outfit', fontSize: 16, fontWeight: FontWeight.bold)),
+
+            const SizedBox(height: 12),
+            // Progress encouragement banner inside modal
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: currentlyCorrect
+                    ? const Color(0xFFDCFCE7)
+                    : const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: Row(
+                children: [
+                  Icon(
+                    currentlyCorrect
+                        ? Icons.check_circle_rounded
+                        : Icons.auto_awesome_rounded,
+                    color: currentlyCorrect
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFF6366F1),
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      currentlyCorrect
+                          ? 'Great job! You\'ve recently answered this word correctly. Keep practising to lock in mastery!'
+                          : 'Let\'s practice this word! Listen to the audio and review the meaning above.',
+                      style: TextStyle(
+                        fontFamily: 'Outfit',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: currentlyCorrect
+                            ? const Color(0xFF15803D)
+                            : const Color(0xFF4338CA),
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF64748B),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('Close',
+                        style: TextStyle(
+                            fontFamily: 'Outfit',
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      _ttsService.speak(english);
+                    },
+                    icon: const Icon(Icons.volume_up_rounded, size: 20),
+                    label: const Text('Listen Again'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -495,7 +661,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
   Widget _buildDetailRow(IconData icon, String label, String value) {
     if (value.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Icon(icon, color: const Color(0xFF64748B), size: 18),
@@ -519,7 +685,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String? pref) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
@@ -530,17 +696,18 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: const Color(0xFF22C55E).withValues(alpha: 0.15),
+                color: const Color(0xFFDCFCE7),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.star_rounded,
-                  color: Color(0xFF22C55E), size: 52),
+              child: const Center(
+                child: Text('🌟', style: TextStyle(fontSize: 48)),
+              ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'You\'re doing great!',
+            Text(
+              LocalizationService.translate(pref, 'all_caught_up_title'),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'Outfit',
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
@@ -548,12 +715,13 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'No wrong answers recorded yet.\nKeep up the excellent work!',
+            Text(
+              LocalizationService.translate(pref, 'all_caught_up_desc'),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 15,
                 color: Color(0xFF64748B),
+                height: 1.4,
               ),
             ),
           ],
@@ -573,7 +741,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 color: Color(0xFF94A3B8), size: 52),
             const SizedBox(height: 16),
             const Text(
-              'Could not load your progress.\nPlease try again.',
+              'Could not load practice words.\nPlease try again.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Color(0xFF64748B), fontSize: 15),
             ),
@@ -583,7 +751,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 _future = _loadData();
               }),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06A6FF),
+                backgroundColor: const Color(0xFF6366F1),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),

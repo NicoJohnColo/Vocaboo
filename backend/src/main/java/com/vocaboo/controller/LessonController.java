@@ -92,15 +92,30 @@ public class LessonController {
         return ResponseEntity.ok(lessonService.getLessonMasteryStatus(lessonId, learnerId, moduleNumber));
     }
 
-    /**
-     * Returns per-word tier state + Gold/Silver/Bronze rating for the lesson score screen.
-     * Always returns all words for the lesson (including unplayed ones as LEARNING / no rating).
-     */
     @GetMapping("/lessons/{id}/word-mastery-summary")
     public ResponseEntity<List<WordMasterySummaryResponse>> getWordMasterySummary(
             @PathVariable("id") UUID lessonId,
             Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
         return ResponseEntity.ok(difficultyService.getWordMasterySummary(learnerId, lessonId));
+    }
+
+    @PostMapping("/lessons/{id}/reset")
+    public ResponseEntity<Void> resetLesson(
+            @PathVariable("id") UUID lessonId,
+            Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        lessonService.resetLesson(lessonId, learnerId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/lessons/{id}/reset-progress")
+    public ResponseEntity<Void> resetProgress(
+            @PathVariable("id") UUID lessonId,
+            @RequestParam(value = "partOfSpeech", required = false) String partOfSpeech,
+            Principal principal) {
+        UUID learnerId = UUID.fromString(principal.getName());
+        difficultyService.resetProgressForLesson(learnerId, lessonId, partOfSpeech);
+        return ResponseEntity.ok().build();
     }
 }

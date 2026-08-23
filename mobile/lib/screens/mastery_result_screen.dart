@@ -1,10 +1,10 @@
-// mastery_result_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/motion.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
-import 'cumulative_mixed_review_screen.dart';
+import 'cumulative_review_screen.dart';
 import '../services/localization_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/scoring_service.dart';
@@ -43,6 +43,10 @@ class MasteryResultScreen extends StatefulWidget {
 class _MasteryResultScreenState extends State<MasteryResultScreen> {
   List<Map<String, dynamic>> _wordBreakdown = [];
   double? _masteryScore;
+  double? _overallAccuracy;
+  int? _totalItems;
+  int? _masteredCount;
+  List<String>? _missedWordIds;
   bool _isLoading = true;
   final Map<String, String> _wordById = {};
 
@@ -60,19 +64,62 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
     if (widget.wordBreakdown.isNotEmpty) {
       _wordBreakdown = widget.wordBreakdown;
       _masteryScore = widget.masteryScore;
+      _totalItems = widget.wordBreakdown.length;
+      _masteredCount = widget.wordBreakdown.where((w) => ((w['wrongAttempts'] as int?) ?? 0) == 0).length;
+      _missedWordIds = widget.wordBreakdown
+          .where((w) => ((w['wrongAttempts'] as int?) ?? 0) > 0)
+          .map((w) => (w['wordId'] ?? w['id'] ?? '').toString())
+          .where((id) => id.isNotEmpty)
+          .toList();
     } else {
       final details = await LocalStorageService.getCumulativeReviewScoreDetails(widget.sessionId);
       if (details != null) {
         final breakdownRaw = details['wordBreakdown'];
         if (breakdownRaw is List) {
           _wordBreakdown = List<Map<String, dynamic>>.from(breakdownRaw.map((e) => Map<String, dynamic>.from(e)));
+          _totalItems = _wordBreakdown.length;
+          _masteredCount = _wordBreakdown.where((w) => ((w['wrongAttempts'] as int?) ?? 0) == 0).length;
+          _missedWordIds = _wordBreakdown
+              .where((w) => ((w['wrongAttempts'] as int?) ?? 0) > 0)
+              .map((w) => (w['wordId'] ?? w['id'] ?? '').toString())
+              .where((id) => id.isNotEmpty)
+              .toList();
         }
         final finalScoreRaw = details['finalScore'];
         if (finalScoreRaw is num) {
           _masteryScore = finalScoreRaw.toDouble();
         }
+        if (details['totalWords'] is int && _totalItems == null) {
+          _totalItems = details['totalWords'] as int;
+        }
+        if (details['masteredCount'] is int && _masteredCount == null) {
+          _masteredCount = details['masteredCount'] as int;
+        }
       }
     }
+
+    if (mounted) {
+      try {
+        final lessons = Provider.of<LessonProvider>(context, listen: false);
+        final dashboard = await lessons.fetchDashboardProgress();
+        if (dashboard != null) {
+          final breakdowns = List<Map<String, dynamic>>.from(dashboard['categoryBreakdowns'] ?? []);
+          final catMatch = breakdowns.firstWhere(
+            (b) => b['categoryId']?.toString() == widget.categoryId,
+            orElse: () => <String, dynamic>{},
+          );
+          if (catMatch.isNotEmpty) {
+            if (catMatch['overallAccuracy'] != null) {
+              _overallAccuracy = (catMatch['overallAccuracy'] as num).toDouble();
+            }
+            if (_masteryScore == null && catMatch['cumulativeAccuracy'] != null) {
+              _masteryScore = (catMatch['cumulativeAccuracy'] as num).toDouble();
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -121,15 +168,17 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
     final sessionId = widget.sessionId;
     final categoryId = widget.categoryId;
     final isSandbox = widget.isSandbox;
-    final totalItems = widget.totalItems;
-    final masteredCount = widget.masteredCount;
-    final missedWordIds = widget.missedWordIds;
+    final totalItems = _totalItems ?? (widget.totalItems > 0 ? widget.totalItems : widget.allWords.length);
+    final missedWordIds = _missedWordIds ?? widget.missedWordIds;
+    final masteredCount = _masteredCount ?? (missedWordIds != null && totalItems > 0
+        ? (totalItems - missedWordIds.length).clamp(0, totalItems)
+        : (widget.masteredCount > 0 ? widget.masteredCount : totalItems));
     final allWords = widget.allWords;
 
     final masteryPercent = _masteryScore != null
       ? _masteryScore!.round()
       : (totalItems == 0 ? 0 : (masteredCount / totalItems * 100).round());
-    final finalScore = _masteryScore?.round() ?? masteryPercent;
+    final finalScore = _overallAccuracy?.round() ?? _masteryScore?.round() ?? masteryPercent;
     final passed = ScoringService.isPassing(finalScore.toDouble());
     final missedCount = missedWordIds?.length ?? 0;
 
@@ -297,9 +346,11 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                         Expanded(
                           child: _buildScoreTile(
                             'Final score',
-                            '$finalScore / 100',
+                            '$finalScore%',
                             passed ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                             passed ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                            countValue: finalScore,
+                            suffix: '%',
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -374,8 +425,8 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
               if (!passed) const SizedBox(height: 22),
 
               // ── Primary CTA ──────────────────────────────────────────────
-              ElevatedButton(
-                onPressed: () async {
+              AppPressable(
+                onTap: () async {
                   final lessons = Provider.of<LessonProvider>(context, listen: false);
                   if (passed) {
                     await lessons.fetchDashboardProgress();
@@ -391,7 +442,7 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                   Navigator.of(context).pushReplacement(PageRouteBuilder(
                     transitionDuration: const Duration(milliseconds: 350),
                     reverseTransitionDuration: const Duration(milliseconds: 350),
-                    pageBuilder: (context, animation, secondaryAnimation) => CumulativeMixedReviewScreen(
+                    pageBuilder: (context, animation, secondaryAnimation) => CumulativeReviewScreen(
                       sessionId: sessionId,
                       allWords: allWords,
                       categoryId: categoryId,
@@ -409,16 +460,52 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                     },
                   ));
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: passed ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  elevation: 0,
-                ),
-                child: Text(
-                  passed ? 'Continue' : 'RETRY MODULE 4',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final lessons = Provider.of<LessonProvider>(context, listen: false);
+                    if (passed) {
+                      await lessons.fetchDashboardProgress();
+                      if (!context.mounted) return;
+                      await CategoryCompletionDialog.show(
+                        context,
+                        categoryName: categoryId,
+                        categoryId: categoryId,
+                      );
+                      return;
+                    }
+
+                    Navigator.of(context).pushReplacement(PageRouteBuilder(
+                      transitionDuration: const Duration(milliseconds: 350),
+                      reverseTransitionDuration: const Duration(milliseconds: 350),
+                      pageBuilder: (context, animation, secondaryAnimation) => CumulativeReviewScreen(
+                        sessionId: sessionId,
+                        allWords: allWords,
+                        categoryId: categoryId,
+                        isSandbox: isSandbox,
+                        priorityWordIds: missedWordIds ?? <String>[],
+                      ),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        final slide = Tween<Offset>(begin: const Offset(0.08, 0), end: Offset.zero).animate(
+                          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                        );
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(position: slide, child: child),
+                        );
+                      },
+                    ));
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: passed ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    passed ? 'Continue' : 'RETRY MODULE 4',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -441,24 +528,27 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                     const SizedBox(height: 10),
                     _weightedRow('Module 1-3 completion', '60 pts', const Color(0xFF06A6FF)),
                     const SizedBox(height: 8),
-                    _weightedRow('Module 4 cumulative review', '30 pts', const Color(0xFF10B981)),
+                    _weightedRow('Module 4 cumulative review', '40 pts', const Color(0xFF10B981)),
                     const SizedBox(height: 8),
-                    _weightedRow('Passing mark', '80 pts', const Color(0xFFEF4444)),
+                    _weightedRow('Passing mark', '70 pts', const Color(0xFFEF4444)),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () => context.go('/category/$categoryId/lessons'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                ),
-                child: Text(
-                  LocalizationService.translate(pref, 'back_to_dashboard'),
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              AppPressable(
+                onTap: () => context.go('/category/$categoryId/lessons'),
+                child: OutlinedButton(
+                  onPressed: () => context.go('/category/$categoryId/lessons'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0F172A),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  ),
+                  child: Text(
+                    LocalizationService.translate(pref, 'back_to_dashboard'),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ],
@@ -674,7 +764,7 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Final: $finalScore / 100',
+                        'Final: $finalScore%',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w900,
@@ -692,21 +782,30 @@ class _MasteryResultScreenState extends State<MasteryResultScreen> {
     );
   }
 
-  Widget _buildScoreTile(String label, String value, Color accent, Color background) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withValues(alpha: 0.25), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: accent, letterSpacing: 0.7)),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: accent)),
-        ],
+  Widget _buildScoreTile(String label, String value, Color accent, Color background, {num? countValue, String suffix = ''}) {
+    return AppPressable(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: accent.withValues(alpha: 0.25), width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: accent, letterSpacing: 0.7)),
+            const SizedBox(height: 8),
+            if (countValue != null)
+              AppAnimatedCounter(
+                value: countValue,
+                suffix: suffix,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: accent),
+              )
+            else
+              Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: accent)),
+          ],
+        ),
       ),
     );
   }

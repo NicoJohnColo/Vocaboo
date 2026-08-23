@@ -30,6 +30,8 @@ class MascotBubble extends StatelessWidget {
         return MascotType.sippy;
       case 'starry':
         return MascotType.starry;
+      case 'robi':
+        return MascotType.robi;
       default:
         return MascotType.bibo;
     }
@@ -45,6 +47,8 @@ class MascotBubble extends StatelessWidget {
         return const Color(0xFF6366F1); // Indigo Purple
       case 'starry':
         return const Color(0xFFF59E0B); // Amber Gold
+      case 'robi':
+        return const Color(0xFF06A6FF); // Sky Blue
       default:
         return const Color(0xFF0EA5E9);
     }

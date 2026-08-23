@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/vocabulary_word_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
+import '../services/local_storage_service.dart';
 import '../services/localization_service.dart';
 
 // ────────────────────────────────────────────────────────────────
@@ -162,22 +163,44 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
     _fadeAnim = CurvedAnimation(parent: _badgeFade, curve: Curves.easeIn);
 
     if (!widget.isSandbox) {
-      _fetchBadge();
-      _fetchWordSummary();
+      _initializeData();
     } else {
       setState(() {
         _badgeLoading = false;
         _wordSummaryLoading = false;
       });
+      _badgeScale.forward();
+      _badgeFade.forward();
     }
   }
 
-  Future<void> _fetchBadge() async {
+  Future<void> _initializeData() async {
+    await _fetchWordSummary();
+    final int totalLessonAttempts = _wordSummary.fold<int>(
+      0,
+      (sum, item) => sum + ((item['totalAttempts'] as num?)?.toInt() ?? 0),
+    );
+    final int totalLessonCorrect = _wordSummary.fold<int>(
+      0,
+      (sum, item) => sum + ((item['correctAttempts'] as num?)?.toInt() ?? (item['correctCount'] as num?)?.toInt() ?? 0),
+    );
+    final double accurateScore = totalLessonAttempts > 0
+        ? ((totalLessonCorrect / totalLessonAttempts) * 100.0).clamp(0.0, 100.0)
+        : (widget.overallScore > 0 ? widget.overallScore : 100.0);
+
+    debugPrint('LessonScoreScreen: accurateScore=$accurateScore (correct=$totalLessonCorrect, attempts=$totalLessonAttempts, widgetScore=${widget.overallScore})');
+    if (!widget.isSandbox && accurateScore > 0) {
+      await LocalStorageService.saveLessonScore(widget.lessonId, accurateScore);
+    }
+    await _fetchBadge(score: accurateScore);
+  }
+
+  Future<void> _fetchBadge({required double score}) async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
     final result = await provider.completeMasterySession(
       widget.sessionId,
       widget.lessonId,
-      score: widget.overallScore,
+      score: score,
       isPerfectFirstAttempt: widget.isPerfectFirstAttempt,
     );
     if (mounted) {
@@ -366,58 +389,126 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                           : widget.allWords.length;
                       final allMastered = effectiveMastered >= totalWords;
 
-                      return Container(
-                        padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              LocalizationService.translate(pref, 'words_mastered'),
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF64748B),
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            RichText(
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: '$effectiveMastered',
-                                    style: TextStyle(
-                                      fontSize: 48,
-                                      fontWeight: FontWeight.w900,
-                                      color: allMastered
-                                          ? const Color(0xFF10B981)
-                                          : const Color(0xFF06A6FF),
-                                    ),
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   ),
-                                  TextSpan(
-                                    text: ' / $totalWords',
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    LocalizationService.translate(pref, 'words_mastered'),
                                     style: const TextStyle(
-                                      fontSize: 22,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF94A3B8),
+                                      color: Color(0xFF64748B),
+                                      letterSpacing: 0.5,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  RichText(
+                                    text: TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: '$effectiveMastered',
+                                          style: TextStyle(
+                                            fontFamily: 'Outfit',
+                                            fontSize: 40,
+                                            fontWeight: FontWeight.w900,
+                                            color: allMastered
+                                                ? const Color(0xFF10B981)
+                                                : const Color(0xFF06A6FF),
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: ' / $totalWords',
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    LocalizationService.translate(pref, 'accuracy'),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF64748B),
+                                      letterSpacing: 0.5,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Builder(builder: (context) {
+                                    final int totalLessonAttempts = _wordSummary.fold<int>(
+                                      0,
+                                      (sum, w) => sum + ((w['totalAttempts'] as num?)?.toInt() ?? 0),
+                                    );
+                                    final int totalLessonCorrect = _wordSummary.fold<int>(
+                                      0,
+                                      (sum, w) => sum + ((w['correctAttempts'] as num?)?.toInt() ?? (w['correctCount'] as num?)?.toInt() ?? 0),
+                                    );
+                                    final double displayAccuracy = totalLessonAttempts > 0
+                                        ? ((totalLessonCorrect / totalLessonAttempts) * 100.0).clamp(0.0, 100.0)
+                                        : (widget.overallScore > 0 ? widget.overallScore : 100.0);
+
+                                    return Text(
+                                      '${displayAccuracy.toStringAsFixed(0)}%',
+                                      style: TextStyle(
+                                        fontFamily: 'Outfit',
+                                        fontSize: 40,
+                                        fontWeight: FontWeight.w900,
+                                        color: displayAccuracy >= 80
+                                            ? const Color(0xFF10B981)
+                                            : (displayAccuracy >= 50
+                                                ? const Color(0xFFF59E0B)
+                                                : const Color(0xFFEF4444)),
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     }),
                     const SizedBox(height: 20),
@@ -578,11 +669,7 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                                   ],
                                 ),
                               ),
-                              // Tier badge
-                              _TierBadge(tierState: tierState, pref: pref),
-                              // Word rating badge (only if mastered)
-                              if (isMastered && wordRating != null) ...[
-                                const SizedBox(width: 6),
+                              if (wordRating != null && wordRating.isNotEmpty)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
@@ -598,8 +685,9 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                                       color: rating.primary,
                                     ),
                                   ),
-                                ),
-                              ],
+                                )
+                              else
+                                _TierBadge(tierState: tierState, pref: pref),
                             ],
                           ),
                         );

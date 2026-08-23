@@ -67,6 +67,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
   // Card learning state
   int _currentStep = 0; // 0 to 4 (5-step introduction flow)
   final String _pathway = 'FULL'; // 'FULL' or 'ACCELERATED'
+  bool _isFlashcardFlipped = false;
 
   // Speech evaluation state variables
   bool _isRecording = false;
@@ -145,6 +146,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       _attemptResult = null;
       _isRecording = false;
       _isEvaluating = false;
+      _isFlashcardFlipped = false;
     });
 
     // Sandbox should allow a single attempt but not persist penalties.
@@ -663,6 +665,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
     if (_currentStep < 4) {
       setState(() {
         _currentStep++;
+        _isFlashcardFlipped = false;
       });
       if (_currentStep == 1) _speakWord();
       if (_currentStep == 2) _speakSentence();
@@ -747,9 +750,9 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
           child: SizedBox(
             height: 10,
             child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0.0, end: progressVal),
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.linear,
+              tween: Tween<double>(end: progressVal),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutCubic,
               builder: (context, value, _) {
                 return LinearProgressIndicator(
                   value: value,
@@ -1212,78 +1215,180 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
       color: Colors.white,
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildStepHeaderBadge('STEP 2 OF 5', 'ENGLISH WORD', const Color(0xFF06A6FF)),
-              const SizedBox(height: 24),
-              if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CustomImageViewer(
-                    imagePath: word.imageAssetPath!,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          setState(() {
+            _isFlashcardFlipped = !_isFlashcardFlipped;
+          });
+        },
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _isFlashcardFlipped 
+              ? _buildFlashcardBack(theme, word)
+              : _buildFlashcardFront(theme, word),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlashcardFront(ThemeData theme, VocabularyWordModel word) {
+    return Padding(
+      key: const ValueKey('front'),
+      padding: const EdgeInsets.all(24.0),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStepHeaderBadge('STEP 2 OF 5', 'ENGLISH WORD', const Color(0xFF06A6FF)),
+            const SizedBox(height: 24),
+            if (word.imageAssetPath != null && word.imageAssetPath!.isNotEmpty) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CustomImageViewer(
+                  imagePath: word.imageAssetPath!,
+                  width: 160,
+                  height: 160,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Container(
                     width: 160,
                     height: 160,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 160,
-                      height: 160,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: const Center(
-                          child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
+                    child: const Center(
+                        child: Icon(Icons.broken_image, color: Color(0xFF94A3B8))),
                   ),
                 ),
-                const SizedBox(height: 16),
-              ],
-              const Text(
-                'In English, this is:',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6B7280),
-                    letterSpacing: 0.4),
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(height: 16),
+            ],
+            const Text(
+              'In English, this is:',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF6B7280),
+                  letterSpacing: 0.4),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    word.englishWord,
+                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.volume_up_rounded,
+                      color: _isPlayingAudio ? Colors.grey : const Color(0xFF06A6FF), size: 30),
+                  onPressed: _isPlayingAudio ? null : _speakWord,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Icon(Icons.touch_app, color: Color(0xFF94A3B8), size: 24),
+            const SizedBox(height: 4),
+            const Text(
+              'Tap card to reveal explanation',
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlashcardBack(ThemeData theme, VocabularyWordModel word) {
+    return Padding(
+      key: const ValueKey('back'),
+      padding: const EdgeInsets.all(24.0),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStepHeaderBadge('EXPLANATION', 'DETAILS', const Color(0xFFF59E0B)),
+            const SizedBox(height: 32),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFDCFCE7)),
+              ),
+              child: Column(
                 children: [
-                  Flexible(
-                    child: Text(
-                      word.englishWord,
-                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                      textAlign: TextAlign.center,
+                  const Text(
+                    'CEBUANO',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF166534),
+                      letterSpacing: 0.5,
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.volume_up_rounded,
-                        color: _isPlayingAudio ? Colors.grey : const Color(0xFF06A6FF), size: 30),
-                    onPressed: _isPlayingAudio ? null : _speakWord,
+                  const SizedBox(height: 8),
+                  Text(
+                    word.cebuanoMeaning,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF15803D),
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+            ),
+            if (word.explanationText != null && word.explanationText!.isNotEmpty) ...[
+              const SizedBox(height: 24),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDF4),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFDCFCE7)),
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFEF3C7)),
                 ),
-                child: Text(
-                  'Cebuano: ${word.cebuanoMeaning}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF166534)),
+                child: Column(
+                  children: [
+                    const Text(
+                      'EXPLANATION',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF92400E),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      word.explanationText!,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF78350F),
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
+            const SizedBox(height: 32),
+            const Icon(Icons.touch_app, color: Color(0xFF94A3B8), size: 24),
+            const SizedBox(height: 4),
+            const Text(
+              'Tap card to flip back',
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            ),
+          ],
         ),
       ),
     );
@@ -1834,7 +1939,7 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
         widget.isSandbox ? null : widget.moduleNumber,
         1,
         1,
-        isSandbox: true,
+        isSandbox: widget.isSandbox,
         sessionId: widget.sessionId,
       );
     } catch (e) {

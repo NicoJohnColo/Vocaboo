@@ -73,8 +73,8 @@ public class AdminVocabularyResponse {
     @JsonProperty("tile_sentence")
     private String tileSentence;
 
-    @JsonProperty("hint_text")
-    private String hintText;
+    @JsonProperty("explanation_text")
+    private String explanationText;
 
     @JsonProperty("audio_text_cebuano")
     private String audioTextCebuano;

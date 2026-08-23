@@ -1,9 +1,14 @@
 package com.vocaboo.controller;
 
+import com.vocaboo.entity.LearnerLessonStatus;
+import com.vocaboo.entity.Lesson;
 import com.vocaboo.entity.RewardData;
 import com.vocaboo.entity.SessionSummary;
+import com.vocaboo.repository.LearnerLessonStatusRepository;
+import com.vocaboo.repository.LessonRepository;
 import com.vocaboo.repository.RewardDataRepository;
 import com.vocaboo.repository.SessionSummaryRepository;
+import com.vocaboo.service.MasteryBadgeService;
 import com.vocaboo.service.MasteryReviewService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +24,9 @@ public class MasteryController {
     private final MasteryReviewService masteryService;
     private final SessionSummaryRepository summaryRepository;
     private final RewardDataRepository rewardRepository;
+    private final LearnerLessonStatusRepository lessonStatusRepository;
+    private final MasteryBadgeService badgeService;
+    private final LessonRepository lessonRepository;
 
     @PostMapping("/session/{sessionId}/complete")
     public ResponseEntity<Map<String, Object>> completeSession(
@@ -35,7 +43,7 @@ public class MasteryController {
         String badge = rewards.stream()
                 .map(RewardData::getBadgeType)
                 .max(Comparator.comparingInt(this::getBadgeTier))
-                .orElse("BRONZE");
+                .orElse(score != null && score >= 90.0 ? "GOLD" : score != null && score >= 80.0 ? "SILVER" : "BRONZE");
 
         return ResponseEntity.ok(mapToResponse(summary, badge));
     }
@@ -62,8 +70,8 @@ public class MasteryController {
         List<RewardData> rewards = rewardRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, summary.getLesson().getLessonId());
         String badge = rewards.stream()
                 .map(RewardData::getBadgeType)
-                .reduce((first, second) -> second)
-                .orElse("BRONZE");
+                .max(Comparator.comparingInt(this::getBadgeTier))
+                .orElse(summary.getAccuracyRate() != null && summary.getAccuracyRate().doubleValue() >= 90.0 ? "GOLD" : "BRONZE");
 
         return ResponseEntity.ok(mapToResponse(summary, badge));
     }
@@ -71,6 +79,11 @@ public class MasteryController {
     @GetMapping("/learners/{learnerId}/badges")
     public ResponseEntity<List<Map<String, Object>>> getLearnerBadges(
             @PathVariable("learnerId") UUID learnerId) {
+        List<Lesson> lessons = lessonRepository.findAll();
+        for (Lesson lesson : lessons) {
+            badgeService.calculateAndSaveBadge(learnerId, lesson.getLessonId());
+        }
+
         List<RewardData> rewards = rewardRepository.findByLearnerLearnerId(learnerId);
         List<Map<String, Object>> list = new ArrayList<>();
         for (RewardData reward : rewards) {

@@ -37,14 +37,14 @@ public class DifficultyAdjustmentService {
                 .orElse(DifficultyLevel.LEARNING);
     }
 
-    public boolean shouldOfferHints(int consecutiveIncorrect, DifficultyLevel level) {
+    public boolean shouldOfferExplanations(int consecutiveIncorrect, DifficultyLevel level) {
         return level == DifficultyLevel.LEARNING && consecutiveIncorrect >= 3;
     }
 
     @Transactional(readOnly = true)
-    public boolean shouldOfferHints(UUID learnerId, UUID wordId, Integer moduleNumber) {
+    public boolean shouldOfferExplanations(UUID learnerId, UUID wordId, Integer moduleNumber) {
         DifficultyProgress progress = getOrCreateProgress(learnerId, wordId, moduleNumber);
-        return shouldOfferHints(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
+        return shouldOfferExplanations(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
     }
 
     @Transactional(readOnly = true)
@@ -76,7 +76,7 @@ public class DifficultyAdjustmentService {
             String tierState = progress != null ? progress.getCurrentLevel().name() : DifficultyLevel.LEARNING.name();
             
             String rating = null;
-            if ("MASTERED".equals(tierState) && perf != null && perf.getAccuracy() != null) {
+            if (perf != null && perf.getAccuracy() != null) {
                 double acc = perf.getAccuracy().doubleValue();
                 if (acc >= 90.0) {
                     rating = "GOLD";
@@ -101,6 +101,26 @@ public class DifficultyAdjustmentService {
                 .build());
         }
         return responses;
+    }
+
+    @Transactional
+    public DifficultyProgressResponse calculateNext(UUID learnerId, UUID wordId, boolean isCorrect) {
+        return calculateNext(learnerId, wordId, isCorrect, 2, "MULTIPLE_CHOICE");
+    }
+
+    @Transactional(readOnly = true)
+    public DifficultyLevel getCurrentLevel(UUID learnerId, UUID wordId, Integer moduleNumber) {
+        return getOrCreateProgress(learnerId, wordId, moduleNumber).getCurrentLevel();
+    }
+
+    @Transactional(readOnly = true)
+    public DifficultyLevel getCurrentLevel(UUID learnerId, UUID wordId) {
+        return getCurrentLevel(learnerId, wordId, 2);
+    }
+
+    @Transactional
+    public DifficultyProgressResponse completeReintroduction(UUID learnerId, UUID wordId) {
+        return completeReintroduction(learnerId, wordId, 2);
     }
 
     @Transactional
@@ -158,9 +178,9 @@ public class DifficultyAdjustmentService {
                         wordId, activityType, oldLevel, progress.getSentenceCompletionClearedAtCurrentTier(),
                         progress.getSentenceRearrangementClearedAtCurrentTier(), readyToAdvance);
             } else {
-                readyToAdvance = (progress.getConsecutiveCorrect() >= requiredStreak && satisfiesRecallGate);
-                log.info("CALCULATE_NEXT_CORRECT: word={} activity={} oldLevel={} streak={}/{} recallGate={}",
-                        wordId, activityType, oldLevel, progress.getConsecutiveCorrect(), requiredStreak, satisfiesRecallGate);
+                readyToAdvance = (progress.getConsecutiveCorrect() >= requiredStreak);
+                log.info("CALCULATE_NEXT_CORRECT: word={} activity={} oldLevel={} streak={}/{}",
+                        wordId, activityType, oldLevel, progress.getConsecutiveCorrect(), requiredStreak);
             }
 
             if (readyToAdvance && oldLevel != DifficultyLevel.MASTERED) {
@@ -386,7 +406,7 @@ public class DifficultyAdjustmentService {
             case FAMILIAR:
                 return 2;
             case PROFICIENT:
-                return 3;
+                return 2;
             default:
                 return Integer.MAX_VALUE;
         }
@@ -475,8 +495,28 @@ public class DifficultyAdjustmentService {
         auditLogRepository.save(auditLog);
     }
 
+    @Transactional
+    public void resetProgressForLesson(UUID learnerId, UUID lessonId, String partOfSpeech) {
+        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        if (partOfSpeech != null && !partOfSpeech.isEmpty() && !"ALL".equalsIgnoreCase(partOfSpeech)) {
+            words = words.stream()
+                    .filter(w -> partOfSpeech.equalsIgnoreCase(w.getPartOfSpeech()))
+                    .collect(Collectors.toList());
+        }
+        for (VocabularyWord w : words) {
+            progressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, w.getWordId(), 2)
+                    .ifPresent(progressRepository::delete);
+            progressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, w.getWordId(), 3)
+                    .ifPresent(progressRepository::delete);
+            wordPerformanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, w.getWordId())
+                    .ifPresent(wordPerformanceRepository::delete);
+        }
+        progressRepository.flush();
+        wordPerformanceRepository.flush();
+    }
+
     private DifficultyProgressResponse toProgressResponse(DifficultyProgress progress) {
-        boolean showHints = shouldOfferHints(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
+        boolean showExplanations = shouldOfferExplanations(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
         return DifficultyProgressResponse.builder()
                 .progressId(progress.getProgressId())
                 .learnerId(progress.getLearner().getLearnerId())
@@ -493,7 +533,7 @@ public class DifficultyAdjustmentService {
                 .diagnosticAdministered(progress.getDiagnosticAdministered())
                 .diagnosticResult(progress.getDiagnosticResult())
                 .diagnosticActivityType(progress.getDiagnosticActivityType())
-                .showHints(showHints)
+                .showExplanations(showExplanations)
                 .lastAdjustedAt(progress.getLastAdjustedAt())
                 .build();
     }

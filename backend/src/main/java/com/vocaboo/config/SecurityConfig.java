@@ -69,13 +69,16 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/dashboard/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/diagnostics/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/learners/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/classes/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/sections/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/analytics/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/logs/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/assets/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/sandbox/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/reviews/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/reports/**").hasAnyRole("ADMIN", "TEACHER")
                 .requestMatchers("/api/admin/cross-lesson-sentences/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/cumulative-review/**").authenticated()
+                .requestMatchers("/api/cumulative-review/**", "/api/v1/cumulative-review/**").authenticated()
 
                 // Remaining /api/admin/** (catch-all) — require at least ADMIN
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")

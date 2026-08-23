@@ -82,15 +82,20 @@ public class VocabularyManagementService {
                 .audioAssetPath(req.getAudioAssetPath())
                 .imageAssetPath(req.getImageAssetPath())
                 .wordOrder(nextOrder)
-                .isConfusablePairMember(false)
+                .isConfusablePairMember(req.getIsConfusablePairMember() != null ? req.getIsConfusablePairMember() : false)
                 .isDeleted(false)
                 .distractorPool(req.getDistractorPool())
                 .fillBlankSentence(req.getFillBlankSentence())
                 .tileSentence(req.getTileSentence())
-                .hintText(req.getHintText())
+                .explanationText(req.getExplanationText())
                 .audioTextCebuano(req.getAudioTextCebuano())
                 .audioTextEnglish(req.getAudioTextEnglish())
+                .phonologicalTipKey(req.getPhonologicalTipKey())
                 .build();
+
+        if (req.getEligibleActivityTypes() != null) {
+            word.setEligibleActivityTypes(req.getEligibleActivityTypes());
+        }
 
         VocabularyWord saved = wordRepository.save(word);
 
@@ -136,14 +141,23 @@ public class VocabularyManagementService {
         if (req.getTileSentence() != null) {
             word.setTileSentence(req.getTileSentence());
         }
-        if (req.getHintText() != null) {
-            word.setHintText(req.getHintText());
+        if (req.getExplanationText() != null) {
+            word.setExplanationText(req.getExplanationText());
         }
         if (req.getAudioTextCebuano() != null) {
             word.setAudioTextCebuano(req.getAudioTextCebuano());
         }
         if (req.getAudioTextEnglish() != null) {
             word.setAudioTextEnglish(req.getAudioTextEnglish());
+        }
+        if (req.getEligibleActivityTypes() != null) {
+            word.setEligibleActivityTypes(req.getEligibleActivityTypes());
+        }
+        if (req.getPhonologicalTipKey() != null) {
+            word.setPhonologicalTipKey(req.getPhonologicalTipKey());
+        }
+        if (req.getIsConfusablePairMember() != null) {
+            word.setIsConfusablePairMember(req.getIsConfusablePairMember());
         }
 
         return toAdminResponse(wordRepository.save(word));
@@ -211,7 +225,7 @@ public class VocabularyManagementService {
                 .distractorPool(w.getDistractorPool())
                 .fillBlankSentence(w.getFillBlankSentence())
                 .tileSentence(w.getTileSentence())
-                .hintText(w.getHintText())
+                .explanationText(w.getExplanationText())
                 .audioTextCebuano(w.getAudioTextCebuano())
                 .audioTextEnglish(w.getAudioTextEnglish())
                 .build();

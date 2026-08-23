@@ -20,7 +20,7 @@ class VocabularyWordModel {
   final List<Map<String, dynamic>>? matchingSet;
   final List<String>? sentenceArrangementTokens;
   final String? tileSentence;
-  final String? hintText;
+  final String? explanationText;
   final String? sentenceCompletionSentence;
   final String? sentenceCompletionAnswer;
   final String? sentenceCompletionOption1;
@@ -32,11 +32,13 @@ class VocabularyWordModel {
   final String? eligibleActivityTypes;
   /// The learner's current difficulty tier for this word (LEARNING/FAMILIAR/PROFICIENT/MASTERED).
   final String difficultyLevel;
-  /// Whether hints (cebuano meaning) are shown — true only at LEARNING tier.
-  final bool showHint;
+  /// Whether explanations (cebuano meaning) are shown — true only at LEARNING tier.
+  final bool showExplanation;
   /// Timer in seconds; 0 means no timer (LEARNING tier).
   final int? timeLimitSeconds;
   final String? anchoredWord; // For SENTENCE_ARRANGEMENT LEARNING tier: the pre-placed word
+  final String? audioTextCebuano;
+  final String? audioTextEnglish;
 
   VocabularyWordModel({
     required this.wordId,
@@ -60,7 +62,7 @@ class VocabularyWordModel {
     this.matchingSet,
     this.sentenceArrangementTokens,
     this.tileSentence,
-    this.hintText,
+    this.explanationText,
     this.sentenceCompletionSentence,
     this.sentenceCompletionAnswer,
     this.sentenceCompletionOption1,
@@ -69,9 +71,11 @@ class VocabularyWordModel {
     this.activityType = 'MULTIPLE_CHOICE',
     this.eligibleActivityTypes,
     this.difficultyLevel = 'LEARNING',
-    this.showHint = true,
+    this.showExplanation = true,
     this.timeLimitSeconds,
     this.anchoredWord,
+    this.audioTextCebuano,
+    this.audioTextEnglish,
   });
 
   factory VocabularyWordModel.fromJson(Map<String, dynamic> json) {
@@ -99,8 +103,22 @@ class VocabularyWordModel {
       lessonId: json['lessonId'] ?? '',
       englishWord: json['englishWord'] ?? '',
       cebuanoMeaning: json['cebuanoMeaning'] ?? '',
-      exampleSentenceEnglish: _readString(json, 'exampleSentenceEnglish', 'englishExampleSentence', 'example'),
-      exampleSentenceCebuano: _readString(json, 'exampleSentenceCebuano', 'cebuanoExampleSentence', 'cebuanoExample'),
+      exampleSentenceEnglish: _readString(json, ['exampleSentenceEnglish', 'englishExampleSentence', 'example', 'example_sentence_english', 'tileSentence', 'audioTextEnglish']),
+      exampleSentenceCebuano: _readString(json, [
+        'exampleSentenceCebuano',
+        'example_sentence_cebuano',
+        'cebuanoSentence',
+        'cebuano_sentence',
+        'sentenceCebuano',
+        'sentence_cebuano',
+        'sentenceArrangementCebuano',
+        'audioTextCebuano',
+        'audio_text_cebuano',
+        'cebuanoTranslation',
+        'cebuano_translation',
+        'cebuanoExampleSentence',
+        'cebuanoExample',
+      ]),
       audioAssetPath: json['audioAssetPath'],
       imageAssetPath: json['imageAssetPath'],
       partOfSpeech: json['partOfSpeech'],
@@ -111,32 +129,37 @@ class VocabularyWordModel {
       mcDistractor1: mc1,
       mcDistractor2: mc2,
       mcDistractor3: mc3,
-      fitbSentence: _readString(json, 'fitbSentence', 'fillInTheBlankSentence'),
-      fitbAnswer: _readString(json, 'fitbAnswer', 'sentenceCompletionAnswer', 'sentenceCompletionBlank'),
-      matchingSet: (json['matchingSet'] as List<dynamic>?)
+      fitbSentence: _readString(json, ['fitbSentence', 'fillInTheBlankSentence', 'fillBlankSentence', 'sentenceCompletionSentence']),
+      fitbAnswer: _readString(json, ['fitbAnswer', 'sentenceCompletionAnswer', 'sentenceCompletionBlank', 'englishWord']),
+      matchingSet: ((json['matchingSet'] ?? json['matchingPairs']) as List<dynamic>?)
           ?.whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList(),
       sentenceArrangementTokens: ((json['sentenceArrangementTokens'] ?? json['scrambledTokens']) as List<dynamic>?)?.map((item) => item.toString()).toList(),
-      tileSentence: _readString(json, 'tileSentence', 'sentenceCompletionSentence'),
-      hintText: json['hintText']?.toString(),
-      sentenceCompletionSentence: _readString(json, 'sentenceCompletionSentence', 'sentenceCompletionBlank', 'fillInTheBlankSentence'),
-      sentenceCompletionAnswer: _readString(json, 'sentenceCompletionAnswer', 'fitbAnswer', 'englishWord'),
+      tileSentence: _readString(json, ['tileSentence', 'sentenceCompletionSentence', 'exampleSentenceEnglish']),
+      explanationText: json['explanationText']?.toString() ?? json['hintText']?.toString(),
+      sentenceCompletionSentence: _readString(json, ['sentenceCompletionSentence', 'sentenceCompletionBlank', 'fillInTheBlankSentence', 'fillBlankSentence']),
+      sentenceCompletionAnswer: _readString(json, ['sentenceCompletionAnswer', 'fitbAnswer', 'englishWord']),
       sentenceCompletionOption1: _readSentenceCompletionOption(json, sentenceCompletionOptions, 0),
       sentenceCompletionOption2: _readSentenceCompletionOption(json, sentenceCompletionOptions, 1),
       sentenceCompletionOption3: _readSentenceCompletionOption(json, sentenceCompletionOptions, 2),
       activityType: _parseActivityType(json),
       eligibleActivityTypes: json['eligibleActivityTypes']?.toString() ?? json['activityType']?.toString(),
       difficultyLevel: json['difficultyLevel']?.toString() ?? 'LEARNING',
-      showHint: json['showHints'] == true || json['showHint'] == true,
+      showExplanation: json['showExplanations'] == true || json['showExplanation'] == true || json['showHints'] == true || json['showHint'] == true || (json['difficultyLevel']?.toString() ?? 'LEARNING') == 'LEARNING',
       timeLimitSeconds: (json['timeLimitSeconds'] as num?)?.toInt(),
       anchoredWord: json['anchoredWord']?.toString(),
-      // imageAssetPath already set above from json
+      audioTextCebuano: _readString(json, ['audioTextCebuano', 'audio_text_cebuano']),
+      audioTextEnglish: _readString(json, ['audioTextEnglish', 'audio_text_english']),
     );
   }
 
   static String _parseActivityType(Map<String, dynamic> json) {
-    final eligibleStr = json['eligibleActivityTypes']?.toString() ?? json['activityType']?.toString();
+    if (json['activityType'] != null && json['activityType'].toString().isNotEmpty) {
+      return json['activityType'].toString();
+    }
+    
+    final eligibleStr = json['eligibleActivityTypes']?.toString();
     if (eligibleStr == null || eligibleStr.isEmpty) return 'MULTIPLE_CHOICE';
     
     final types = eligibleStr.split(';').where((s) => s.trim().isNotEmpty).toList();
@@ -146,8 +169,8 @@ class VocabularyWordModel {
     return types.first;
   }
 
-  static String _readString(Map<String, dynamic> json, String primaryKey, String secondaryKey, [String? tertiaryKey]) {
-    for (final key in [primaryKey, secondaryKey, tertiaryKey].whereType<String>()) {
+  static String _readString(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
       final value = json[key];
       if (value != null) {
         final text = value.toString().trim();
@@ -187,6 +210,10 @@ class VocabularyWordModel {
       'cebuanoMeaning': cebuanoMeaning,
       'exampleSentenceEnglish': exampleSentenceEnglish,
       'exampleSentenceCebuano': exampleSentenceCebuano,
+      'cebuanoSentence': exampleSentenceCebuano,
+      'sentenceCebuano': exampleSentenceCebuano,
+      'audioTextCebuano': audioTextCebuano,
+      'audioTextEnglish': audioTextEnglish,
       'audioAssetPath': audioAssetPath,
       'partOfSpeech': partOfSpeech,
       'gradeLevel': gradeLevel,
@@ -202,7 +229,7 @@ class VocabularyWordModel {
       'matchingSet': matchingSet,
       'sentenceArrangementTokens': sentenceArrangementTokens,
       'tileSentence': tileSentence,
-      'hintText': hintText,
+      'explanationText': explanationText,
       'sentenceCompletionSentence': sentenceCompletionSentence,
       'sentenceCompletionAnswer': sentenceCompletionAnswer,
       'sentenceCompletionOption1': sentenceCompletionOption1,
@@ -210,7 +237,7 @@ class VocabularyWordModel {
       'sentenceCompletionOption3': sentenceCompletionOption3,
       'activityType': activityType,
       'difficultyLevel': difficultyLevel,
-      'showHints': showHint,
+      'showExplanations': showExplanation,
       'timeLimitSeconds': timeLimitSeconds,
       'anchoredWord': anchoredWord,
     };

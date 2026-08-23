@@ -5,11 +5,7 @@ import com.vocaboo.dto.request.LoginRequest;
 import com.vocaboo.dto.request.RegisterRequest;
 import com.vocaboo.dto.response.AuthResponse;
 import com.vocaboo.dto.response.LearnerResponse;
-import com.vocaboo.entity.LanguageMedium;
-import com.vocaboo.entity.Learner;
-import com.vocaboo.entity.PracticeSession;
-import com.vocaboo.entity.ReviewSession;
-import com.vocaboo.entity.SandboxSession;
+import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
 import com.vocaboo.security.JwtUtils;
 import lombok.RequiredArgsConstructor;
@@ -227,5 +223,22 @@ public class LearnerService {
         
         // Delete lesson module scores
         lessonModuleScoreRepository.deleteByLearnerLearnerId(learnerId);
+
+        // Recreate default 0-point LearnerMastery record for this learner
+        Learner learner = learnerRepository.findById(learnerId).orElse(null);
+        if (learner != null) {
+            LearnerMastery freshMastery = LearnerMastery.builder()
+                    .learner(learner)
+                    .totalSessionsPlayed(0)
+                    .totalCorrectAnswers(0)
+                    .totalQuestionsAnswered(0)
+                    .overallAccuracy(java.math.BigDecimal.ZERO)
+                    .wordsMasteredCount(0)
+                    .totalPoints(0)
+                    .masteryLevel("LEARNING")
+                    .createdAt(java.time.OffsetDateTime.now())
+                    .build();
+            masteryRepository.save(freshMastery);
+        }
     }
 }

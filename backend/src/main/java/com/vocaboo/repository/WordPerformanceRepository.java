@@ -19,6 +19,11 @@ public interface WordPerformanceRepository extends JpaRepository<WordPerformance
     /** All performance rows for a learner within a specific lesson. */
     List<WordPerformance> findByLearnerLearnerIdAndWordLessonLessonId(UUID learnerId, UUID lessonId);
     void deleteByLearnerLearnerId(UUID learnerId);
+    void deleteByLearnerLearnerIdAndWordLessonLessonId(UUID learnerId, UUID lessonId);
+
+    List<WordPerformance> findByWordLessonLessonId(UUID lessonId);
+    List<WordPerformance> findByLearnerSectionSectionId(UUID sectionId);
+    List<WordPerformance> findByLearnerSectionSectionIdAndWordLessonLessonId(UUID sectionId, UUID lessonId);
 
     @Query("SELECT wp FROM WordPerformance wp WHERE wp.learner.learnerId = :learnerId AND wp.accuracy >= :threshold")
     List<WordPerformance> findKnownWordsPool(@Param("learnerId") UUID learnerId, @Param("threshold") BigDecimal threshold);

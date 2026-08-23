@@ -73,6 +73,39 @@ class _ProgressScreenState extends State<ProgressScreen> {
     }
   }
 
+  String _getMasteryDescriptor(double accuracy, String currentLevel) {
+    if (accuracy >= 90) return 'Excellent';
+    if (accuracy >= 80) return 'Good';
+    if (accuracy >= 70) return 'Fair';
+    if (accuracy > 0) return 'Needs Practice';
+
+    switch (currentLevel.toUpperCase()) {
+      case 'MASTERED':
+        return 'Excellent';
+      case 'PROFICIENT':
+        return 'Good';
+      case 'FAMILIAR':
+        return 'Fair';
+      case 'LEARNING':
+      default:
+        return 'Needs Practice';
+    }
+  }
+
+  Color _masteryColor(String descriptor) {
+    switch (descriptor) {
+      case 'Excellent':
+        return const Color(0xFF10B981); // Emerald Green
+      case 'Good':
+        return const Color(0xFF06A6FF); // Blue
+      case 'Fair':
+        return const Color(0xFFF59E0B); // Amber
+      case 'Needs Practice':
+      default:
+        return const Color(0xFFEF4444); // Red/Rose
+    }
+  }
+
   Color _levelColor(String level) {
     switch (level.toUpperCase()) {
       case 'MASTERED':
@@ -104,7 +137,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
             fontFamily: 'Outfit',
             fontWeight: FontWeight.w900,
             fontSize: 22,
-            color: Color(0xFF0F172A),
+            color: Color(0xFF06A6FF),
           ),
         ),
       ),
@@ -596,7 +629,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final word = _recentWords[index];
-              final levelColor = _levelColor(word.currentLevel);
+              final descriptor = _getMasteryDescriptor(word.accuracy, word.currentLevel);
+              final descColor = _masteryColor(descriptor);
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
@@ -631,20 +665,43 @@ class _ProgressScreenState extends State<ProgressScreen> {
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: levelColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        word.currentLevel.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: levelColor,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: descColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            descriptor,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: descColor,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Text(
+                            '${word.accuracy.toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontFamily: 'Outfit',
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: descColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

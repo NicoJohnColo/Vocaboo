@@ -103,7 +103,7 @@ class DifficultyAdjustmentServiceTest {
                 .learner(learner)
                 .word(word)
                 .currentLevel(DifficultyLevel.PROFICIENT)
-                .consecutiveCorrect(2)
+                .consecutiveCorrect(1)
                 .consecutiveIncorrect(0)
                 .build();
 
@@ -255,7 +255,7 @@ class DifficultyAdjustmentServiceTest {
         assertNotNull(response);
         assertEquals(DifficultyLevel.LEARNING.name(), response.getCurrentLevel());
         assertEquals(1, response.getConsecutiveIncorrect());
-        assertFalse(response.getShowHints());
+        assertFalse(response.getShowExplanations());
     }
 
     @Test

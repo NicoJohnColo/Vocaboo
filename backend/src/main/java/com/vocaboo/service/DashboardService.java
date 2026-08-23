@@ -6,9 +6,8 @@ import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.math.BigDecimal;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,33 +23,98 @@ public class DashboardService {
     private final AdminRepository adminRepository;
     private final ReviewSessionRepository reviewSessionRepository;
     private final CumulativeReviewSessionRepository cumulativeReviewSessionRepository;
+    private final LessonModuleScoreRepository lessonModuleScoreRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
+    private final VocabularyWordRepository wordRepository;
+    private final WordPerformanceRepository performanceRepository;
 
     public DashboardResponse getDashboardData(UUID learnerId) {
-        // Core lesson stats
+        // ── Core lesson stats ──────────────────────────────────────────────────
+        List<Lesson> allLessons = lessonRepository.findAll();
         List<LearnerLessonStatus> statuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
-        long completedCount = statuses.stream()
-                .filter(s -> s.getStatus() == LessonStatus.COMPLETED)
-                .count();
+        List<LessonModuleScore> moduleScores = lessonModuleScoreRepository.findByLearnerLearnerId(learnerId);
 
-        long totalLessons = lessonRepository.count();
+        Map<UUID, LearnerLessonStatus> statusMap = statuses.stream()
+                .collect(Collectors.toMap(s -> s.getLesson().getLessonId(), s -> s, (s1, s2) -> s1));
 
-        double averageScore = 0.0;
-        List<LearnerLessonStatus> completedWithScores = statuses.stream()
-                .filter(s -> s.getStatus() == LessonStatus.COMPLETED && s.getMasteryScore() != null)
-                .collect(Collectors.toList());
+        Map<UUID, List<LessonModuleScore>> moduleScoreMap = moduleScores.stream()
+                .collect(Collectors.groupingBy(m -> m.getLesson().getLessonId()));
 
-        if (!completedWithScores.isEmpty()) {
-            double sum = completedWithScores.stream()
-                    .mapToDouble(s -> s.getMasteryScore().doubleValue())
-                    .sum();
-            averageScore = sum / completedWithScores.size();
+        int completedCount = 0;
+        double scoreSum = 0.0;
+        int scoredLessonCount = 0;
+        Map<UUID, Double> computedLessonScores = new HashMap<>();
+
+        for (Lesson lesson : allLessons) {
+            LearnerLessonStatus s = statusMap.get(lesson.getLessonId());
+            long masteredInLesson = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lesson.getLessonId());
+
+            List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lesson.getLessonId());
+            int totalLessonAttempts = 0;
+            int totalLessonCorrect = 0;
+            for (VocabularyWord lw : lessonWords) {
+                WordPerformance wp = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, lw.getWordId()).orElse(null);
+                if (wp != null && wp.getTotalAttempts() > 0) {
+                    totalLessonAttempts += wp.getTotalAttempts();
+                    totalLessonCorrect += wp.getCorrectCount();
+                }
+            }
+
+            BigDecimal score = null;
+            if (totalLessonAttempts > 0) {
+                score = BigDecimal.valueOf(totalLessonCorrect * 100.0 / totalLessonAttempts).setScale(2, java.math.RoundingMode.HALF_UP);
+            } else if (s != null && s.getMasteryScore() != null) {
+                score = s.getMasteryScore();
+            } else {
+                List<LessonModuleScore> lmsList = moduleScoreMap.getOrDefault(lesson.getLessonId(), List.of());
+                if (!lmsList.isEmpty()) {
+                    Optional<LessonModuleScore> mod4Opt = lmsList.stream()
+                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
+                            .findFirst();
+                    if (mod4Opt.isPresent()) {
+                        score = mod4Opt.get().getScore();
+                    } else {
+                        double avg = lmsList.stream()
+                                .filter(m -> m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
+                                .mapToDouble(m -> m.getScore().doubleValue())
+                                .average()
+                                .orElse(0.0);
+                        if (avg > 0.0) {
+                            score = BigDecimal.valueOf(avg).setScale(2, java.math.RoundingMode.HALF_UP);
+                        }
+                    }
+                }
+            }
+
+            List<LessonModuleScore> lmsListForMod3 = moduleScoreMap.getOrDefault(lesson.getLessonId(), List.of());
+            boolean hasCompletedMod3 = lmsListForMod3.stream()
+                    .anyMatch(m -> m.getModuleNumber() != null && m.getModuleNumber() == 3 && m.getTotalCount() != null && m.getTotalCount() > 0);
+
+            boolean isCompleted = (s != null && s.getStatus() == LessonStatus.COMPLETED) ||
+                    (hasCompletedMod3 && (
+                        (lesson.getTotalWordCount() != null && lesson.getTotalWordCount() > 0 && masteredInLesson >= lesson.getTotalWordCount()) ||
+                        (score != null && score.compareTo(BigDecimal.valueOf(70.0)) >= 0 && totalLessonAttempts > 0)
+                    ));
+
+            if (isCompleted) {
+                completedCount++;
+            }
+
+            if (score != null && score.compareTo(BigDecimal.ZERO) > 0) {
+                scoreSum += score.doubleValue();
+                scoredLessonCount++;
+                computedLessonScores.put(lesson.getLessonId(), score.doubleValue());
+            }
         }
 
-        // Pronunciation stats
+        long totalLessons = allLessons.size();
+        double averageScore = scoredLessonCount > 0 ? (scoreSum / scoredLessonCount) : 0.0;
+
+        // ── Pronunciation stats ────────────────────────────────────────────────
         int totalPronunciations = (int) pronunciationAttemptRepository.countByLearnerLearnerId(learnerId);
         int correctPronunciations = (int) pronunciationAttemptRepository.countByLearnerLearnerIdAndIsCorrect(learnerId, true);
 
-        // Cumulative review stats & history
+        // ── Cumulative review stats & history ──────────────────────────────────
         List<CumulativeReviewSession> cumulativeSessions = cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId);
         long cumulativeCompletedCount = cumulativeSessions.stream().filter(s -> "COMPLETED".equals(s.getSessionStatus())).count();
 
@@ -77,7 +141,7 @@ public class DashboardService {
                         .build())
                 .collect(Collectors.toList());
 
-        // Sandbox history
+        // ── Sandbox history ────────────────────────────────────────────────────
         List<SandboxSession> sandboxSessions = sandboxSessionRepository.findByLearnerLearnerIdOrderByCreatedAtDesc(learnerId);
         List<DashboardResponse.SandboxSessionDetails> sandboxHistory = new ArrayList<>();
 
@@ -97,6 +161,10 @@ public class DashboardService {
                     .build());
         }
 
+        // ── Category breakdowns ────────────────────────────────────────────────
+        List<DashboardResponse.CategoryBreakdown> categoryBreakdowns =
+                buildCategoryBreakdowns(learnerId, allLessons, computedLessonScores, cumulativeSessions);
+
         return DashboardResponse.builder()
                 .completedLessons((int) completedCount)
                 .totalLessons((int) totalLessons)
@@ -107,20 +175,149 @@ public class DashboardService {
                 .cumulativeReviewsCompleted((int) cumulativeCompletedCount)
                 .bestCumulativeBadge(bestBadge)
                 .cumulativeReviewHistory(cumulativeHistory)
+                .categoryBreakdowns(categoryBreakdowns)
                 .build();
     }
 
+    /**
+     * Builds a breakdown per category from the learner's completed cumulative
+     * review sessions.
+     *
+     * For each unique lessonPairId that has at least one COMPLETED session:
+     *  - Splits the lessonPairId on "_" to find the covered lesson UUIDs.
+     *  - Looks up each lesson's Module 2 + 3 accuracy from lesson_module_scores.
+     *  - Picks the latest COMPLETED cumulative session's accuracyPercent as the
+     *    independent cumulative score (shown separately on the card).
+     *  - Computes overallAccuracy = (avg lesson accuracy * 0.60) + (cumulativeAccuracy * 0.40).
+     *    Same 60/40 weighting used by the Mastery Result Screen.
+     */
+    private List<DashboardResponse.CategoryBreakdown> buildCategoryBreakdowns(
+            UUID learnerId,
+            List<Lesson> allLessons,
+            Map<UUID, Double> computedLessonScores,
+            List<CumulativeReviewSession> cumulativeSessions) {
+
+        // Index lessons by id for fast lookup
+        Map<UUID, Lesson> lessonById = allLessons.stream()
+                .collect(Collectors.toMap(Lesson::getLessonId, l -> l, (a, b) -> a));
+
+        // Keep only COMPLETED cumulative sessions, ordered newest-first (already ordered)
+        List<CumulativeReviewSession> completedSessions = cumulativeSessions.stream()
+                .filter(s -> "COMPLETED".equals(s.getSessionStatus()))
+                .collect(Collectors.toList());
+
+        if (completedSessions.isEmpty()) {
+            return List.of();
+        }
+
+        // Group by lessonPairId, pick the latest (first after desc ordering)
+        Map<String, CumulativeReviewSession> latestByPair = new LinkedHashMap<>();
+        for (CumulativeReviewSession session : completedSessions) {
+            latestByPair.putIfAbsent(session.getLessonPairId(), session);
+        }
+
+        List<DashboardResponse.CategoryBreakdown> result = new ArrayList<>();
+
+        for (Map.Entry<String, CumulativeReviewSession> entry : latestByPair.entrySet()) {
+            String lessonPairId = entry.getKey();
+            CumulativeReviewSession latestSession = entry.getValue();
+
+            // Split the lessonPairId to get individual lesson UUID strings
+            String[] lessonIdParts = lessonPairId.split("_");
+
+            // Collect lessons in order
+            List<DashboardResponse.LessonScoreDetail> lessonDetails = new ArrayList<>();
+            String categoryId = null;
+            String categoryName = "Lessons";
+            // Separate list just for lesson accuracies (for the 60% side of the formula)
+            List<Double> lessonAccuracyValues = new ArrayList<>();
+
+            // Sort lesson parts by lesson order for consistent display
+            List<Lesson> coveredLessons = new ArrayList<>();
+            for (String idStr : lessonIdParts) {
+                try {
+                    UUID lessonUuid = UUID.fromString(idStr.trim());
+                    Lesson l = lessonById.get(lessonUuid);
+                    if (l != null) coveredLessons.add(l);
+                } catch (IllegalArgumentException ignored) {
+                    // Skip malformed UUIDs
+                }
+            }
+            coveredLessons.sort(Comparator.comparingInt(l -> l.getLessonOrder() != null ? l.getLessonOrder() : 0));
+
+            for (Lesson lesson : coveredLessons) {
+                // Category from first resolved lesson
+                if (categoryId == null && lesson.getCategory() != null) {
+                    categoryId = lesson.getCategory().getCategoryId().toString();
+                    categoryName = lesson.getCategory().getCategoryName() != null
+                            ? lesson.getCategory().getCategoryName() : "Lessons";
+                }
+
+                // Overall accuracy for this lesson
+                Double lessonAcc = computedLessonScores.get(lesson.getLessonId());
+
+                if (lessonAcc != null) {
+                    lessonAccuracyValues.add(lessonAcc);
+                }
+
+                lessonDetails.add(DashboardResponse.LessonScoreDetail.builder()
+                        .lessonId(lesson.getLessonId().toString())
+                        .lessonTitle(lesson.getLessonTitle() != null ? lesson.getLessonTitle() : "Lesson")
+                        .lessonOrder(lesson.getLessonOrder() != null ? lesson.getLessonOrder() : 0)
+                        .lessonAccuracy(lessonAcc)
+                        .build());
+            }
+
+            // Independent cumulative accuracy (shown as its own row on the dashboard)
+            Double cumulativeAccuracy = latestSession.getAccuracyPercent() != null
+                    ? latestSession.getAccuracyPercent().doubleValue() : null;
+
+            // Overall = (avg lesson accuracy * 0.60) + (cumulative accuracy * 0.40)
+            // Mirrors the same 60/40 weighting used on the Mastery Result Screen.
+            // Only computed when both sides are available.
+            Double overallAccuracy = null;
+            if (!lessonAccuracyValues.isEmpty() && cumulativeAccuracy != null) {
+                double lessonAvg = lessonAccuracyValues.stream().mapToDouble(d -> d).average().orElse(0.0);
+                overallAccuracy = (lessonAvg * 0.60) + (cumulativeAccuracy * 0.40);
+            } else if (!lessonAccuracyValues.isEmpty()) {
+                // Cumulative not yet done — show lesson avg only
+                overallAccuracy = lessonAccuracyValues.stream().mapToDouble(d -> d).average().orElse(0.0);
+            } else if (cumulativeAccuracy != null) {
+                // No lesson scores yet — show cumulative only
+                overallAccuracy = cumulativeAccuracy;
+            }
+
+            // Best badge across ALL completed sessions for this pair
+            String pairBestBadge = null;
+            List<CumulativeReviewSession> allForPair = completedSessions.stream()
+                    .filter(s -> lessonPairId.equals(s.getLessonPairId()))
+                    .collect(Collectors.toList());
+            if (allForPair.stream().anyMatch(s -> "GOLD".equals(s.getBadgeAwarded()))) {
+                pairBestBadge = "GOLD";
+            } else if (allForPair.stream().anyMatch(s -> "SILVER".equals(s.getBadgeAwarded()))) {
+                pairBestBadge = "SILVER";
+            } else if (allForPair.stream().anyMatch(s -> "BRONZE".equals(s.getBadgeAwarded()))) {
+                pairBestBadge = "BRONZE";
+            }
+
+            result.add(DashboardResponse.CategoryBreakdown.builder()
+                    .categoryId(categoryId != null ? categoryId : lessonPairId)
+                    .categoryName(categoryName)
+                    .lessons(lessonDetails)
+                    .cumulativeAccuracy(cumulativeAccuracy)
+                    .overallAccuracy(overallAccuracy != null
+                            ? Math.round(overallAccuracy * 100.0) / 100.0 : null)
+                    .bestCumulativeBadge(pairBestBadge)
+                    .build());
+        }
+
+        return result;
+    }
+
     public DashboardStatsResponse getDashboardStats() {
-        // Count total learners
         long totalLearners = learnerRepository.count();
-
-        // Count total lessons
         long totalLessons = lessonRepository.count();
-
-        // Count active sessions (incomplete review sessions)
         long activeSessions = reviewSessionRepository.countByCompletedAtIsNull();
-
-        // Count total admin accounts
         long totalAdmins = adminRepository.count();
 
         return DashboardStatsResponse.builder()

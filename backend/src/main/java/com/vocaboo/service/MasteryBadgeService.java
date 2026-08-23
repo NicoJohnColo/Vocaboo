@@ -20,6 +20,7 @@ public class MasteryBadgeService {
     private final LearnerRepository learnerRepository;
     private final LessonRepository lessonRepository;
     private final VocabularyWordRepository wordRepository;
+    private final LearnerLessonStatusRepository lessonStatusRepository;
 
     @Transactional
     public String calculateAndSaveBadge(UUID learnerId, UUID lessonId, double sessionAccuracy) {
@@ -45,7 +46,11 @@ public class MasteryBadgeService {
         }
 
         int newTier = getBadgeTier(earnedBadge);
-        if (newTier > maxExistingTier) {
+        if (newTier > maxExistingTier || existingRewards.isEmpty()) {
+            if (!existingRewards.isEmpty()) {
+                rewardRepository.deleteAll(existingRewards);
+                rewardRepository.flush();
+            }
             rewardRepository.save(
                 RewardData.builder()
                     .learner(learner)
@@ -60,20 +65,14 @@ public class MasteryBadgeService {
 
     @Transactional
     public String calculateAndSaveBadge(UUID learnerId, UUID lessonId) {
-        Learner learner = learnerRepository.findById(learnerId).orElse(null);
-        String posFocus = learner != null ? learner.getPosFocus() : null;
-
-        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).stream()
-                .filter(w -> posFocus == null || "ALL".equalsIgnoreCase(posFocus) || posFocus.equalsIgnoreCase(w.getPartOfSpeech()))
-                .collect(Collectors.toList());
-
-        if (words == null || words.isEmpty()) {
+        List<VocabularyWord> allLessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        if (allLessonWords == null || allLessonWords.isEmpty()) {
             return calculateAndSaveBadge(learnerId, lessonId, 0.0);
         }
 
         int totalCorrect = 0;
         int totalAttempts = 0;
-        for (VocabularyWord word : words) {
+        for (VocabularyWord word : allLessonWords) {
             WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
                     .orElse(null);
             if (perf != null) {
@@ -82,7 +81,21 @@ public class MasteryBadgeService {
             }
         }
 
-        double accuracy = totalAttempts > 0 ? (totalCorrect * 100.0 / totalAttempts) : 0.0;
+        double accuracy = 0.0;
+        if (totalAttempts > 0) {
+            accuracy = (totalCorrect * 100.0 / totalAttempts);
+        }
+
+        LearnerLessonStatus lls = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId).orElse(null);
+        if (lls != null && lls.getMasteryScore() != null && lls.getMasteryScore().doubleValue() > accuracy) {
+            accuracy = lls.getMasteryScore().doubleValue();
+        }
+
+        long masteredCount = difficultyRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
+        if (masteredCount >= allLessonWords.size() && accuracy < 90.0) {
+            accuracy = 97.5;
+        }
+
         return calculateAndSaveBadge(learnerId, lessonId, accuracy);
     }
 

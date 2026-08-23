@@ -37,9 +37,20 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
       final posFocus = auth.learner?.posFocus;
       final filter = (posFocus != null && posFocus != 'ALL') ? posFocus : null;
       final words = await provider.loadVocabulary(widget.lessonId, partOfSpeech: filter);
+      final wordDifficulties = await provider.loadWordDifficulties(widget.lessonId);
       final pairs = await provider.loadConfusablePairs(widget.lessonId);
+
+      // If doing ALL words, exclude words that are already MASTERED so user only practices remaining words
+      List<VocabularyWordModel> activeWords = words;
+      if (filter == null || filter == 'ALL') {
+        final unmastered = words.where((w) => wordDifficulties[w.wordId] != 'MASTERED').toList();
+        if (unmastered.isNotEmpty) {
+          activeWords = unmastered;
+        }
+      }
+
       setState(() {
-        _localWords = words;
+        _localWords = activeWords;
         _confusablePairs = pairs;
       });
     });
@@ -232,14 +243,22 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Progress Bar
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 8,
-                  backgroundColor: const Color(0xFFE2E8F0),
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0EA5E9)),
+                child: SizedBox(
+                  height: 8,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: progress),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) {
+                      return LinearProgressIndicator(
+                        value: value,
+                        backgroundColor: const Color(0xFFE2E8F0),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0EA5E9)),
+                      );
+                    },
+                  ),
                 ),
               ),
               const SizedBox(height: 12),

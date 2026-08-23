@@ -146,8 +146,8 @@ class PracticeItemModel {
       imageAssetPath: json['imageAssetPath'],
       timeLimitSeconds: json['timeLimitSeconds'] as int?,
       difficultyLevel: json['difficultyLevel'] as String?,
-      hintText: json['hintText'],
-      showHint: json['showHint'] == true,
+      hintText: json['hintText'] ?? json['explanationText'] ?? json['explanation'],
+      showHint: json['showHint'] == true || json['showHints'] == true || json['showExplanation'] == true || json['showExplanations'] == true,
       anchoredWord: json['anchoredWord'] as String?,
     );
   }
@@ -574,7 +574,10 @@ class LocalStorageService {
 
   static Future<void> saveLessonScore(String lessonId, double score) async {
     await init();
-    await _prefs!.setDouble('lesson_${lessonId}_score', score);
+    final existing = _prefs!.getDouble('lesson_${lessonId}_score');
+    if (existing == null || score >= existing || score == 0.0) {
+      await _prefs!.setDouble('lesson_${lessonId}_score', score);
+    }
   }
 
   static Future<double?> getLessonScore(String lessonId) async {

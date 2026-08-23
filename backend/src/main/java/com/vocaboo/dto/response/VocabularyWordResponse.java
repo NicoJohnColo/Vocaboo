@@ -28,7 +28,7 @@ public class VocabularyWordResponse {
     private String distractorPool;
     private String fillBlankSentence;
     private String tileSentence;
-    private String hintText;
+    private String explanationText;
     private String audioTextCebuano;
     private String audioTextEnglish;
     /** Which activity format this word uses across all 4 difficulty tiers. */

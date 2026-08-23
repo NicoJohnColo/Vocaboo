@@ -23,7 +23,7 @@ public class BulkImportService {
 
     private static final String CSV_HEADER =
             "english_word,cebuano_meaning,part_of_speech,grade_level,example_sentence_english,example_sentence_cebuano,audio_path,image_path," +
-            "distractor_pool,fill_blank_sentence,tile_sentence,hint_text,audio_text_cebuano,audio_text_english,context_paragraph,activity_type";
+            "distractor_pool,fill_blank_sentence,tile_sentence,explanation_text,audio_text_cebuano,audio_text_english,context_paragraph,activity_type";
 
     private final LessonRepository lessonRepository;
     private final VocabularyWordRepository wordRepository;
@@ -77,7 +77,7 @@ public class BulkImportService {
                 String distractorPool     = cols.length > 8  ? cols[8].trim()  : "";
                 String fillBlankSentence  = cols.length > 9  ? cols[9].trim()  : "";
                 String tileSentence       = cols.length > 10 ? cols[10].trim() : "";
-                String hintText           = cols.length > 11 ? cols[11].trim() : "";
+                String explanationText           = cols.length > 11 ? cols[11].trim() : "";
                 String audioTextCebuano   = cols.length > 12 ? cols[12].trim() : "";
                 String audioTextEnglish   = cols.length > 13 ? cols[13].trim() : "";
                 String contextParagraph   = cols.length > 14 ? cols[14].trim() : "";
@@ -137,7 +137,7 @@ public class BulkImportService {
                         .distractorPool(distractorPool.isBlank() ? null : distractorPool)
                         .fillBlankSentence(fillBlankSentence.isBlank() ? null : fillBlankSentence)
                         .tileSentence(tileSentence.isBlank() ? null : tileSentence)
-                        .hintText(hintText.isBlank() ? null : hintText)
+                        .explanationText(explanationText.isBlank() ? null : explanationText)
                         .audioTextCebuano(audioTextCebuano.isBlank() ? null : audioTextCebuano)
                         .audioTextEnglish(audioTextEnglish.isBlank() ? null : audioTextEnglish)
                         .eligibleActivityTypes(eligibleActivityTypes)

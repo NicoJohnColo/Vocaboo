@@ -48,7 +48,7 @@ public class AddVocabularyRequest {
     private String tileSentence;
 
     /** Optional hint shown only at LEARNING difficulty level */
-    private String hintText;
+    private String explanationText;
 
     /** Exact text fed to Cebuano TTS */
     private String audioTextCebuano;
@@ -57,4 +57,8 @@ public class AddVocabularyRequest {
     private String audioTextEnglish;
     
     private String eligibleActivityTypes;
+
+    private String phonologicalTipKey;
+    
+    private Boolean isConfusablePairMember;
 }

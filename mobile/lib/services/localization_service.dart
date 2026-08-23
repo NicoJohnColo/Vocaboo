@@ -46,6 +46,7 @@ class LocalizationService {
       'app_title': 'Vocaboo',
       'hello': 'Kumusta',
       'your_categories': 'Imong mga Kategoriya',
+      'dashboard': 'Dashboard',
       'logout': 'Gawas',
       'sandbox_mode': 'Sandbox Mode',
       'sandbox_desc': 'Pag-practice og mga custom nga pulong ug topiko',
@@ -57,15 +58,33 @@ class LocalizationService {
       'cumulative_reviews_completed': 'Cumulative Reviews Nahuman',
       'view_full_progress': 'Tan-awa ang Full Progress',
       'view_full_progress_sub': 'Tan-awa ang imong detalyado nga stats',
-      'words_need_help_title': 'Mga Pulong nga Nanginahanglan Tabang',
-      'words_need_help_subtitle': 'I-practice ang mga pulong nga lisod kanimo',
+      'words_need_help_title': 'Mga Pulong nga Bansayon',
+      'words_need_help_subtitle': 'Pabaskoga ang imong bokabularyo sa dali nga pagbansay',
+      'words_to_practice_title': 'Mga Pulong nga Bansayon',
+      'practice_together_title': 'Magbansay Kita Karon! 🌟',
+      'practice_together_sub': 'Pipila ka pulong nga atong palambuon karon. Maayo kaayo ang imong pag-uswag!',
+      'todays_picks': 'Gipili Karon',
+      'all_words': 'Tanan Pulong',
+      'in_practice': 'Gibansay ✨',
+      'you_got_this': 'Nakuha na nimo! 🌟',
+      'practice_btn': 'Bansaya',
+      'all_caught_up_title': 'Nahuman na ang Tanan! 🌟',
+      'all_caught_up_desc': 'Walay pulong nga naghulat sa pagbansay karon. Maayong trabaho!',
       'past_cumulative_sessions': 'Mga Past Cumulative Sessions',
       'no_cumulative_sessions': 'Wala pay cumulative sessions',
       'recent_sandbox_sessions': 'Mga Recent Sandbox Sessions',
       'no_sandbox_sessions': 'Wala pay sandbox sessions',
+      'badge_perfect_gold': 'PERFECT GOLD',
       'badge_gold': 'GOLD',
       'badge_silver': 'SILVER',
       'badge_bronze': 'BRONZE',
+      'badge_perfect_gold_sub': 'Hingpit — ang tanan nga pulong na-master nga walay sayop!',
+      'badge_gold_sub': 'Maayo kaayo — labing daghan 2 ka sayop sa tanang pulong.',
+      'badge_silver_sub': 'Maayong trabaho — padayon sa pag-practice aron maka-Gold!',
+      'badge_bronze_sub': 'Nahuman nimo ang leksyon — padayon sa pagkat-on!',
+      'lesson_badges': 'Mga Badge sa Leksyon',
+      'lesson_badge': 'BADGE SA LEKSYON',
+      'word_breakdown': 'Breakdown sa mga Pulong',
       
       // Settings
       'settings': 'MGA SETTINGS',
@@ -97,17 +116,6 @@ class LocalizationService {
       'english_example': 'EKSAMPUL SA ININGLES',
       'cebuano_translation': 'HUBAD SA SINUGBOANON',
       'how_to_pronounce': 'UNSAON PAGLITOK',
-      
-      // Sentence Building Screen
-      'prompt_sentence_select': 'Pilia ang tambal nga husto sa blangko.',
-      'instruction_sentence_select': 'Pilia ang pulong nga nagpuno sa blangko.',
-      'prompt_sentence_build': 'Paghimo og tambal pinaagi sa pagdrag sa mga pulong.',
-      'instruction_sentence_drag': 'Drag ang mga pulong sa paghimo sa tambal.',
-      'prompt_sentence_type': 'Isulat ang pulong nga nagpuno sa blangko.',
-      'instruction_sentence_type': 'Isulat ang tambal nga husto.',
-      'prompt_sentence_review': 'Rebyuha ang imong mga tambal.',
-      'lesson_context_title': 'Lesson Context',
-      'lesson_context_desc': 'Basaha ang istorya aron masabtan ang konteksto sa mga pulong.',
       'mic_prompt_idle': 'I-tap ang mikropono ug isulti ang pulong.',
       'mic_prompt_recording': 'Naminaw... Isulti na!',
       'tap_to_stop': 'I-TAP ARON MOHUNONG',
@@ -120,6 +128,25 @@ class LocalizationService {
       'got_it': 'NAKUHA NAKO',
       'practice_pronunciation': 'PRACTICE PAGLITOK',
       'continue': 'PADAYON',
+      
+      // Guides
+      'word_guide': 'Giya sa Pulong',
+      'sentence_guide': 'Giya sa Pahayag',
+      'cumulative_review': 'Cumulative Review',
+
+      // Sentence Building Screen (Module 3)
+      'prompt_sentence_select': 'Pilia ang husto nga pulong sa blangko.',
+      'instruction_sentence_select': 'Pilia ang pulong nga nagpuno sa blangko.',
+      'prompt_sentence_build': 'Han-aya ang mga pulong aron maporma ang pahayag.',
+      'instruction_sentence_drag': 'I-tap o i-drag ang mga pulong aron maporma ang pahayag.',
+      'prompt_sentence_type': 'I-type ang nawala nga pulong sa blangko.',
+      'instruction_sentence_type': 'I-type ang husto nga pulong.',
+      'prompt_sentence_review': 'Rebyuha kining pahayag aron mas mahinumdoman.',
+      'lesson_context_title': 'Konteksto sa Leksyon',
+      'lesson_context_desc': 'Basaha ang istorya aron masabtan ang konteksto sa mga pulong.',
+      'time_remaining': 'Nabilin nga Oras',
+      'feedback_correct': 'Husto! Maayong trabaho!',
+      'feedback_incorrect': 'Sayop! Sulayi pag-usab.',
 
       // Round One Completed Screen
       'lesson_completed': 'Nahuman ang Leksyon!',
@@ -129,6 +156,19 @@ class LocalizationService {
       'back_to_path': 'BALIK SA LEKSYON',
       'back_to_dashboard': 'BALIK SA DASHBOARD',
       'practice_more': 'PRACTICE PA (MODYUL 2)',
+
+      // Lesson Score Screen
+      'all_words_mastered_msg': 'Nahanas ang tanang mga pulong! Maayong trabaho!',
+      'keep_practising_msg': 'Padayon sa pag-practice aron mas mahanas!',
+      'bonus': 'Bonus',
+      'words_mastered': 'Mga Pulong nga Nahanas',
+      'still_needs_practice': 'Nanginahanglan pa og Practice',
+
+      // Leaderboard
+      'this_week': 'Kini nga Semana',
+      'all_time': 'Tanan nga Panahon',
+      'leaderboard_title': 'Leaderboard',
+      'no_leaderboard_data': 'Wala pay leaderboard data.',
 
       // Settings Screen
       'edit_profile': 'USBA ANG PROFILE',
@@ -159,7 +199,7 @@ class LocalizationService {
       'cebuano_english_mixed_subtitle': 'Mixed nga hubad para sa mga menu ug buton.',
       'save_changes': 'I-SAVE ANG PAGBAG-O',
       'pin_changed': 'Malampuson nga nabag-o ang PIN.',
-      'profile_updated': 'Malampuson nga naupdate ang profile.',
+      'profile_updated': 'Profile updated successfully.',
       'reset_progress': 'I-RESET ANG PAUGMAD',
       'progress_reset': 'Na-reset na ang imong paugmad, score, history, ug points.',
       'confirm_reset_title': 'I-reset ang Paugmad?',
@@ -221,26 +261,45 @@ class LocalizationService {
       'app_title': 'Vocaboo',
       'hello': 'Kumusta / Hello',
       'your_categories': 'Your Categories / Kategoriya',
+      'dashboard': 'Dashboard',
       'logout': 'Logout',
       'sandbox_mode': 'Sandbox Mode',
-      'sandbox_desc': 'Pag-practice og mga custom nga pulong ug topiko / Practice custom words and topics',
+      'sandbox_desc': 'Practice custom words and topics / Pag-practice og mga pulong',
       
       // Dashboard Metrics
       'lessons_completed_metric': 'Lessons Completed / Mga Leksyon Nahuman',
       'avg_mastery_metric': 'Average Mastery / Average nga Mastery',
       'pronunciation_correct_metric': 'Correct Pronunciation / Sakto nga Paglitok',
-      'cumulative_reviews_completed': 'Cumulative Reviews Completed / Cumulative Reviews Nahuman',
-      'view_full_progress': 'View Full Progress / Tan-awa ang Full Progress',
-      'view_full_progress_sub': 'View your detailed stats / Tan-awa ang imong detalyado nga stats',
-      'words_need_help_title': 'Words Need Help / Mga Pulong nga Nanginahanglan Tabang',
-      'words_need_help_subtitle': 'Practice words you find difficult / I-practice ang mga pulong nga lisod kanimo',
-      'past_cumulative_sessions': 'Past Cumulative Sessions / Mga Past Cumulative Sessions',
-      'no_cumulative_sessions': 'No cumulative sessions yet / Wala pay cumulative sessions',
-      'recent_sandbox_sessions': 'Recent Sandbox Sessions / Mga Recent Sandbox Sessions',
-      'no_sandbox_sessions': 'No sandbox sessions yet / Wala pay sandbox sessions',
+      'cumulative_reviews_completed': 'Cumulative Reviews Completed / Nahuman',
+      'view_full_progress': 'View Full Progress / Tan-awa',
+      'view_full_progress_sub': 'View detailed stats / Tan-awa ang stats',
+      'words_need_help_title': 'Words to Practice / Mga Pulong nga Bansayon',
+      'words_need_help_subtitle': 'Strengthen your vocabulary / Pabaskoga ang imong bokabularyo',
+      'words_to_practice_title': 'Words to Practice / Mga Pulong nga Bansayon',
+      'practice_together_title': 'Let\'s Practice Together! 🌟 / Magbansay Kita!',
+      'practice_together_sub': 'A few words to strengthen and master today. Great progress! / Pipila ka pulong nga palambuon karon!',
+      'todays_picks': 'Today\'s Picks / Gipili Karon',
+      'all_words': 'All Words / Tanan Pulong',
+      'in_practice': 'In Practice / Gibansay ✨',
+      'you_got_this': 'You\'ve got this now! 🌟 / Nakuha na nimo!',
+      'practice_btn': 'Practice / Bansaya',
+      'all_caught_up_title': 'You\'re All Caught Up! 🌟 / Nahuman na ang Tanan!',
+      'all_caught_up_desc': 'No words waiting for practice right now. Awesome work! / Walay pulong nga naghulat sa pagbansay.',
+      'past_cumulative_sessions': 'Past Cumulative Sessions',
+      'no_cumulative_sessions': 'No cumulative sessions yet / Wala pay sessions',
+      'recent_sandbox_sessions': 'Recent Sandbox Sessions',
+      'no_sandbox_sessions': 'No sandbox sessions yet / Wala pay sessions',
+      'badge_perfect_gold': 'PERFECT GOLD',
       'badge_gold': 'GOLD',
       'badge_silver': 'SILVER',
       'badge_bronze': 'BRONZE',
+      'badge_perfect_gold_sub': 'Flawless — all words mastered with zero errors! / Hingpit!',
+      'badge_gold_sub': 'Excellent — at most 2 mistakes across all words / Maayo kaayo!',
+      'badge_silver_sub': 'Good job — keep practising to reach Gold! / Padayon!',
+      'badge_bronze_sub': 'You completed the lesson — keep going! / Nahuman nimo!',
+      'lesson_badges': 'Lesson Badges / Mga Badge sa Leksyon',
+      'lesson_badge': 'LESSON BADGE / BADGE SA LEKSYON',
+      'word_breakdown': 'Word Breakdown / Breakdown sa mga Pulong',
       
       // Settings
       'settings': 'SETTINGS / MGA SETTINGS',
@@ -248,14 +307,14 @@ class LocalizationService {
       // Lesson Path Screen
       'lessons': 'Lessons / Leksyon',
       'words_count': 'words',
-      'score': 'Score',
+      'score': 'Score / Puntos',
 
       // Diagnostic Screen
       'diagnostic_check': 'Diagnostic Check',
       'card_indicator': 'CARD {} OF {}',
       'know_word_prompt': 'Do you know this word? / Kaila ka ba?',
-      'yes_know': 'YES, I KNOW IT',
-      'no_dont_know': "NO, I DON'T KNOW IT",
+      'yes_know': 'YES, I KNOW IT / OO',
+      'no_dont_know': "NO, I DON'T KNOW IT / DILI",
       'saving_results': 'Saving results...',
 
       // Diagnostic Summary Screen
@@ -285,16 +344,24 @@ class LocalizationService {
       'practice_pronunciation': 'PRACTICE PRONUNCIATION',
       'continue': 'CONTINUE / PADAYON',
       
-      // Sentence Building Screen
-      'prompt_sentence_select': 'Select the correct answer for the blank.',
+      // Guides
+      'word_guide': 'Word Guide / Giya sa Pulong',
+      'sentence_guide': 'Sentence Guide / Giya sa Pahayag',
+      'cumulative_review': 'Cumulative Review',
+
+      // Sentence Building Screen (Module 3)
+      'prompt_sentence_select': 'Select the correct word for the blank.',
       'instruction_sentence_select': 'Choose the word that fills the blank.',
-      'prompt_sentence_build': 'Build a sentence by dragging words.',
-      'instruction_sentence_drag': 'Drag words to build the sentence.',
-      'prompt_sentence_type': 'Type the word that fills the blank.',
-      'instruction_sentence_type': 'Type the correct sentence.',
-      'prompt_sentence_review': 'Review your sentences.',
+      'prompt_sentence_build': 'Arrange the words to build the sentence.',
+      'instruction_sentence_drag': 'Drag words to form the sentence.',
+      'prompt_sentence_type': 'Type the missing word in the blank.',
+      'instruction_sentence_type': 'Type the correct word.',
+      'prompt_sentence_review': 'Review this sentence to reinforce learning.',
       'lesson_context_title': 'Lesson Context',
       'lesson_context_desc': 'Read the story to understand the context of the words.',
+      'time_remaining': 'Time Remaining / Nabilin nga Oras',
+      'feedback_correct': 'Correct! / Husto!',
+      'feedback_incorrect': 'Incorrect! / Sayop!',
 
       // Round One Completed Screen
       'lesson_completed': 'Lesson Completed!',
@@ -304,6 +371,19 @@ class LocalizationService {
       'back_to_path': 'BACK TO PATH',
       'back_to_dashboard': 'BACK TO DASHBOARD',
       'practice_more': 'PRACTICE MORE (MODULE 2)',
+
+      // Lesson Score Screen
+      'all_words_mastered_msg': 'All words mastered! Excellent job!',
+      'keep_practising_msg': 'Keep practicing to master more words!',
+      'bonus': 'Bonus',
+      'words_mastered': 'Words Mastered',
+      'still_needs_practice': 'Still Needs Practice',
+
+      // Leaderboard
+      'this_week': 'This Week',
+      'all_time': 'All Time',
+      'leaderboard_title': 'Leaderboard',
+      'no_leaderboard_data': 'No leaderboard data available yet.',
 
       // Settings Screen
       'edit_profile': 'EDIT PROFILE / USBA',
@@ -324,7 +404,6 @@ class LocalizationService {
       'progress_summary': 'PROGRESS SUMMARY',
       'progress_summary_desc': 'View stats, badges, and history',
       'sandbox_mode_desc': 'Practice custom words and topics',
-      
       'app_preferences_section': 'APP PREFERENCES / KAGUSTUHAN',
       'language_preference': 'Language Preference / Gipalabing Pinulongan',
       'cebuano_to_english': 'Cebuano',
@@ -397,6 +476,7 @@ class LocalizationService {
       'app_title': 'Vocaboo',
       'hello': 'Hello',
       'your_categories': 'Your Categories',
+      'dashboard': 'Dashboard',
       'logout': 'Logout',
       'sandbox_mode': 'Sandbox Mode',
       'sandbox_desc': 'Practice custom words and topics',
@@ -408,15 +488,33 @@ class LocalizationService {
       'cumulative_reviews_completed': 'Cumulative Reviews Completed',
       'view_full_progress': 'View Full Progress',
       'view_full_progress_sub': 'View your detailed stats',
-      'words_need_help_title': 'Words Need Help',
-      'words_need_help_subtitle': 'Practice words you find difficult',
+      'words_need_help_title': 'Words to Practice',
+      'words_need_help_subtitle': 'Strengthen your vocabulary with quick practice picks',
+      'words_to_practice_title': 'Words to Practice',
+      'practice_together_title': 'Let\'s Practice Together! 🌟',
+      'practice_together_sub': 'A few words to strengthen and master today. You\'re making great progress!',
+      'todays_picks': 'Today\'s Picks',
+      'all_words': 'All Words',
+      'in_practice': 'In Practice ✨',
+      'you_got_this': 'You\'ve got this now! 🌟',
+      'practice_btn': 'Practice',
+      'all_caught_up_title': 'You\'re All Caught Up! 🌟',
+      'all_caught_up_desc': 'No words waiting for practice right now. Awesome work!',
       'past_cumulative_sessions': 'Past Cumulative Sessions',
       'no_cumulative_sessions': 'No cumulative sessions yet',
       'recent_sandbox_sessions': 'Recent Sandbox Sessions',
       'no_sandbox_sessions': 'No sandbox sessions yet',
+      'badge_perfect_gold': 'PERFECT GOLD',
       'badge_gold': 'GOLD',
       'badge_silver': 'SILVER',
       'badge_bronze': 'BRONZE',
+      'badge_perfect_gold_sub': 'Flawless — all words mastered with zero errors!',
+      'badge_gold_sub': 'Excellent — at most 2 mistakes across all words.',
+      'badge_silver_sub': 'Good job — keep practising to reach Gold!',
+      'badge_bronze_sub': 'You completed the lesson — keep going!',
+      'lesson_badges': 'Lesson Badges',
+      'lesson_badge': 'LESSON BADGE',
+      'word_breakdown': 'Word Breakdown',
       
       // Settings
       'settings': 'SETTINGS',
@@ -461,16 +559,24 @@ class LocalizationService {
       'practice_pronunciation': 'PRACTICE PRONUNCIATION',
       'continue': 'CONTINUE',
       
-      // Sentence Building Screen
-      'prompt_sentence_select': 'Select the correct answer for the blank.',
-      'instruction_sentence_select': 'Choose the word that fills the blank.',
-      'prompt_sentence_build': 'Build a sentence by dragging words.',
-      'instruction_sentence_drag': 'Drag words to build the sentence.',
-      'prompt_sentence_type': 'Type the word that fills the blank.',
-      'instruction_sentence_type': 'Type the correct sentence.',
-      'prompt_sentence_review': 'Review your sentences.',
+      // Guides
+      'word_guide': 'Word Guide',
+      'sentence_guide': 'Sentence Guide',
+      'cumulative_review': 'Cumulative Review',
+
+      // Sentence Building Screen (Module 3)
+      'prompt_sentence_select': 'Choose the word that completes the sentence.',
+      'instruction_sentence_select': 'Select the correct word for the blank.',
+      'prompt_sentence_build': 'Arrange the words to form the correct sentence.',
+      'instruction_sentence_drag': 'Drag or tap words to form the sentence.',
+      'prompt_sentence_type': 'Type the missing word in the blank.',
+      'instruction_sentence_type': 'Type the correct word to complete the sentence.',
+      'prompt_sentence_review': 'Review this sentence to reinforce your learning.',
       'lesson_context_title': 'Lesson Context',
       'lesson_context_desc': 'Read the story to understand the context of the words.',
+      'time_remaining': 'Time Remaining',
+      'feedback_correct': 'Correct!',
+      'feedback_incorrect': 'Incorrect',
 
       // Round One Completed Screen
       'lesson_completed': 'Lesson Completed!',
@@ -480,6 +586,19 @@ class LocalizationService {
       'back_to_path': 'BACK TO PATH',
       'back_to_dashboard': 'BACK TO DASHBOARD',
       'practice_more': 'PRACTICE MORE (MODULE 2)',
+
+      // Lesson Score Screen
+      'all_words_mastered_msg': 'All words mastered! Excellent job!',
+      'keep_practising_msg': 'Keep practicing to master more words!',
+      'bonus': 'Bonus',
+      'words_mastered': 'Words Mastered',
+      'still_needs_practice': 'Still Needs Practice',
+
+      // Leaderboard
+      'this_week': 'This Week',
+      'all_time': 'All Time',
+      'leaderboard_title': 'Leaderboard',
+      'no_leaderboard_data': 'No leaderboard data available yet.',
 
       // Settings Screen
       'edit_profile': 'EDIT PROFILE',
@@ -500,7 +619,6 @@ class LocalizationService {
       'progress_summary': 'PROGRESS SUMMARY',
       'progress_summary_desc': 'View stats, badges, and history',
       'sandbox_mode_desc': 'Practice custom words and topics',
-      
       'app_preferences_section': 'APP PREFERENCES',
       'language_preference': 'Language Preference',
       'cebuano_to_english': 'Cebuano',
@@ -522,6 +640,11 @@ class LocalizationService {
       'pin_wrong': 'Current PIN is incorrect.',
       'name_empty': 'Name cannot be empty.',
       'age_invalid': 'Age must be between 9 and 12.',
+      
+      // Activity Buttons
+      'true': 'TRUE',
+      'false': 'FALSE',
+      'check': 'CHECK',
     }
   };
 

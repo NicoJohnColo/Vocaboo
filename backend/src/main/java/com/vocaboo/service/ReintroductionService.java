@@ -42,6 +42,11 @@ public class ReintroductionService {
     }
 
     @Transactional
+    public DifficultyProgressResponse acknowledgeUnderstanding(UUID learnerId, UUID wordId) {
+        return acknowledgeUnderstanding(learnerId, wordId, 2);
+    }
+
+    @Transactional
     public DifficultyProgressResponse acknowledgeUnderstanding(UUID learnerId, UUID wordId, Integer moduleNumber) {
         return difficultyAdjustmentService.completeReintroduction(learnerId, wordId, moduleNumber);
     }

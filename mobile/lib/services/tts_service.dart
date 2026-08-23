@@ -155,10 +155,11 @@ class TTSService {
   /// Stops any ongoing speech synthesis.
   static Future<void> stop() async {
     try {
-      await _flutterTts.stop();
-    } catch (e) {
-      // ignore: avoid_print
-      print('TTSService.stop error: $e');
+      if (_initializeFuture != null) {
+        await _flutterTts.stop();
+      }
+    } catch (_) {
+      // Safely ignore if engine is not currently bound
     }
   }
 }

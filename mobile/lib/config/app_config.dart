@@ -11,7 +11,7 @@ class AppConfig {
     if (Platform.isAndroid) {
       // 10.0.2.2 is the special alias to your host loopback interface (127.0.0.1) for Android Emulators.
       // If you are testing on a PHYSICAL Android device over Wi-Fi, change this back to your computer's current IPv4 address (e.g. 192.168.x.x)
-      return 'http://10.0.2.2:8081/api/v1';
+      return 'http://192.168.1.16:8081/api/v1';
     }
     return 'http://127.0.0.1:8081/api/v1';
   }

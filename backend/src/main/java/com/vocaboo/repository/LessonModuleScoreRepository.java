@@ -13,5 +13,7 @@ public interface LessonModuleScoreRepository extends JpaRepository<LessonModuleS
     Optional<LessonModuleScore> findByLearnerLearnerIdAndLessonLessonIdAndModuleNumber(UUID learnerId, UUID lessonId, Integer moduleNumber);
     List<LessonModuleScore> findByLearnerLearnerIdAndModuleNumber(UUID learnerId, Integer moduleNumber);
     List<LessonModuleScore> findByLearnerLearnerId(UUID learnerId);
+    List<LessonModuleScore> findByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
     void deleteByLearnerLearnerId(UUID learnerId);
+    void deleteByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
 }

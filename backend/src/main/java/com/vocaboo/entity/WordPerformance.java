@@ -54,6 +54,13 @@ public class WordPerformance {
     @Builder.Default
     private Integer tierDropCount = 0;
 
+    /**
+     * Number of times this word experienced asset fallbacks in Module 4 practice.
+     */
+    @Column(name = "fallback_count", nullable = false)
+    @Builder.Default
+    private Integer fallbackCount = 0;
+
     @Column(name = "total_attempts", nullable = false)
     @Builder.Default
     private Integer totalAttempts = 0;

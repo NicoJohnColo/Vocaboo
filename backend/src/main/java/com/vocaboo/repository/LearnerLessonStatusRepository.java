@@ -14,5 +14,6 @@ public interface LearnerLessonStatusRepository extends JpaRepository<LearnerLess
     List<LearnerLessonStatus> findByLessonLessonId(UUID lessonId);
     void deleteByLearnerLearnerId(UUID learnerId);
     void deleteByLessonLessonId(UUID lessonId);
+    void deleteByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
 }
 

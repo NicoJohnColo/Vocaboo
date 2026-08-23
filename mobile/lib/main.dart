@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_router.dart';
+import 'core/motion/motion.dart';
 import 'providers/auth_provider.dart';
 import 'providers/lesson_provider.dart';
-import 'providers/cumulative_review_provider.dart';
+
 import 'services/tts_service.dart';
 
 void main() async {
@@ -27,13 +28,7 @@ void main() async {
             return LessonProvider(auth);
           },
         ),
-        ChangeNotifierProxyProvider<AuthProvider, CumulativeReviewProvider>(
-          create: (_) => CumulativeReviewProvider(),
-          update: (_, auth, previous) {
-            previous?.update(auth.learner, auth.token);
-            return previous ?? CumulativeReviewProvider()..update(auth.learner, auth.token);
-          },
-        ),
+
       ],
       child: const VocabooApp(),
     ),
@@ -73,32 +68,7 @@ class VocabooApp extends StatelessWidget {
             borderRadius: BorderRadius.all(Radius.circular(16)),
           ),
         ),
-        textTheme: const TextTheme(
-          displayLarge: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
-            fontFamily: 'Outfit',
-          ),
-          titleLarge: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
-            fontFamily: 'Outfit',
-          ),
-          bodyLarge: TextStyle(
-            fontSize: 16,
-            color: Color(0xFF334155),
-            height: 1.5,
-            fontFamily: 'Outfit',
-          ),
-          bodyMedium: TextStyle(
-            fontSize: 14,
-            color: Color(0xFF64748B),
-            height: 1.4,
-            fontFamily: 'Outfit',
-          ),
-        ),
+        textTheme: AppTypography.createTextTheme(),
       ),
       routerConfig: AppRouter.router,
     );

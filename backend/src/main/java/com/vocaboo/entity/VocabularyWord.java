@@ -119,8 +119,8 @@ public class VocabularyWord {
     private String tileSentence;
 
     /** Optional hint shown only at LEARNING difficulty level */
-    @Column(name = "hint_text", columnDefinition = "TEXT")
-    private String hintText;
+    @Column(name = "explanation_text", columnDefinition = "TEXT")
+    private String explanationText;
 
     /** Exact text fed to Cebuano TTS (distinct from audio_asset_path file path) */
     @Column(name = "audio_text_cebuano", columnDefinition = "TEXT")

@@ -68,7 +68,7 @@ public class ReintroductionIntegrationTest {
                         .content(objectMapper.writeValueAsString(reqBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currentLevel").value("LEARNING"))
-                .andExpect(jsonPath("$.showHints").value(false))
+                .andExpect(jsonPath("$.showExplanations").value(false))
                 .andExpect(jsonPath("$.needsReintroduction").value(false));
 
         // Error 2 -> triggers Short Reintroduction

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum MascotType { bibo, toti, sippy, starry, group }
+enum MascotType { bibo, toti, sippy, starry, group, robi }
 
 class MascotVisual extends StatelessWidget {
   final MascotType type;
@@ -59,6 +59,15 @@ class MascotVisual extends StatelessWidget {
           normalGif: 'assets/images/gifs/blue rabbit says hi.gif',
           sadGif: 'assets/images/gifs/blue rabbit shocked.gif',
           celebratingGif: 'assets/images/gifs/blue rabbit says hi.gif',
+          size: size,
+          isCelebrating: isCelebrating,
+          isSad: isSad,
+        );
+      case MascotType.robi:
+        return _MascotGif(
+          normalGif: 'assets/images/gifs/robi.gif',
+          sadGif: 'assets/images/gifs/robi.gif',
+          celebratingGif: 'assets/images/gifs/robi.gif',
           size: size,
           isCelebrating: isCelebrating,
           isSad: isSad,

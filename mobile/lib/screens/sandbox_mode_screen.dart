@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/motion.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
 import '../services/tts_service.dart';
+import '../widgets/mascot_bubble.dart';
 import 'vocabulary_introduction_screen.dart';
 
 class SandboxModeScreen extends StatefulWidget {
@@ -22,8 +26,61 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
   List<Map<String, dynamic>> _words = [];
   bool _isOffline = false;
 
+  Timer? _shiftingTimer;
+  int _currentBatchIndex = 0;
+
+  static const List<List<Map<String, String>>> _topicBatches = [
+    [
+      {'label': '🚀 Outer Space', 'value': 'Outer Space'},
+      {'label': '🍕 Food & Snacks', 'value': 'Food'},
+      {'label': '⚽ Sports & Games', 'value': 'Sports'},
+      {'label': '🦁 Wild Animals', 'value': 'Animals'},
+    ],
+    [
+      {'label': '🦖 Dinosaurs', 'value': 'Dinosaurs'},
+      {'label': '🎨 Colors & Art', 'value': 'Colors'},
+      {'label': '🏰 Castles & Knights', 'value': 'Castles'},
+      {'label': '🌊 Ocean Creatures', 'value': 'Ocean Animals'},
+    ],
+    [
+      {'label': '🚗 Fast Vehicles', 'value': 'Vehicles'},
+      {'label': '🎸 Music & Beats', 'value': 'Music'},
+      {'label': '🌦️ Sky & Weather', 'value': 'Weather'},
+      {'label': '🦸 Superheroes', 'value': 'Superheroes'},
+    ],
+    [
+      {'label': '🍦 Sweet Desserts', 'value': 'Desserts'},
+      {'label': '🌳 Nature & Forest', 'value': 'Nature'},
+      {'label': '🤖 Robots & AI', 'value': 'Robots'},
+      {'label': '🐬 Sea Life', 'value': 'Sea Creatures'},
+    ],
+    [
+      {'label': '🎪 Circus & Magic', 'value': 'Circus'},
+      {'label': '🏕️ Camping & Woods', 'value': 'Camping'},
+      {'label': '🪐 Planets & Stars', 'value': 'Astronomy'},
+      {'label': '🚂 Trains & Trips', 'value': 'Trains'},
+    ],
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _startShiftingTimer();
+  }
+
+  void _startShiftingTimer() {
+    _shiftingTimer?.cancel();
+    _shiftingTimer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
+      if (!mounted) return;
+      setState(() {
+        _currentBatchIndex = (_currentBatchIndex + 1) % _topicBatches.length;
+      });
+    });
+  }
+
   @override
   void dispose() {
+    _shiftingTimer?.cancel();
     _customWordController.dispose();
     super.dispose();
   }
@@ -150,7 +207,14 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pref = Provider.of<AuthProvider>(context, listen: false).learner?.languagePreference;
+    final auth = Provider.of<AuthProvider>(context);
+    final learner = auth.learner;
+    final pref = learner?.languagePreference;
+    final displayName = learner?.displayName;
+    final trimmedName = displayName?.trim();
+    final learnerName = (trimmedName != null && trimmedName.isNotEmpty)
+        ? trimmedName
+        : 'Friend';
 
     if (_isOffline) {
       return Scaffold(
@@ -158,16 +222,27 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+            tooltip: 'Back',
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                context.go('/home');
+              }
+            },
+          ),
           title: Text(
             LocalizationService.translate(pref, 'sandbox_mode'),
             style: const TextStyle(
               fontFamily: 'Outfit',
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF0F172A),
+              color: Color(0xFF06A6FF),
             ),
           ),
-          automaticallyImplyLeading: false,
         ),
         body: SafeArea(
           child: Padding(
@@ -226,7 +301,11 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () {
-                    Navigator.of(context).pop();
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      context.go('/home');
+                    }
                   },
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF64748B),
@@ -244,18 +323,65 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
       );
     }
 
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+            tooltip: 'Back',
+            onPressed: () {
+              setState(() {
+                _loading = false;
+              });
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                context.go('/home');
+              }
+            },
+          ),
+          title: Text(
+            LocalizationService.translate(pref, 'sandbox_mode'),
+            style: const TextStyle(
+              fontFamily: 'Outfit',
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF06A6FF),
+            ),
+          ),
+        ),
+        body: _buildLoadingView(pref),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          tooltip: 'Back',
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/home');
+            }
+          },
+        ),
         title: Text(
           LocalizationService.translate(pref, 'sandbox_mode'),
           style: const TextStyle(
             fontFamily: 'Outfit',
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0F172A),
+            color: Color(0xFF06A6FF),
           ),
         ),
       ),
@@ -265,39 +391,133 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Enter a topic or word (e.g., weather, sports, colors) to generate a sandbox lesson.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+              // Robi Greeting with Speech Bubble
+              MascotBubble(
+                mascotName: 'Robi',
+                speechText: "Hi, $learnerName! I'm Robi! 🤖 Type any topic or word you want to practice, and I'll generate a custom lesson for you!",
+                ttsText: "Hi $learnerName! I am Robi! Type any topic or word you want to practice, and I will create a custom lesson for you.",
+                avatarSize: 96,
+              ),
+              const SizedBox(height: 12),
+
+              // Shifting & Phasing Topic Suggestion Chips
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'QUICK TOPIC IDEAS',
+                        style: TextStyle(
+                          fontFamily: 'Outfit',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF94A3B8),
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF06A6FF),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      setState(() {
+                        _currentBatchIndex = (_currentBatchIndex + 1) % _topicBatches.length;
+                      });
+                      _startShiftingTimer();
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      child: Row(
+                        children: [
+                          Icon(Icons.autorenew_rounded, size: 14, color: Color(0xFF06A6FF)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Shuffle',
+                            style: TextStyle(
+                              fontFamily: 'Outfit',
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF06A6FF),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 600),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
+                transitionBuilder: (Widget child, Animation<double> animation) {
+                  final fade = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+                  final slide = Tween<Offset>(
+                    begin: const Offset(0.0, 0.15),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutBack));
+                  return FadeTransition(
+                    opacity: fade,
+                    child: SlideTransition(
+                      position: slide,
+                      child: child,
+                    ),
+                  );
+                },
+                child: KeyedSubtree(
+                  key: ValueKey<int>(_currentBatchIndex),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _topicBatches[_currentBatchIndex].map((t) {
+                      return _suggestionChip(t['label']!, t['value']!);
+                    }).toList(),
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
+
               TextField(
                 controller: _customWordController,
                 decoration: const InputDecoration(
                   labelText: 'Topic or Word',
-                  hintText: 'Input',
+                  hintText: 'e.g., Space, Animals, Weather...',
                 ),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loading ? null : _generate,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF06A6FF),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
+              AppPressable(
+                onTap: _loading ? null : _generate,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _generate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF06A6FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text(
+                          'GENERATE SANDBOX',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
                 ),
-                child: _loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text(
-                        'GENERATE SANDBOX',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
@@ -369,6 +589,141 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
                   ),
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _suggestionChip(String label, String value) {
+    return ActionChip(
+      label: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: 'Outfit',
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF0369A1),
+        ),
+      ),
+      backgroundColor: const Color(0xFFE0F2FE),
+      side: const BorderSide(color: Color(0xFFBAE6FD), width: 1.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      onPressed: () {
+        _customWordController.text = value;
+      },
+    );
+  }
+
+  Widget _buildLoadingView(String? pref) {
+    final topic = _customWordController.text.trim();
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        image: DecorationImage(
+          image: AssetImage('assets/images/loadingscreen_background.jpg'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Robi GIF animation
+              SizedBox(
+                width: 180,
+                height: 180,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/images/gifs/robi.gif',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const Center(
+                      child: CircularProgressIndicator(color: Color(0xFF06A6FF)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 36),
+
+              // Topic / Progress message card
+              Container(
+                width: 290,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      topic.isNotEmpty
+                          ? 'Creating lesson for "$topic"'
+                          : 'Creating your custom lesson...',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'Outfit',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Robi is generating words & interactive activities!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Outfit',
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 36),
+
+              // Animated progress bar
+              Container(
+                width: 130,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: const LinearProgressIndicator(
+                    backgroundColor: Color(0xFFE2E8F0),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF06A6FF)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Loading text
+              const Text(
+                'Loading...',
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
+              ),
             ],
           ),
         ),

@@ -35,29 +35,24 @@ public class SessionSummaryService {
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
 
-        String posFocus = learner.getPosFocus();
-        List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).stream()
-                .filter(w -> posFocus == null || "ALL".equalsIgnoreCase(posFocus) || posFocus.equalsIgnoreCase(w.getPartOfSpeech()))
-                .collect(Collectors.toList());
-        int totalWords = words.size();
+        List<VocabularyWord> allLessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        int totalWords = allLessonWords.size();
         int correct = 0;
         int incorrect = 0;
         int attempts = 0;
 
-        if (words != null) {
-            for (VocabularyWord word : words) {
-                WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
-                        .orElse(null);
-                if (perf != null) {
-                    correct += perf.getCorrectCount();
-                    incorrect += perf.getIncorrectCount();
-                    attempts += perf.getTotalAttempts();
-                }
+        for (VocabularyWord word : allLessonWords) {
+            WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
+                    .orElse(null);
+            if (perf != null) {
+                correct += perf.getCorrectCount();
+                incorrect += perf.getIncorrectCount();
+                attempts += perf.getTotalAttempts();
             }
         }
 
         BigDecimal accuracy = BigDecimal.ZERO;
-        if (reviewScore != null) {
+        if (reviewScore != null && reviewScore > 0) {
             accuracy = BigDecimal.valueOf(reviewScore).setScale(2, RoundingMode.HALF_UP);
         } else if (attempts > 0) {
             accuracy = BigDecimal.valueOf((double) correct / attempts * 100.0)
@@ -106,23 +101,31 @@ public class SessionSummaryService {
         long masteredWords = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
         long totalWordsForLesson = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).size();
         
-        if (masteredWords >= totalWordsForLesson && !lessonStatus.getLessonCompletionBonusAwarded()) {
-            bonusPoints += 200;
-            PointTransaction tx = PointTransaction.builder()
-                    .learner(learner)
-                    .actionType(PointActionType.LESSON_COMPLETE)
-                    .pointsAwarded(200)
-                    .relatedSessionId(sessionId)
-                    .createdAt(OffsetDateTime.now())
-                    .build();
-            pointTransactionRepository.save(tx);
-            
-            lessonStatus.setLessonCompletionBonusAwarded(true);
-            
-            // Strictly enforce LessonStatus.COMPLETED here (Bug A)
+        if (masteredWords >= totalWordsForLesson) {
+            if (!lessonStatus.getLessonCompletionBonusAwarded()) {
+                bonusPoints += 200;
+                PointTransaction tx = PointTransaction.builder()
+                        .learner(learner)
+                        .actionType(PointActionType.LESSON_COMPLETE)
+                        .pointsAwarded(200)
+                        .relatedSessionId(sessionId)
+                        .createdAt(OffsetDateTime.now())
+                        .build();
+                pointTransactionRepository.save(tx);
+                
+                lessonStatus.setLessonCompletionBonusAwarded(true);
+            }
             lessonStatus.setStatus(LessonStatus.COMPLETED);
-            lessonStatusRepository.save(lessonStatus);
+            lessonStatus.setCompletedAt(OffsetDateTime.now());
         }
+
+        if (accuracy != null) {
+            if (lessonStatus.getMasteryScore() == null || accuracy.compareTo(lessonStatus.getMasteryScore()) >= 0) {
+                lessonStatus.setMasteryScore(accuracy);
+            }
+        }
+        lessonStatus.setUpdatedAt(OffsetDateTime.now());
+        lessonStatusRepository.save(lessonStatus);
 
         boolean isPerfect = (isPerfectFirstAttempt != null && isPerfectFirstAttempt) ||
                 (results.isEmpty() ? sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0 : (results.stream().noneMatch(r -> !r.getIsCorrect()) && sessionAccuracy.compareTo(BigDecimal.valueOf(100.0)) == 0));

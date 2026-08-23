@@ -22,25 +22,25 @@ public interface DifficultyProgressRepository extends JpaRepository<DifficultyPr
     List<DifficultyProgress> findByLearnerLearnerIdAndModuleNumber(UUID learnerId, Integer moduleNumber);
     List<DifficultyProgress> findByLearnerLearnerIdAndNeedsReintroductionTrue(UUID learnerId);
     void deleteByLearnerLearnerId(UUID learnerId);
+    void deleteByLearnerLearnerIdAndWordLessonLessonId(UUID learnerId, UUID lessonId);
 
     List<DifficultyProgress> findByLearnerLearnerIdAndWordLessonLessonId(UUID learnerId, UUID lessonId);
 
-    /** Count words where BOTH Module 2 and Module 3 are MASTERED for the given learner and lesson. */
+    /** Count distinct words MASTERED for the given learner and lesson. */
     @org.springframework.data.jpa.repository.Query(
-        "SELECT COUNT(w) FROM VocabularyWord w " +
-        "WHERE w.lesson.lessonId = :lessonId " +
-        "  AND EXISTS (SELECT 1 FROM DifficultyProgress dp1 WHERE dp1.word = w AND dp1.learner.learnerId = :learnerId AND dp1.moduleNumber = 2 AND dp1.currentLevel = 'MASTERED') " +
-        "  AND EXISTS (SELECT 1 FROM DifficultyProgress dp2 WHERE dp2.word = w AND dp2.learner.learnerId = :learnerId AND dp2.moduleNumber = 3 AND dp2.currentLevel = 'MASTERED')"
+        "SELECT COUNT(DISTINCT dp.word.wordId) FROM DifficultyProgress dp " +
+        "WHERE dp.word.lesson.lessonId = :lessonId " +
+        "  AND dp.learner.learnerId = :learnerId " +
+        "  AND dp.currentLevel = 'MASTERED'"
     )
     long countMasteredWordsByLearnerAndLesson(
         @org.springframework.data.repository.query.Param("learnerId") UUID learnerId,
         @org.springframework.data.repository.query.Param("lessonId") UUID lessonId);
 
-    /** Count total words where BOTH Module 2 and Module 3 are MASTERED for the given learner across all lessons. */
+    /** Count total distinct words MASTERED for the given learner across lessons. */
     @org.springframework.data.jpa.repository.Query(
-        "SELECT COUNT(w) FROM VocabularyWord w " +
-        "WHERE EXISTS (SELECT 1 FROM DifficultyProgress dp1 WHERE dp1.word = w AND dp1.learner.learnerId = :learnerId AND dp1.moduleNumber = 2 AND dp1.currentLevel = 'MASTERED') " +
-        "  AND EXISTS (SELECT 1 FROM DifficultyProgress dp2 WHERE dp2.word = w AND dp2.learner.learnerId = :learnerId AND dp2.moduleNumber = 3 AND dp2.currentLevel = 'MASTERED')"
+        "SELECT COUNT(DISTINCT dp.word.wordId) FROM DifficultyProgress dp " +
+        "WHERE dp.learner.learnerId = :learnerId AND dp.currentLevel = 'MASTERED'"
     )
     long countTotalMasteredWordsByLearner(
         @org.springframework.data.repository.query.Param("learnerId") UUID learnerId);

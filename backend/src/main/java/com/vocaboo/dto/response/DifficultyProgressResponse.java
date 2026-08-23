@@ -29,6 +29,6 @@ public class DifficultyProgressResponse {
     private Boolean diagnosticAdministered;
     private String diagnosticResult;
     private String diagnosticActivityType;
-    private Boolean showHints;
+    private Boolean showExplanations;
     private OffsetDateTime lastAdjustedAt;
 }

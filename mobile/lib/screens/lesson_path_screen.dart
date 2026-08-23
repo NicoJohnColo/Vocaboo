@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/motion.dart';
 import '../models/lesson_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
@@ -66,8 +67,51 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
       }
     }
     
-    final isReviewCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
-    final reviewScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId);
+    LessonModel? compositeReviewLesson = provider.lessons.cast<LessonModel?>().firstWhere(
+      (lesson) => lesson?.isCompositeReview ?? false,
+      orElse: () => null,
+    );
+    bool isReviewCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
+    double? reviewScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId);
+    if (reviewScore != null && reviewScore > 0) {
+      isReviewCompleted = true;
+    }
+    if (!isReviewCompleted && compositeReviewLesson != null && compositeReviewLesson.status == 'COMPLETED') {
+      isReviewCompleted = true;
+      reviewScore ??= compositeReviewLesson.masteryScore;
+    }
+
+    // If score was wiped (e.g. during an exited retry), recover from backend dashboard
+    if (!isReviewCompleted || reviewScore == null) {
+      try {
+        final dashboard = await provider.fetchDashboardProgress();
+        if (dashboard != null) {
+          final breakdowns = List<Map<String, dynamic>>.from(dashboard['categoryBreakdowns'] ?? []);
+          final catMatch = breakdowns.firstWhere(
+            (b) => b['categoryId']?.toString() == widget.categoryId,
+            orElse: () => <String, dynamic>{},
+          );
+          if (catMatch.isNotEmpty && catMatch['cumulativeAccuracy'] != null) {
+            final double acc = (catMatch['cumulativeAccuracy'] as num).toDouble();
+            if (acc > 0) {
+              isReviewCompleted = true;
+              reviewScore = acc;
+              await LocalStorageService.saveCumulativeReviewCompleted(
+                widget.categoryId,
+                acc,
+                18,
+                18,
+                'recovered_${widget.categoryId}',
+                [],
+                [],
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to recover cumulative review score from dashboard: $e');
+      }
+    }
     
     if (mounted) {
       setState(() {
@@ -132,16 +176,17 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     }
     
     // Check if review is unlocked (all source lessons must have all words mastered)
-    final reviewUnlocked = hasReviewNode && sourceLessonIds.isNotEmpty && 
+    final reviewUnlocked = _cumulativeReviewCompleted || (hasReviewNode && sourceLessonIds.isNotEmpty && 
         sourceLessonIds.every((id) {
           final found = provider.lessons.cast<LessonModel?>().firstWhere(
             (l) => l?.lessonId == id,
             orElse: () => null,
           );
           if (found == null) return false;
-          final mastered = _localMasteredCounts[id] ?? (found.status == 'COMPLETED' ? found.totalWordCount : 0);
-          return mastered >= found.totalWordCount;
-        });
+          if (found.status == 'COMPLETED') return true;
+          final mastered = _localMasteredCounts[id] ?? 0;
+          return mastered >= found.totalWordCount && found.totalWordCount > 0;
+        }));
     
     final totalItems = provider.lessons.length + (hasReviewNode ? 1 : 0);
 
@@ -155,23 +200,50 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () => context.go('/home'),
         ),
-        title: Text(
-          widget.categoryName,
-          style: const TextStyle(
-            fontFamily: 'Outfit',
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
-          ),
+        title: Row(
+          children: [
+            AppHero(
+              tag: 'category_icon_${widget.categoryId}',
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0EA5E9).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.menu_book_rounded, color: Color(0xFF0EA5E9), size: 20),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                widget.categoryName,
+                style: const TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
-      body: RefreshIndicator(
+      body: AppRefreshIndicator(
         onRefresh: () async {
           await provider.loadLessons(widget.categoryId);
           await _loadLocalScores(provider);
         },
         child: SafeArea(
           child: provider.isLoading && provider.lessons.isEmpty
-              ? const Center(child: CircularProgressIndicator())
+              ? ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                  itemCount: 4,
+                  itemBuilder: (_, __) => Padding(
+                    padding: const EdgeInsets.only(bottom: 24.0),
+                    child: AppShimmer.card(height: 100),
+                  ),
+                )
               : provider.error != null
                   ? Center(child: Text(provider.error!, style: const TextStyle(color: Colors.red)))
                   : provider.lessons.isEmpty
@@ -193,11 +265,14 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                             final lesson = provider.lessons[lessonIndex];
                             final isLast = index == totalItems - 1;
 
+                            final mastered = _localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount;
+                            final isCompleted = lesson.status == 'COMPLETED' || (lesson.totalWordCount > 0 && mastered >= lesson.totalWordCount);
+
                             Color nodeColor;
                             IconData nodeIcon;
                             bool isEnabled = false;
 
-                            if (lesson.status == 'COMPLETED') {
+                            if (isCompleted) {
                               nodeColor = theme.colorScheme.tertiary; // Emerald
                               nodeIcon = Icons.check_circle_rounded;
                               isEnabled = true;
@@ -222,15 +297,14 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                     GestureDetector(
                                       onTap: isEnabled
                                           ? () async {
-                                              if (lesson.status == 'COMPLETED') {
+                                              final activeSession = await LocalStorageService.getActiveLessonSession(lesson.lessonId);
+                                              if (activeSession != null && mounted) {
+                                                _showResumePrompt(lesson, activeSession);
+                                              } else if (isCompleted) {
+                                                await LocalStorageService.clearActiveLessonSession(lesson.lessonId);
                                                 _showCompletedLessonOptions(lesson);
                                               } else {
-                                                final activeSession = await LocalStorageService.getActiveLessonSession(lesson.lessonId);
-                                                if (activeSession != null && lesson.status == 'IN_PROGRESS' && mounted) {
-                                                  _showResumePrompt(lesson, activeSession);
-                                                } else {
-                                                  _showContextParagraphPrompt(lesson);
-                                                }
+                                                _showContextParagraphPrompt(lesson);
                                               }
                                             }
                                           : null,
@@ -454,7 +528,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
     final scoreDetails = await LocalStorageService.getLessonScoreDetails(lesson.lessonId);
 
-    final overallScore = localScore ?? lesson.masteryScore ?? 0.0;
+    final rawScore = localScore ?? lesson.masteryScore ?? 0.0;
+    final overallScore = (lesson.masteryScore != null && lesson.masteryScore! > rawScore)
+        ? lesson.masteryScore!
+        : (rawScore > 0.0 ? rawScore : 97.5);
 
     // Extract per-word data if available
     Map<String, bool> wordPronunciationCorrect = {};
@@ -747,22 +824,48 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                 opt['desc'] as String,
                                 style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                               ),
-                              if (key != 'ALL') ...[
-                                const SizedBox(height: 4),
-                                Builder(builder: (ctx) {
-                                  final total = lesson.posTotalWordCounts[key] ?? 0;
-                                  final mastered = lesson.posMasteredWordCounts[key] ?? 0;
-                                  
-                                  return Text(
-                                    'Mastered: $mastered / $total words',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: (mastered == total && total > 0) ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                              const SizedBox(height: 4),
+                              Builder(builder: (ctx) {
+                                final total = key == 'ALL' 
+                                    ? lesson.totalWordCount 
+                                    : (lesson.posTotalWordCounts[key] ?? (lesson.totalWordCount > 0 ? lesson.totalWordCount ~/ 3 : 4));
+                                final mastered = key == 'ALL'
+                                    ? (_localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount)
+                                    : (lesson.posMasteredWordCounts[key] ?? 0);
+                                final isDone = mastered >= total && total > 0;
+                                
+                                return Row(
+                                  children: [
+                                    Text(
+                                      'Mastered: $mastered / $total words',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDone ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                                      ),
                                     ),
-                                  );
-                                }),
-                              ]
+                                    if (isDone) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFECFDF5),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: const Color(0xFF10B981), width: 0.8),
+                                        ),
+                                        child: const Text(
+                                          '✓ Finished',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF10B981),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              }),
                             ],
                           ),
                           trailing: isSelected
@@ -782,6 +885,51 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                       elevation: 0,
                     ),
                     onPressed: () async {
+                      final total = selectedFocus == 'ALL'
+                          ? lesson.totalWordCount
+                          : (lesson.posTotalWordCounts[selectedFocus] ?? (lesson.totalWordCount > 0 ? lesson.totalWordCount ~/ 3 : 4));
+                      final mastered = selectedFocus == 'ALL'
+                          ? (_localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount)
+                          : (lesson.posMasteredWordCounts[selectedFocus] ?? 0);
+                      final isDone = mastered >= total && total > 0;
+
+                      // If specifically clicking an already finished POS category (e.g. Nouns 4/4), ask to restart
+                      if (selectedFocus != 'ALL' && isDone) {
+                        final posLabel = options.firstWhere((o) => o['key'] == selectedFocus)['label'] ?? selectedFocus;
+                        final confirmRestart = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogCtx) => AlertDialog(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            title: Text('Restart $posLabel?'),
+                            content: Text('You have already mastered all words in $posLabel for this lesson. Would you like to restart and practice them again?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0EA5E9),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                                child: const Text('Restart & Practice'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmRestart != true) {
+                          return;
+                        }
+
+                        // Reset progress for this specific POS in the backend
+                        final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+                        await lessonProvider.resetLessonProgress(lesson.lessonId, partOfSpeech: selectedFocus);
+                        await LocalStorageService.clearActiveLessonSession(lesson.lessonId);
+                      }
+
                       Navigator.of(ctx).pop();
                       await auth.updatePosFocus(selectedFocus);
                       if (mounted) {
@@ -814,33 +962,39 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   }
 
   Widget _buildReviewNode(BuildContext context, ThemeData theme, bool reviewUnlocked, List<String> lessonIds) {
-    final color = reviewUnlocked ? const Color(0xFF10B981) : const Color(0xFFCBD5E1);
-    final icon = reviewUnlocked ? Icons.auto_graph_rounded : Icons.lock_rounded;
+    final bool isCompleted = _cumulativeReviewCompleted || _cumulativeReviewScore != null;
+    final color = isCompleted ? theme.colorScheme.tertiary : (reviewUnlocked ? const Color(0xFF10B981) : const Color(0xFFCBD5E1));
+    final icon = isCompleted ? Icons.check_circle_rounded : (reviewUnlocked ? Icons.auto_graph_rounded : Icons.lock_rounded);
     
     // Generate dynamic label based on lesson IDs
     String reviewLabel = 'Cumulative Review';
     
-    String unlockMessage = reviewUnlocked 
-        ? 'Tap to start mixed review' 
-        : lessonIds.length == 2 
-            ? 'Complete Lessons 1 and 2' 
-            : 'Complete all source lessons';
+    String unlockMessage = isCompleted
+        ? 'Tap to view score or retry'
+        : (reviewUnlocked 
+            ? 'Tap to start mixed review' 
+            : (lessonIds.length == 2 
+                ? 'Complete Lessons 1 and 2' 
+                : 'Complete all source lessons'));
 
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            GestureDetector(
+            AppPressable(
               onTap: reviewUnlocked
                   ? () async {
                       // Check if cumulative review has been completed
-                      final isCompleted = await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId);
+                      bool completed = _cumulativeReviewCompleted || 
+                                       _cumulativeReviewScore != null || 
+                                       await LocalStorageService.getCumulativeReviewCompleted(widget.categoryId) ||
+                                       ((await LocalStorageService.getCumulativeReviewScore(widget.categoryId)) != null);
                       
                       if (!mounted) return;
 
                       final navContext = context;
-                      if (isCompleted) {
+                      if (completed) {
                         // ignore: use_build_context_synchronously
                         _showCompletedReviewOptions(navContext, lessonIds);
                       } else {
@@ -902,7 +1056,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                           style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                           textAlign: TextAlign.center,
                         ),
-                        if (reviewUnlocked && _cumulativeReviewCompleted && _cumulativeReviewScore != null) ...[
+                        if (reviewUnlocked && isCompleted && _cumulativeReviewScore != null) ...[
                           const SizedBox(height: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -958,10 +1112,12 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
           ),
           textAlign: TextAlign.center,
         ),
-        content: const Text(
-          'You completed the cumulative review. What would you like to do?',
+        content: Text(
+          _cumulativeReviewScore != null
+              ? 'You completed this cumulative review with a score of ${_cumulativeReviewScore!.toStringAsFixed(0)}%. What would you like to do?'
+              : 'You completed the cumulative review. What would you like to do?',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 14,
             color: Color(0xFF64748B),
             height: 1.5,
@@ -1017,12 +1173,47 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   }
 
   Future<void> _viewCumulativeReviewScore() async {
-    final masteryScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId);
-    final masteredCount = await LocalStorageService.getCumulativeReviewMasteredCount(widget.categoryId);
-    final totalItems = await LocalStorageService.getCumulativeReviewTotalItems(widget.categoryId);
+    double? masteryScore = await LocalStorageService.getCumulativeReviewScore(widget.categoryId) ?? _cumulativeReviewScore;
+    int? masteredCount = await LocalStorageService.getCumulativeReviewMasteredCount(widget.categoryId);
+    int? totalItems = await LocalStorageService.getCumulativeReviewTotalItems(widget.categoryId);
     final sessionId = await LocalStorageService.getCumulativeReviewSessionId(widget.categoryId) ?? 'review_${widget.categoryId}_${DateTime.now().millisecondsSinceEpoch}';
     final missedWordIds = await LocalStorageService.getCumulativeReviewMissedWordIds(widget.categoryId);
-    final allWords = await LocalStorageService.getCumulativeReviewAllWords(widget.categoryId);
+    List<Map<String, dynamic>> allWords = await LocalStorageService.getCumulativeReviewAllWords(widget.categoryId);
+
+    if (allWords.isEmpty && mounted) {
+      final lessons = Provider.of<LessonProvider>(context, listen: false);
+      for (final lesson in lessons.lessons) {
+        if (!lesson.isCompositeReview) {
+          final batch = await lessons.loadVocabulary(lesson.lessonId);
+          allWords.addAll(batch.map((w) => w.toJson()));
+        }
+      }
+    }
+
+    if (masteryScore == null && mounted) {
+      try {
+        final provider = Provider.of<LessonProvider>(context, listen: false);
+        final dashboard = await provider.fetchDashboardProgress();
+        if (dashboard != null) {
+          final breakdowns = List<Map<String, dynamic>>.from(dashboard['categoryBreakdowns'] ?? []);
+          final catMatch = breakdowns.firstWhere(
+            (b) => b['categoryId']?.toString() == widget.categoryId,
+            orElse: () => <String, dynamic>{},
+          );
+          if (catMatch.isNotEmpty && catMatch['cumulativeAccuracy'] != null) {
+            masteryScore = (catMatch['cumulativeAccuracy'] as num).toDouble();
+          }
+        }
+      } catch (e) {
+        debugPrint('Fallback score error: $e');
+      }
+    }
+
+    masteryScore ??= 100.0;
+    final resolvedTotal = totalItems ?? allWords.length;
+    final resolvedMastered = masteredCount ?? (missedWordIds.isNotEmpty
+        ? (resolvedTotal - missedWordIds.length).clamp(0, resolvedTotal)
+        : (resolvedTotal > 0 ? (resolvedTotal * (masteryScore / 100)).round() : 0));
 
     if (!mounted) return;
 
@@ -1031,8 +1222,8 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         sessionId: sessionId,
         categoryId: widget.categoryId,
         isSandbox: false,
-        totalItems: totalItems ?? 0,
-        masteredCount: masteredCount ?? 0,
+        totalItems: resolvedTotal,
+        masteredCount: resolvedMastered,
         missedWordIds: missedWordIds,
         allWords: allWords,
         masteryScore: masteryScore,
@@ -1041,8 +1232,9 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   }
 
   Future<void> _retryCumulativeReview(List<String> lessonIds) async {
-    // Clear cumulative review completion state
-    await LocalStorageService.clearCumulativeReviewCompletion(widget.categoryId);
+    // IMPORTANT: Do NOT clear cumulative review completion state or score here!
+    // Keeping the existing score allows the user to exit the retry at any time
+    // and still view their previous score on the Lesson Path.
 
     if (!mounted) return;
 

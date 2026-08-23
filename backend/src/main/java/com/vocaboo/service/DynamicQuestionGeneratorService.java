@@ -58,7 +58,7 @@ public class DynamicQuestionGeneratorService {
         // Tier-based parameters
         int optionCount   = getOptionCountForLevel(learnerId, level);
         int timerLimit    = getTimerLimitForLevel(learnerId, level);
-        boolean showHints = (level == DifficultyLevel.LEARNING);
+        boolean showExplanations = (level == DifficultyLevel.LEARNING);
 
         Map<String, Object> q = new HashMap<>();
         q.put("wordId",          word.getWordId().toString());
@@ -67,12 +67,12 @@ public class DynamicQuestionGeneratorService {
         q.put("eligibleActivityTypes", word.getEligibleActivityTypes());
         q.put("difficultyLevel", level.name());
         q.put("timeLimitSeconds", timerLimit);
-        q.put("showHints",       showHints);
+        q.put("showExplanations",       showExplanations);
         // Cebuano meaning MUST always be exposed because it serves as the prompt for Multiple Choice
         // and other activities, regardless of difficulty tier.
         q.put("cebuanoMeaning",  word.getCebuanoMeaning());
         q.put("imageAssetPath",  word.getImageAssetPath());
-        q.put("hintText",        showHints ? word.getHintText() : null);
+        q.put("explanationText",        showExplanations ? word.getExplanationText() : null);
         q.put("exampleSentenceEnglish", word.getExampleSentenceEnglish());
         q.put("exampleSentenceCebuano", (word.getExampleSentenceCebuano() != null && !word.getExampleSentenceCebuano().isBlank()) ? word.getExampleSentenceCebuano() : word.getCebuanoMeaning());
 
@@ -125,10 +125,10 @@ public class DynamicQuestionGeneratorService {
                 .map(AdaptiveMetric::getOptionCount)
                 .orElseGet(() -> {
                     switch (level) {
-                        case LEARNING:   return 2;  // 1 distractor + correct = 2 options
-                        case FAMILIAR:   return 3;  // 2 distractors + correct = 3 options
-                        case PROFICIENT: return 4;  // 3 distractors + correct = 4 options
-                        default:         return 3;
+                        case LEARNING:   return 3;  // 2 distractors + correct = 3 options
+                        case FAMILIAR:   return 4;  // 3 distractors + correct = 4 options
+                        case PROFICIENT: return 5;  // 4 distractors + correct = 5 options
+                        default:         return 4;
                     }
                 });
     }
@@ -219,11 +219,8 @@ public class DynamicQuestionGeneratorService {
     private void generateMatching(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level) {
         // Tier pair counts:
         // LEARNING: 2 pairs
-        // FAMILIAR: 3 pairs
-        // PROFICIENT: 4 pairs
-        int pairCount = (level == DifficultyLevel.LEARNING) ? 2
-                      : (level == DifficultyLevel.FAMILIAR)  ? 3
-                      : 4;
+        // FAMILIAR & PROFICIENT: 3 pairs (aligned with 3 target POS words per lesson)
+        int pairCount = (level == DifficultyLevel.LEARNING) ? 2 : 3;
 
         q.put("questionText", "Match each English word with its Cebuano meaning.");
 
@@ -288,6 +285,7 @@ public class DynamicQuestionGeneratorService {
         List<Map<String, String>> pairs = new ArrayList<>();
         for (VocabularyWord mw : matchPool) {
             Map<String, String> pair = new HashMap<>();
+            pair.put("wordId", mw.getWordId().toString());
             pair.put("english", mw.getEnglishWord());
             pair.put("cebuano", mw.getCebuanoMeaning());
             pairs.add(pair);
@@ -316,21 +314,23 @@ public class DynamicQuestionGeneratorService {
         if (targetIdx == -1 && tokensArr.length > 0) targetIdx = 0;
 
         // Tier distractor-tile counts:
-        // LEARNING: target word pre-placed (anchored), rest scrambled
-        // FAMILIAR: all words scrambled, no anchor
-        // PROFICIENT: all words + 2 distractor tiles
+        // LEARNING: 2 distractors
+        // FAMILIAR: 3 distractors
+        // PROFICIENT: 4 distractors
         List<String> tileBank = new ArrayList<>(allTokens);
         String anchoredWord = null;
 
-        if (level == DifficultyLevel.LEARNING && targetIdx >= 0) {
-            anchoredWord = tokensArr[targetIdx];
-            tileBank.remove(anchoredWord);
-        } else if (level == DifficultyLevel.PROFICIENT) {
-            int distractorCount = 2;
-            List<String> extraTiles = Arrays.asList("the", "a", "is", "was", "are");
-            for (int i = 0; i < distractorCount && i < extraTiles.size(); i++) {
-                tileBank.add(extraTiles.get(i));
-            }
+        int distractorCount = (level == DifficultyLevel.LEARNING) ? 2
+                            : (level == DifficultyLevel.FAMILIAR)  ? 3
+                            : 4;
+
+        List<String> extraTiles = new ArrayList<>(Arrays.asList("the", "a", "an", "is", "are", "was", "were", "has", "have", "had", "do", "does", "did", "to", "of", "in", "for", "with", "on", "at", "by", "from"));
+        // Remove tiles that are already in the sentence to avoid confusion if possible
+        extraTiles.removeIf(t -> allTokens.stream().anyMatch(token -> token.equalsIgnoreCase(t)));
+        Collections.shuffle(extraTiles);
+
+        for (int i = 0; i < distractorCount && i < extraTiles.size(); i++) {
+            tileBank.add(extraTiles.get(i));
         }
 
         Collections.shuffle(tileBank);

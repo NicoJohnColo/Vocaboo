@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
-import 'cumulative_mixed_review_screen.dart';
 import 'loading_screen.dart';
 import '../models/vocabulary_word_model.dart';
 import '../models/pronunciation_attempt_model.dart';
@@ -87,7 +87,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   bool _isLoading = true;
   String? _error;
   Map<String, String> _wordDifficulties = {};
-  double _maxProgress = 0.0;
   final Set<String> _sentenceMasteredWordIds = {};
 
   // Queues and Progression State
@@ -107,6 +106,46 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   List<Map<String, dynamic>> _confusablePairs = [];
   final Map<String, bool> _confusableMastery = {};
   bool _pronunciationBatchCompleted = false;
+
+  // Per-word stage progression tracking in Module 3 (Sentence Building):
+  // REVISED FORMAT: 1 correct answer per activity type = advance (no collective rounds)
+  // 1: LEARNING (Sentence Completion: 1 blank, 2 distractors, 40s timer -> Sentence Arrangement: 1 tile + 2 distractors, 40s timer)
+  // 2: FAMILIAR (Sentence Completion: 2 blanks, 3 distractors, 40s timer -> Sentence Arrangement: 2 tiles + 2 distractors, 40s timer)
+  // 3: PROFICIENT (Sentence Completion: 3 blanks, free type, 40s timer -> Sentence Arrangement: 3 tiles, no distractors, 35s timer -> Pronunciation)
+  // 4: MASTERED (Word complete)
+  final Map<String, int> _wordStage = {};
+  
+  // Track maximum stage reached for consistent progress calculation (progress never decreases)
+  final Map<String, int> _maxWordStage = {};
+  final Map<String, int> _consecutiveFailures = {};
+
+  int _getWordStage(String wordId) {
+    if (_wordStage.containsKey(wordId)) {
+      return _wordStage[wordId]!;
+    }
+    final cleanId = wordId.toLowerCase().trim();
+    for (final entry in _wordStage.entries) {
+      if (entry.key.toLowerCase().trim() == cleanId) {
+        return entry.value;
+      }
+    }
+    // Module 3: All words start at FAMILIAR (Stage 2) by default
+    // Only use stored difficulty if it's MASTERED
+    final diff = (_wordDifficulties[wordId] ?? _wordDifficulties[cleanId] ?? 'FAMILIAR').toUpperCase();
+    if (diff == 'MASTERED') return 4;
+    return 2; // FAMILIAR (Default for Module 3 - all words start at Stage 2)
+  }
+
+  String _getStageTier(int stage) {
+    if (stage <= 1) return 'LEARNING';
+    if (stage == 2) return 'FAMILIAR';
+    if (stage == 3) return 'PROFICIENT';
+    return 'MASTERED';
+  }
+
+  // Sandbox dual-clear tracking per word
+  final Map<String, bool> _sandboxCompletionCleared = {};
+  final Map<String, bool> _sandboxRearrangementCleared = {};
 
   // Inline confusable distinction state
   Map<String, dynamic>? _activeConfusablePair;
@@ -239,13 +278,19 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       List<VocabularyWordModel> fetchedWords = [];
       List<Map<String, dynamic>> fetchedConfusables = [];
 
-      // Prefer words passed via navigation (fast path)
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final posFocus = auth.learner?.posFocus;
+      final String? filter = (posFocus != null && posFocus != 'ALL' && posFocus.isNotEmpty)
+          ? posFocus
+          : null;
+
+      // Prefer words passed via navigation (preserves user's selection: ALL vs NOUN/VERB)
       if (widget.allWords.isNotEmpty) {
         fetchedWords = widget.allWords
             .map((w) => VocabularyWordModel.fromJson(w))
             .toList();
       } else if (widget.isSandbox) {
-        // Sandbox: fetch the sandbox session words only; do NOT fall back to local assets or other endpoints.
+        // Sandbox: fetch the sandbox session words only
         try {
           final mixed = await lessonProvider.getCumulativeMixedReview(
             widget.sessionId,
@@ -274,60 +319,46 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
           return;
         }
       } else {
-        // Primary backend fetch for non-sandbox
-        final auth = Provider.of<AuthProvider>(context, listen: false);
-        final posFocus = auth.learner?.posFocus;
-        final filter = (posFocus != null && posFocus != 'ALL')
-            ? posFocus
-            : null;
-
+        // Primary backend fetch: respects filter ('NOUN', 'VERB', or null for 'ALL')
         fetchedWords = await lessonProvider.loadVocabulary(
           widget.lessonId,
           partOfSpeech: filter,
         );
+      }
 
-        if (!widget.isSandbox) {
-          _wordDifficulties = await lessonProvider.loadWordDifficulties(widget.lessonId, moduleNumber: 3);
-          
-          int getTierPoints(String tier) {
-            switch (tier.toUpperCase()) {
-              case 'LEARNING': return 0;
-              case 'FAMILIAR': return 1;
-              case 'PROFICIENT': return 2;
-              case 'MASTERED': return 3;
-              default: return 0;
-            }
+      if (!widget.isSandbox) {
+        _wordDifficulties = await lessonProvider.loadWordDifficulties(widget.lessonId, moduleNumber: 3);
+        
+        // Module 3: Force all non-MASTERED words to start at FAMILIAR (Stage 2)
+        // This ensures the Round 1: Familiar Level behavior as specified
+        for (final word in fetchedWords) {
+          final currentTier = (_wordDifficulties[word.wordId] ?? 'FAMILIAR').toUpperCase();
+          if (currentTier != 'MASTERED') {
+            _wordDifficulties[word.wordId] = 'FAMILIAR';
           }
-          int totalMaxPoints = fetchedWords.length * 3;
-          int currentPoints = 0;
-          for (final w in fetchedWords) {
-            currentPoints += getTierPoints(_wordDifficulties[w.wordId] ?? 'LEARNING');
-          }
-          final calculatedProgress = totalMaxPoints == 0 ? 0.0 : (currentPoints / totalMaxPoints);
-          if (calculatedProgress > _maxProgress) _maxProgress = calculatedProgress;
         }
+      }
 
-        // Fallback 1: try lesson activity endpoint which sometimes contains word-like items
-        if (fetchedWords.isEmpty) {
-          final activity = await lessonProvider.loadLessonActivity(
-            widget.lessonId,
-            partOfSpeech: filter,
-          );
-          if (activity.isNotEmpty) {
-            fetchedWords = activity
-                .map(
-                  (m) => VocabularyWordModel.fromJson({
-                    'wordId': m['wordId'] ?? m['id'] ?? '',
-                    'lessonId': widget.lessonId,
-                    'englishWord': m['word'] ?? m['englishWord'] ?? '',
-                    'cebuanoMeaning':
-                        m['definition'] ?? m['cebuanoMeaning'] ?? '',
-                    'exampleSentenceEnglish':
-                        m['example'] ?? m['exampleSentenceEnglish'] ?? '',
-                  }),
-                )
-                .toList();
-          }
+      // Fallback 1: try lesson activity endpoint if still empty
+      if (fetchedWords.isEmpty) {
+        final activity = await lessonProvider.loadLessonActivity(
+          widget.lessonId,
+          partOfSpeech: filter,
+        );
+        if (activity.isNotEmpty) {
+          fetchedWords = activity
+              .map(
+                (m) => VocabularyWordModel.fromJson({
+                  'wordId': m['wordId'] ?? m['id'] ?? '',
+                  'lessonId': widget.lessonId,
+                  'englishWord': m['word'] ?? m['englishWord'] ?? '',
+                  'cebuanoMeaning':
+                      m['definition'] ?? m['cebuanoMeaning'] ?? '',
+                  'exampleSentenceEnglish':
+                      m['example'] ?? m['exampleSentenceEnglish'] ?? '',
+                }),
+              )
+              .toList();
         }
       }
 
@@ -349,15 +380,71 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
         return;
       }
 
+      // Restore progress snapshot if the learner exited mid-session
+      if (!widget.isSandbox) {
+        final snapshot = await LocalStorageService.getModuleProgressSnapshot(widget.sessionId);
+        if (snapshot != null && snapshot['lessonId'] == widget.lessonId) {
+          final savedDiffs = snapshot['wordDifficulties'];
+          if (savedDiffs is Map) {
+            final overrides = Map<String, String>.fromEntries(
+              savedDiffs.entries.map((e) => MapEntry(e.key.toString(), e.value.toString())),
+            );
+            // Merge saved difficulties — but force non-MASTERED to FAMILIAR for Module 3
+            for (final entry in overrides.entries) {
+              final tier = entry.value.toUpperCase();
+              if (tier == 'MASTERED') {
+                _wordDifficulties[entry.key] = 'MASTERED';
+              } else {
+                _wordDifficulties[entry.key] = 'FAMILIAR'; // Force to FAMILIAR for Module 3
+              }
+            }
+            debugPrint('SentenceBuilding: Restored ${overrides.length} word difficulties from prior session snapshot.');
+          }
+
+          final savedStages = snapshot['wordStages'];
+          if (savedStages is Map) {
+            for (final entry in savedStages.entries) {
+              final stageVal = int.tryParse(entry.value.toString());
+              if (stageVal != null) {
+                // Only restore stage if it's MASTERED, otherwise default to FAMILIAR (Stage 2)
+                // This ensures Round 1: Familiar Level behavior as specified
+                if (stageVal >= 4) {
+                  _wordStage[entry.key.toString()] = stageVal;
+                } else {
+                  _wordStage[entry.key.toString()] = 2; // Force to FAMILIAR
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (!mounted) return;
+
       setState(() {
         _words = fetchedWords;
         _totalUniqueWords = fetchedWords.length;
         _confusablePairs = fetchedConfusables;
 
-        // Build a queue with all words in this lesson for sentence building and pronunciation practice
-        final List<VocabularyWordModel> builtQueue = List<VocabularyWordModel>.from(fetchedWords)..shuffle();
+        // Fresh words entering Module 3 start at FAMILIAR (Stage 2: Sentence Completion).
+        // If answered correctly -> advances to Proficient. If answered wrong -> drops to Learning.
+        // Preserve MASTERED words - only initialize new words to FAMILIAR
+        for (final w in fetchedWords) {
+          final currentTier = (_wordDifficulties[w.wordId] ?? 'FAMILIAR').toUpperCase();
+          if (currentTier == 'MASTERED') {
+            // Keep MASTERED words at Stage 4
+            _wordStage.putIfAbsent(w.wordId, () => 4);
+            _wordDifficulties.putIfAbsent(w.wordId, () => 'MASTERED');
+          } else {
+            // Force all non-MASTERED words to Stage 2 (FAMILIAR)
+            _wordStage[w.wordId] = 2;
+            _wordDifficulties[w.wordId] = 'FAMILIAR';
+          }
+        }
 
-        _queue = builtQueue;
+        // Build queue: start all active words at Familiar (Stage 2)
+        _queue = List<VocabularyWordModel>.from(fetchedWords);
+        
         _startNextItem();
         _isLoading = false;
       });
@@ -382,9 +469,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   }
 
   String _activityAnswer(VocabularyWordModel word) {
-    return (word.sentenceCompletionAnswer?.trim().isNotEmpty ?? false)
+    final answerRaw = (word.sentenceCompletionAnswer?.trim().isNotEmpty ?? false)
         ? word.sentenceCompletionAnswer!.trim()
         : word.englishWord;
+    return answerRaw;
   }
 
   void _speakFullSentence() {
@@ -419,30 +507,25 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
 
 
   void _startNextItem() {
-    if (_queue.isEmpty) {
-      // End of current queue pass!
-      debugPrint('Module 3 complete, navigating to results...');
-      _handleQueueEmpty();
-      return;
+    while (_queue.isNotEmpty) {
+      final candidate = _queue.removeAt(0);
+      final stage = _getWordStage(candidate.wordId);
+      if (stage < 4) {
+        _currentWord = candidate;
+        _currentPhase = Phase.sentenceActivity;
+        
+        // Every word starts with Sentence Completion at its current level
+        _currentFormat = ActivityFormat.completion;
+
+        setState(() {
+          _resetItemState();
+        });
+        return;
+      }
     }
 
-    _currentWord = _queue.removeAt(0);
-    
-    // Skip if the word became MASTERED during an earlier activity in this pass
-    if ((_wordDifficulties[_currentWord.wordId] ?? 'LEARNING') == 'MASTERED') {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startNextItem();
-      });
-      return;
-    }
-
-    // Pattern: Completion -> Voice Pronunciation -> Sentence Arrangement
-    _currentPhase = Phase.sentenceActivity;
-    _currentFormat = ActivityFormat.completion;
-
-    setState(() {
-      _resetItemState();
-    });
+    // All words in the queue are completed or mastered
+    _handleQueueEmpty();
   }
 
   void _resetItemState() {
@@ -476,17 +559,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   void _startActivityTimer() {
     _activityTimer?.cancel();
     
-    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
-    if (level == 'LEARNING') {
-      _totalSeconds = 0;
-    } else if (level == 'FAMILIAR') {
-      _totalSeconds = 30;
-    } else if (level == 'PROFICIENT') {
-      _totalSeconds = 20;
-    } else if (level == 'MASTERED') {
-      _totalSeconds = 15;
+    final stage = _getWordStage(_currentWord.wordId);
+    if (stage == 1 || stage == 2) {
+      _totalSeconds = 40; // Learning & Familiar: 40 seconds
+    } else if (stage == 3) {
+      _totalSeconds = 35; // Proficient: 35 seconds
     } else {
-      _totalSeconds = 0; // LEARNING
+      _totalSeconds = 0;
     }
     
     _remainingSeconds = _totalSeconds;
@@ -518,17 +597,66 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
 
   void _parseDynamicBlanks() {
     _completionTokens.clear();
-    final sentence = _currentWord.exampleSentenceEnglish.isNotEmpty 
-                     ? _currentWord.exampleSentenceEnglish 
-                     : (_currentWord.sentenceCompletionSentence?.isNotEmpty == true 
-                         ? _currentWord.sentenceCompletionSentence! 
-                         : _currentWord.englishWord);
-                     
-    final targetWord = _activityAnswer(_currentWord).toLowerCase();
+    final sentence = _activitySentence(_currentWord);
+    final targetWord = _activityAnswer(_currentWord).trim().toLowerCase();
+    final stage = _getWordStage(_currentWord.wordId);
+    
+    // Determine number of blanks based on stage (revised format)
+    // Stage 1 (LEARNING): 1 blank
+    // Stage 2 (FAMILIAR): 2 blanks  
+    // Stage 3 (PROFICIENT): 3 blanks (free type)
+    int numBlanks;
+    switch (stage) {
+      case 1: numBlanks = 1; break;
+      case 2: numBlanks = 2; break;
+      case 3: numBlanks = 3; break;
+      default: numBlanks = 2; break; // Default to Familiar
+    }
+    
+    // First, check if the sentence explicitly contains a placeholder
+    final placeholderExp = RegExp(r"\{\s*BLANK\s*\}|_{3,}", caseSensitive: false);
+    final placeholderMatches = placeholderExp.allMatches(sentence).toList();
+    
+    if (placeholderMatches.isNotEmpty) {
+      // Use explicit placeholders - but limit to stage-appropriate number
+      int lastEnd = 0;
+      int blanksUsed = 0;
+      for (final match in placeholderMatches) {
+        if (blanksUsed >= numBlanks) {
+          // Don't add more blanks than stage allows
+          if (match.start > lastEnd) {
+            _completionTokens.add(CompletionToken(text: sentence.substring(lastEnd, match.start), isBlank: false));
+          }
+          _completionTokens.add(CompletionToken(
+            text: match.group(0)!, // Keep original placeholder as text
+            isBlank: false, 
+            answer: null
+          ));
+          lastEnd = match.end;
+          continue;
+        }
+        
+        if (match.start > lastEnd) {
+          _completionTokens.add(CompletionToken(text: sentence.substring(lastEnd, match.start), isBlank: false));
+        }
+        _completionTokens.add(CompletionToken(
+          text: '____', 
+          isBlank: true, 
+          answer: targetWord
+        ));
+        lastEnd = match.end;
+        blanksUsed++;
+      }
+      if (lastEnd < sentence.length) {
+        _completionTokens.add(CompletionToken(text: sentence.substring(lastEnd), isBlank: false));
+      }
+      return;
+    }
     
     final RegExp wordExp = RegExp(r"[\w'-]+");
     final matches = wordExp.allMatches(sentence).toList();
     
+    // Find target word index
     int targetMatchIdx = -1;
     for (int i = 0; i < matches.length; i++) {
       if (matches[i].group(0)!.toLowerCase() == targetWord) {
@@ -536,7 +664,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
         break;
       }
     }
-    // If not found exactly, just pick the longest word as fallback target
+    // If not found exactly, match partial word or pick longest word
+    if (targetMatchIdx == -1 && matches.isNotEmpty) {
+      for (int i = 0; i < matches.length; i++) {
+        final m = matches[i].group(0)!.toLowerCase();
+        if (m.contains(targetWord) || targetWord.contains(m)) {
+          targetMatchIdx = i;
+          break;
+        }
+      }
+    }
     if (targetMatchIdx == -1 && matches.isNotEmpty) {
       int maxLen = 0;
       for (int i = 0; i < matches.length; i++) {
@@ -547,9 +684,34 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       }
     }
 
-    Set<int> blankIndices = {};
+    // Select words to blank based on stage
+    List<int> blankIndices = [];
     if (targetMatchIdx != -1) {
       blankIndices.add(targetMatchIdx);
+      
+      // Add additional blanks based on stage
+      if (numBlanks > 1 && matches.length > 1) {
+        // Add adjacent words for additional blanks
+        for (int offset = 1; blankIndices.length < numBlanks; offset++) {
+          // Try word before target
+          if (targetMatchIdx - offset >= 0 && !blankIndices.contains(targetMatchIdx - offset)) {
+            blankIndices.add(targetMatchIdx - offset);
+          }
+          // Try word after target
+          if (blankIndices.length < numBlanks && targetMatchIdx + offset < matches.length && !blankIndices.contains(targetMatchIdx + offset)) {
+            blankIndices.add(targetMatchIdx + offset);
+          }
+          // If still need more blanks, add any other words
+          if (blankIndices.length < numBlanks) {
+            for (int i = 0; i < matches.length; i++) {
+              if (!blankIndices.contains(i)) {
+                blankIndices.add(i);
+                if (blankIndices.length >= numBlanks) break;
+              }
+            }
+          }
+        }
+      }
     }
 
     int lastEnd = 0;
@@ -558,6 +720,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       if (match.start > lastEnd) {
          _completionTokens.add(CompletionToken(text: sentence.substring(lastEnd, match.start), isBlank: false));
       }
+      
       bool isBlank = blankIndices.contains(i);
       _completionTokens.add(CompletionToken(
         text: isBlank ? '____' : match.group(0)!, 
@@ -574,40 +737,60 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   void _generateCompletionOptions() {
     _parseDynamicBlanks();
     
+    final stage = _getWordStage(_currentWord.wordId);
+    
+    // Stage 3 (PROFICIENT) should be free type - no multiple choice options
+    if (stage >= 3) {
+      _completionOptions = [];
+      return;
+    }
+    
     // The correct answers are all the blanked words
     final correctAnswers = _completionTokens
         .where((t) => t.isBlank && t.answer != null)
         .map((t) => t.answer!)
         .toList();
 
-    // Build a pool from other words in the session
-    final pool = _words
-        .where((word) => word.wordId != _currentWord.wordId)
-        .map((word) => word.englishWord)
-        .toSet()
-        .toList();
+    // Use options from the database!
+    final List<String> dbOptions = [];
+    if (_currentWord.sentenceCompletionOption1?.trim().isNotEmpty ?? false) dbOptions.add(_currentWord.sentenceCompletionOption1!.trim());
+    if (_currentWord.sentenceCompletionOption2?.trim().isNotEmpty ?? false) dbOptions.add(_currentWord.sentenceCompletionOption2!.trim());
+    if (_currentWord.sentenceCompletionOption3?.trim().isNotEmpty ?? false) dbOptions.add(_currentWord.sentenceCompletionOption3!.trim());
+    
+    if (dbOptions.isEmpty) {
+      if (_currentWord.mcDistractor1?.trim().isNotEmpty ?? false) dbOptions.add(_currentWord.mcDistractor1!.trim());
+      if (_currentWord.mcDistractor2?.trim().isNotEmpty ?? false) dbOptions.add(_currentWord.mcDistractor2!.trim());
+      if (_currentWord.mcDistractor3?.trim().isNotEmpty ?? false) dbOptions.add(_currentWord.mcDistractor3!.trim());
+    }
 
-    final fallbackDistractors = [
-      'apple', 'house', 'water', 'friend', 'school',
-      'book', 'tree', 'happy', 'run', 'big', 'small', 'quickly'
-    ];
-    for (var w in fallbackDistractors) {
-      pool.add(w);
+    final pool = dbOptions.toSet().toList();
+
+    // Only fallback if the database has absolutely no distractors for this word
+    if (pool.isEmpty) {
+      // Build a pool from other words in the session
+      final sessionWords = _words
+          .where((word) => word.wordId != _currentWord.wordId)
+          .map((word) => word.englishWord)
+          .toList();
+      pool.addAll(sessionWords);
+
+      final fallbackDistractors = [
+        'apple', 'house', 'water', 'friend', 'school',
+        'book', 'tree', 'happy', 'run', 'big', 'small', 'quickly'
+      ];
+      pool.addAll(fallbackDistractors);
     }
     
     pool.removeWhere((w) => correctAnswers.any((ans) => ans.toLowerCase() == w.toLowerCase()));
 
-    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
-    int numOptions = 3;
-    
-    if (level == 'LEARNING' || level == 'FAMILIAR') {
-      numOptions = 3; // correct(1) + 2 distractors
-    } else {
-      numOptions = 0; // Free-type (PROFICIENT & MASTERED)
-    }
+    // Calculate distractors based on stage (revised format)
+    // Stage 1 (LEARNING): 1 blank + 2 distractors = 3 total options
+    // Stage 2 (FAMILIAR): 2 blanks + 3 distractors = 5 total options
+    int numDistractors = (stage == 1) ? 2 : 3;
 
     pool.shuffle();
-    final distractors = pool.take(numOptions > correctAnswers.length ? numOptions - correctAnswers.length : 0).toList();
+    // Use whatever distractors we have up to numDistractors
+    final distractors = pool.take(numDistractors).toList();
 
     _completionOptions = [...correctAnswers, ...distractors];
     _completionOptions.shuffle();
@@ -621,29 +804,29 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       return;
     }
 
-    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+    final stage = _getWordStage(_currentWord.wordId);
     int n = allTokens.length;
-    int tileCount = n;
+    int tileCount = 3;
     int fakeCount = 0;
 
-    if (level == 'LEARNING') {
-      // 1 tile to place (the target word)
+    // Revised tile counts based on stage
+    if (stage == 1) {
+      // Stage 1 (Learning): 1 tile to place (target word) + 2 distractors
       tileCount = 1;
-      fakeCount = 0;
-    } else if (level == 'FAMILIAR') {
-      // 2 tiles to place
+      fakeCount = 2;
+    } else if (stage == 2) {
+      // Stage 2 (Familiar): 2 tiles to place + 2 distractors
       tileCount = 2;
-      if (tileCount > n) tileCount = n;
+      fakeCount = 2;
+    } else if (stage == 3) {
+      // Stage 3 (Proficient): 3 tiles to arrange, NO distractors
+      tileCount = 3;
       fakeCount = 0;
-    } else if (level == 'PROFICIENT') {
-      // Most/all words
-      tileCount = n > 3 ? n - 1 : n;
-      fakeCount = 1;
-    } else if (level == 'MASTERED') {
-      // Full sentence scrambled
-      tileCount = n;
-      fakeCount = 3;
+    } else {
+      tileCount = 3;
+      fakeCount = 0;
     }
+    if (tileCount > n) tileCount = n;
 
     // Identify target index for centering the partial tiles
     String targetWord = _currentWord.englishWord.trim();
@@ -754,7 +937,27 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   }
 
   Future<void> _checkMasteryAndLoopOrComplete() async {
-    await _completeModuleAndAdvance();
+    final unmasteredWords = _words.where((w) {
+      final stage = _getWordStage(w.wordId);
+      return stage < 4;
+    }).toList();
+
+    if (unmasteredWords.isNotEmpty) {
+      debugPrint('SentenceBuilding: ${unmasteredWords.length} words not yet MASTERED (Stage 4). Re-queuing...');
+      
+      // Shuffle the words that still need to advance
+      final List<VocabularyWordModel> requeue = List.from(unmasteredWords)..shuffle();
+      
+      setState(() {
+        _queue = requeue;
+        _isReinforcementPass = false;
+      });
+      
+      _startNextItem();
+    } else {
+      debugPrint('SentenceBuilding: All words reached MASTERED (Stage 4). Completing module...');
+      await _completeModuleAndAdvance();
+    }
   }
 
   void _checkConfusableAnswers() {
@@ -809,8 +1012,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   Future<void> _completeModuleAndAdvance() async {
     final navContext = context;
 
-    final totalActivities = _totalUniqueWords * 3;
+    final totalAttempts = (_initialPassCorrectCount + _failedSentenceWords.length).clamp(1, 9999);
+    final totalCorrect = _initialPassCorrectCount;
+    final overallScore = ((totalCorrect / totalAttempts) * 100.0).clamp(0.0, 100.0);
     final int activeSeconds = _computeActiveSeconds();
+
     try {
       await Provider.of<LessonProvider>(
         context,
@@ -818,8 +1024,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       ).persistModuleScore(
         widget.lessonId,
         widget.isSandbox ? null : 3,
-        _initialPassCompletedCount,
-        totalActivities > 0 ? totalActivities : _totalUniqueWords,
+        totalCorrect,
+        totalAttempts,
         isSandbox: widget.isSandbox,
         sessionId: widget.sessionId,
         timeSeconds: activeSeconds,
@@ -828,19 +1034,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       debugPrint('Module 3 score sync failed, continuing anyway: $e');
     }
 
+    // Clear the saved progress snapshot and active lesson session now that the module is complete
+    await LocalStorageService.clearModuleProgressSnapshot(widget.sessionId);
+    await LocalStorageService.clearActiveLessonSession(widget.lessonId);
+
     if (!mounted) return;
 
-
-    // Calculate overall score using completed activities count against total activities
-    // Each word has 2 activities (tile arrangement + voice validation)
-    final overallScore =
-        (totalActivities > 0
-                ? (_initialPassCompletedCount / totalActivities) * 100
-                : 0.0)
-            .clamp(0.0, 100.0);
-
     debugPrint(
-      'Module 3 score: completedCount=$_initialPassCompletedCount, totalActivities=$totalActivities, totalWords=$_totalUniqueWords, score=$overallScore%',
+      'Module 3 score: completedCount=$totalCorrect, totalActivities=$totalAttempts, totalWords=$_totalUniqueWords, score=$overallScore%',
     );
 
     // Get failed sentence word IDs
@@ -942,13 +1143,31 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       }
     }
 
-    if (!widget.isSandbox) {
+    if (widget.isSandbox) {
+      if (_isCorrect) {
+        if (_currentFormat == ActivityFormat.rearrangement) {
+          final currentStage = _getWordStage(_currentWord.wordId);
+          final nextStage = (currentStage + 1).clamp(0, 5);
+          final nextTier = _getStageTier(nextStage);
+
+          setState(() {
+            _wordStage[_currentWord.wordId] = nextStage;
+            _wordDifficulties[_currentWord.wordId] = nextTier;
+            if (nextStage == 5) {
+              _sentenceMasteredWordIds.add(_currentWord.wordId);
+            }
+          });
+        }
+      }
+    } else {
       final provider = Provider.of<LessonProvider>(context, listen: false);
       provider.submitPracticeResult(
         widget.sessionId,
         _currentWord.wordId,
         _isCorrect,
-        activityType: 'WORD_TILE_ARRANGEMENT',
+        activityType: _currentFormat == ActivityFormat.completion
+            ? 'SENTENCE_COMPLETION'
+            : 'SENTENCE_ARRANGEMENT',
       );
       provider.submitReviewItem(
         sessionId: widget.sessionId,
@@ -957,27 +1176,22 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
         confidence: 3,
       );
       
-      // Wire up Difficulty API for both Module 2 and Module 3
+      // Wire up Difficulty API for Module 3
       provider.submitDifficultyResult(
         _currentWord.wordId,
         _isCorrect,
-        activityType: _currentFormat == ActivityFormat.completion ? 'SENTENCE_COMPLETION' : 'SENTENCE_REARRANGEMENT',
-        moduleNumber: 2,
-      );
-      provider.submitDifficultyResult(
-        _currentWord.wordId,
-        _isCorrect,
-        activityType: _currentFormat == ActivityFormat.completion ? 'SENTENCE_COMPLETION' : 'SENTENCE_REARRANGEMENT',
+        activityType: _currentFormat == ActivityFormat.completion ? 'SENTENCE_COMPLETION' : 'SENTENCE_ARRANGEMENT',
         moduleNumber: widget.moduleNumber,
       ).then((res) {
         if (mounted && res != null) {
           final newLevel = res['currentLevel']?.toString() ?? '';
-          setState(() {
-            _wordDifficulties[_currentWord.wordId] = newLevel;
-            if (newLevel == 'MASTERED') {
+          if (newLevel == 'MASTERED') {
+            setState(() {
+              _wordStage[_currentWord.wordId] = 4;
+              _wordDifficulties[_currentWord.wordId] = 'MASTERED';
               _sentenceMasteredWordIds.add(_currentWord.wordId);
-            }
-          });
+            });
+          }
         }
       });
     }
@@ -987,45 +1201,114 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
     });
   }
 
-  Future<void> _handleContinueFromSentence() async {
-    debugPrint('Continue button tapped in Module 3 (format: $_currentFormat, phase: $_currentPhase)');
-    
-    if (_currentFormat == ActivityFormat.completion) {
-      // Step 1 (Sentence Completion) -> Step 2 (Voice Pronunciation)
-      setState(() {
-        _currentPhase = Phase.pronunciationFeedback;
-        _resetItemState();
-      });
-    } else {
-      // Step 3 (Sentence Arrangement) -> Finish this word and proceed to next word!
-      if (_isCorrect) {
-        final provider = Provider.of<LessonProvider>(context, listen: false);
-        if (widget.isSandbox) {
-          final currentLevel = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
-          String nextLevel = 'FAMILIAR';
-          if (currentLevel == 'FAMILIAR') nextLevel = 'PROFICIENT';
-          if (currentLevel == 'PROFICIENT') nextLevel = 'MASTERED';
-          if (currentLevel == 'MASTERED') nextLevel = 'MASTERED';
+  void _advanceCurrentWordStage() {
+    final currentStage = _getWordStage(_currentWord.wordId);
+    final nextStage = (currentStage + 1).clamp(1, 4);
+    final nextTier = _getStageTier(nextStage);
 
-          _wordDifficulties[_currentWord.wordId] = nextLevel;
-          if (nextLevel == 'MASTERED') {
-            _sentenceMasteredWordIds.add(_currentWord.wordId);
-          }
-        } else {
-          provider.updateWordProgress(
-            widget.sessionId,
-            _currentWord.wordId,
-            'FULL',
-            4,
-            _wordDifficulties[_currentWord.wordId] ?? 'LEARNING',
-            moduleNumber: widget.moduleNumber,
-          );
-        }
-        
-        if (!_isReinforcementPass) {
-          _initialPassCompletedCount++;
-        }
+    setState(() {
+      _wordStage[_currentWord.wordId] = nextStage;
+      _wordDifficulties[_currentWord.wordId] = nextTier;
+      // Update max stage for consistent progress (never decreases)
+      _maxWordStage[_currentWord.wordId] = _maxWordStage[_currentWord.wordId] != null 
+          ? max(_maxWordStage[_currentWord.wordId]!, nextStage)
+          : nextStage;
+    });
+
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+    if (!widget.isSandbox) {
+      provider.updateWordProgress(
+        widget.sessionId,
+        _currentWord.wordId,
+        'FULL',
+        4,
+        nextTier,
+        moduleNumber: widget.moduleNumber,
+      );
+    }
+    
+    if (!_isReinforcementPass) {
+      _initialPassCompletedCount++;
+    }
+
+    if (nextStage < 4) {
+      // Add to the back of queue so word cycles into the next tier (Learning -> Familiar -> Proficient)!
+      // But if there are failed words needing priority, add after them
+      if (_failedSentenceWords.isNotEmpty) {
+        _queue.insert(_failedSentenceWords.length, _currentWord);
+      } else {
+        _queue.add(_currentWord);
       }
+      debugPrint('SentenceBuilding: Word ${_currentWord.englishWord} advanced to Stage $nextStage ($nextTier). Queued for next cycle.');
+    } else {
+      _sentenceMasteredWordIds.add(_currentWord.wordId);
+      debugPrint('SentenceBuilding: Word ${_currentWord.englishWord} reached MASTERED (Stage 4)!');
+    }
+  }
+
+  Future<void> _handleContinueFromSentence() async {
+    final stage = _getWordStage(_currentWord.wordId);
+    debugPrint('Continue button tapped in Module 3 (format: $_currentFormat, phase: $_currentPhase, stage: $stage)');
+    
+    if (_isCorrect) {
+      // 1 correct answer = advance - simplified progression
+      if (_currentFormat == ActivityFormat.completion) {
+        // Sentence Completion correct -> Immediately transition to Sentence Arrangement for same word
+        setState(() {
+          _currentFormat = ActivityFormat.rearrangement;
+          _resetItemState();
+        });
+        return;
+      }
+
+      // Sentence Arrangement correct
+      if (stage < 3) {
+        // Stages 1 & 2 (Learning & Familiar): 1 correct answer -> Advance to next stage immediately
+        _advanceCurrentWordStage();
+        _startNextItem();
+      } else {
+        // Stage 3 (Proficient): Sentence Arrangement correct -> Trigger Pronunciation
+        setState(() {
+          _currentPhase = Phase.pronunciationFeedback;
+          _resetItemState();
+        });
+      }
+    } else {
+      // Simplified downgrade: 1 mistake -> drop 1 stage, continue from there
+      // Don't restart entire cycle - just continue from the dropped stage
+      final prevStage = (stage - 1).clamp(1, 4);
+      final prevTier = _getStageTier(prevStage);
+
+      setState(() {
+        _wordStage[_currentWord.wordId] = prevStage;
+        _wordDifficulties[_currentWord.wordId] = prevTier;
+        // Max stage is not decreased - progress stays consistent
+        _maxWordStage[_currentWord.wordId] = _maxWordStage[_currentWord.wordId] != null 
+            ? max(_maxWordStage[_currentWord.wordId]!, stage)
+            : stage;
+        // Reset consecutive failure counter on downgrade
+        _consecutiveFailures[_currentWord.wordId] = 0;
+      });
+
+      final provider = Provider.of<LessonProvider>(context, listen: false);
+      if (!widget.isSandbox) {
+        provider.updateWordProgress(
+          widget.sessionId,
+          _currentWord.wordId,
+          'FULL',
+          4,
+          prevTier,
+          moduleNumber: widget.moduleNumber,
+        );
+      }
+
+      if (!_failedSentenceWords.any((w) => w.wordId == _currentWord.wordId)) {
+        _failedSentenceWords.add(_currentWord);
+      }
+      
+      // Priority requeue - continue from the dropped stage (don't restart cycle)
+      _queue.insert(0, _currentWord);
+      debugPrint('SentenceBuilding: Word ${_currentWord.englishWord} failed at Stage $stage ($_currentFormat), dropped to Stage $prevStage ($prevTier). Requeued with priority to continue from dropped stage.');
       _startNextItem();
     }
   }
@@ -1049,7 +1332,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       // Starting local speech_to_text concurrently with AudioRecorder causes
       // an Android microphone resource conflict: the OS terminates the
       // recorder session early, producing a near-empty .m4a file (< 6 KB)
-      // that Deepgram cannot transcribe (returns empty transcript → 400).
+      // that Deepgram cannot transcribe (returns empty transcript â†’ 400).
       // Audio is instead captured fully by AudioRecorder and evaluated via
       // the Deepgram backend once recording completes.
       // await _startStreamingRecognition(_currentWord.englishWord);
@@ -1317,35 +1600,21 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
 
   void _advancePronunciationPhase() async {
     final provider = Provider.of<LessonProvider>(context, listen: false);
+
+    // Pronunciation is practice-only and not part of core scoring
     if (!widget.isSandbox) {
-      final isPassed = _attemptResult != null && _attemptResult!.isCorrect;
-      provider.submitPracticeResult(
-        widget.sessionId,
-        _currentWord.wordId,
-        isPassed,
-        activityType: 'VOICE_VALIDATION',
-        attemptNumber: _pronunciationAttempt,
-      );
       await provider.updateWordProgress(
         widget.sessionId,
         _currentWord.wordId,
         'FULL',
         4,
-        'INTRODUCED',
+        'MASTERED',
         moduleNumber: widget.moduleNumber,
       );
     }
-
-    if (!_isReinforcementPass) {
-      _initialPassCompletedCount++;
-    }
-
-    // Step 2 (Voice Pronunciation) -> Step 3 (Sentence Arrangement)
-    setState(() {
-      _currentPhase = Phase.sentenceActivity;
-      _currentFormat = ActivityFormat.rearrangement;
-      _resetItemState();
-    });
+    // Advance word stage to MASTERED (Stage 4)
+    _advanceCurrentWordStage();
+    _startNextItem();
   }
 
   void _handleContinueFromPronunciation() async {
@@ -1369,36 +1638,36 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
     switch (tipKey) {
       case 'f_sound':
         return "The /f/ sound doesn't exist in Cebuano. "
-            "Gently touch your upper front teeth to your lower lip and push air out — "
+            "Gently touch your upper front teeth to your lower lip and push air out â€” "
             "like blowing out a candle slowly. Practice: 'fff-ish', 'fff-ather'.";
       case 'v_sound':
         return "The /v/ sound doesn't exist in Cebuano. "
-            "Touch your upper teeth to your lower lip and hum — feel the vibration. "
+            "Touch your upper teeth to your lower lip and hum â€” feel the vibration. "
             "It's like /f/ but with your voice on. Practice: 'vvv-ery', 'vvv-oice'.";
       case 'th_sound':
-        return "The /θ/ (TH) sound doesn't exist in Cebuano. "
+        return "The /Î¸/ (TH) sound doesn't exist in Cebuano. "
             "Place the tip of your tongue lightly between your upper and lower front teeth, "
             "then blow air out gently. Practice: 'th-ink', 'th-ree', 'th-ank'.";
       case 'th_voiced':
-        return "The voiced /ð/ (TH) sound is like 'th' in 'the' or 'this'. "
-            "Put your tongue between your teeth and hum — feel the buzz. "
+        return "The voiced /Ã°/ (TH) sound is like 'th' in 'the' or 'this'. "
+            "Put your tongue between your teeth and hum â€” feel the buzz. "
             "Practice: 'th-is', 'th-at', 'broth-er'.";
       case 'r_sound':
         return "English /r/ is different from Cebuano. "
-            "Keep your tongue back and curved — don't roll it. "
+            "Keep your tongue back and curved â€” don't roll it. "
             "The tongue should not touch the roof of your mouth. Practice: 'rr-un', 'rr-ead'.";
       case 'l_sound':
         return "For English /l/, place the tip of your tongue on the ridge just behind "
             "your upper front teeth and let air flow around the sides. "
             "Practice: 'll-ight', 'll-ove', 'bell'.";
       case 'short_i':
-        return "The short /ɪ/ sound (as in 'sit') is shorter and more relaxed than the long /iː/ in 'see'. "
+        return "The short /Éª/ sound (as in 'sit') is shorter and more relaxed than the long /iË/ in 'see'. "
             "Relax your lips and say a quick 'ih'. Practice: 'f-ih-sh', 's-ih-t', 'th-ih-s'.";
       case 'short_e':
-        return "The /ɛ/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
+        return "The /É›/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
             "It is between 'a' and 'ee'. Practice: 'b-eh-d', 'p-eh-n', 'h-eh-lp'.";
       case 'schwa':
-        return "Many English unstressed syllables use the schwa /ə/ — a neutral, relaxed sound "
+        return "Many English unstressed syllables use the schwa /É™/ â€” a neutral, relaxed sound "
             "like a quick 'uh'. The vowel in 'the', 'a', and the 2nd syllable of 'pencil' are schwa. "
             "Practice: 'penc-uh-l', 'erase-uh-r'.";
       default:
@@ -1410,10 +1679,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
 
   /// Returns a score-aware failure coaching message.
   String _buildFailureMessage(double? score) {
-    if (score == null) return 'Not quite — give it another try!';
+    if (score == null) return 'Not quite â€” give it another try!';
     final pct = (score * 100).round();
     if (pct >= 70) {
-      return 'Very close ($pct%)! Small adjustment needed — try again.';
+      return 'Very close ($pct%)! Small adjustment needed â€” try again.';
     } else if (pct >= 50) {
       return 'Getting there ($pct%). Focus on each syllable and try again.';
     } else if (pct >= 30) {
@@ -1475,27 +1744,16 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       return _buildSummaryScreen();
     }
 
-    int getTierPoints(String tier) {
-      switch (tier.toUpperCase()) {
-        case 'LEARNING': return 0;
-        case 'FAMILIAR': return 1;
-        case 'PROFICIENT': return 2;
-        case 'MASTERED': return 3;
-        default: return 0;
-      }
-    }
-
-    int totalMaxPoints = _words.length * 3;
-    int currentPoints = 0;
+    double totalStagePoints = 0.0;
     for (final w in _words) {
-      final tier = _wordDifficulties[w.wordId] ?? 'LEARNING';
-      currentPoints += getTierPoints(tier);
+      // Use max stage reached for consistent progress (never decreases)
+      final maxStage = _maxWordStage[w.wordId] ?? _getWordStage(w.wordId);
+      totalStagePoints += (maxStage - 1).clamp(0, 3);
     }
 
-    final calculatedProgress = totalMaxPoints == 0 ? 0.0 : (currentPoints / totalMaxPoints);
-    if (calculatedProgress > _maxProgress) _maxProgress = calculatedProgress;
-    final progressVal = _maxProgress;
-    final progressPercent = (progressVal * 100).toInt();
+    final maxStagePoints = _words.length * 3.0;
+    final progressVal = maxStagePoints > 0 ? (totalStagePoints / maxStagePoints).clamp(0.0, 1.0) : 0.0;
+    final progressPercent = (progressVal * 100).round();
 
     return PopScope(
       canPop: false,
@@ -1532,9 +1790,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
             child: SizedBox(
               height: 10,
               child: TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.0, end: progressVal),
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.linear,
+                tween: Tween<double>(end: progressVal),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeOutCubic,
                 builder: (context, value, _) {
                   return LinearProgressIndicator(
                     value: value,
@@ -1565,8 +1823,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       height: 1.5,
     );
 
-    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
-    final isFreeType = level == 'PROFICIENT' || level == 'MASTERED';
+    final stage = _getWordStage(_currentWord.wordId);
+    final isFreeType = stage >= 3;
 
     int blankIndex = 0;
     
@@ -1966,7 +2224,11 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                           elevation: 0,
                         ),
                         child: Text(
-                          _confusableCorrect ? 'CONTINUE' : 'TRY AGAIN',
+                          _confusableCorrect
+                              ? LocalizationService.translate(
+                                      Provider.of<AuthProvider>(context, listen: false).learner?.languagePreference, 'continue')
+                                  .toUpperCase()
+                              : 'TRY AGAIN',
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
@@ -2152,11 +2414,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
 
 
   Widget _buildSentenceActivityBody(ThemeData theme) {
-    final sentence = _activitySentence(_currentWord);
-
-
-    final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
-    final isFreeType = level == 'PROFICIENT' || level == 'MASTERED';
+    final stage = _getWordStage(_currentWord.wordId);
+    final isFreeType = stage >= 3;
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final pref = auth.learner?.languagePreference;
@@ -2258,21 +2517,20 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                       ),
                       const SizedBox(width: 12),
                       () {
-                        final String lvl = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
+                        final int currentStage = _getWordStage(_currentWord.wordId);
                         Color dotColor;
                         String label;
-                        switch (lvl.toUpperCase()) {
-                          case 'FAMILIAR':
+                        switch (currentStage) {
+                          case 1:
+                          case 2:
                             dotColor = const Color(0xFF3B82F6);
                             label = 'Familiar';
                             break;
-                          case 'PROFICIENT':
+                          case 3:
+                          case 4:
+                          case 5:
                             dotColor = const Color(0xFFF59E0B);
                             label = 'Proficient';
-                            break;
-                          case 'MASTERED':
-                            dotColor = const Color(0xFF10B981);
-                            label = 'Mastered';
                             break;
                           default:
                             dotColor = const Color(0xFF94A3B8);
@@ -2589,15 +2847,23 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                               const SizedBox(width: 12),
                               Expanded(
                                 child: CebuanoTextHighlighter(
-                                  text: _currentWord.exampleSentenceCebuano ??
-                                      _currentWord.cebuanoMeaning,
-                                  highlightWord: _currentWord.cebuanoMeaning,
+                                  text: (_currentWord.exampleSentenceCebuano ??
+                                          _currentWord.cebuanoMeaning)
+                                      .replaceAll('**', ''),
+                                  highlightWord: _currentWord.cebuanoMeaning.replaceAll('**', ''),
                                   style: const TextStyle(
-                                    fontSize: 14,
-                                    fontStyle: FontStyle.italic,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
+                                    color: Color(0xFF334155),
                                     height: 1.4,
+                                  ),
+                                  highlightStyle: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF0369A1),
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Color(0xFF0284C7),
+                                    decorationThickness: 2.5,
                                   ),
                                 ),
                               ),
@@ -2607,8 +2873,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                   color: Color(0xFF06A6FF),
                                 ),
                                 onPressed: () => _ttsService.speakCebuano(
-                                  _currentWord.exampleSentenceCebuano ??
-                                      _currentWord.cebuanoMeaning,
+                                  (_currentWord.exampleSentenceCebuano ??
+                                          _currentWord.cebuanoMeaning)
+                                      .replaceAll('**', ''),
                                 ),
                                 tooltip: "Listen to sentence translation",
                               ),
@@ -2625,9 +2892,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                     const SizedBox(height: 36),
                     Builder(
                       builder: (context) {
-                        final level = _wordDifficulties[_currentWord.wordId] ?? 'LEARNING';
-                        if (level == 'PROFICIENT' || level == 'MASTERED') {
-                          return const SizedBox.shrink(); // No word bank for free-type
+                        final stage = _getWordStage(_currentWord.wordId);
+                        if (stage == 4) {
+                          return const SizedBox.shrink(); // No word bank for free-type (Proficient Free-Typing)
                         }
 
                         return Column(
@@ -2637,26 +2904,29 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                               padding: const EdgeInsets.only(bottom: 12.0),
                               child: InkWell(
                                 onTap: () {
-                                  if (_isChecked || isSel) return;
+                                  if (_isChecked) return;
                                   
-                                  // Find the first empty blank
-                                  int firstEmpty = -1;
+                                  // Find the target blank (first empty blank, or blank 0 if all filled)
+                                  int targetBlank = -1;
                                   int blankCount = 0;
                                   for (int i = 0; i < _completionTokens.length; i++) {
                                     if (_completionTokens[i].isBlank) {
                                       if (!_selectedCompletionWords.containsKey(blankCount)) {
-                                        firstEmpty = blankCount;
+                                        targetBlank = blankCount;
                                         break;
                                       }
                                       blankCount++;
                                     }
                                   }
 
-                                  if (firstEmpty != -1) {
-                                    setState(() {
-                                      _selectedCompletionWords[firstEmpty] = opt;
-                                    });
+                                  // If all blanks are filled, replace blank 0 (or single blank)
+                                  if (targetBlank == -1) {
+                                    targetBlank = 0;
                                   }
+
+                                  setState(() {
+                                    _selectedCompletionWords[targetBlank] = opt;
+                                  });
                                 },
                                 borderRadius: BorderRadius.circular(16),
                                 child: AnimatedContainer(
@@ -2776,8 +3046,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                           children: [
                             Text(
                               _isCorrect 
-                                  ? LocalizationService.translate(pref, 'feedback_correct')
-                                  : LocalizationService.translate(pref, 'feedback_incorrect'),
+                                  ? ((_failedSentenceWords.any((w) => w.wordId == _currentWord.wordId) || _isReinforcementPass)
+                                      ? 'Correct (+5 pts)'
+                                      : (_currentFormat == ActivityFormat.rearrangement
+                                          ? 'Correct (+15 pts)'
+                                          : 'Correct (+10 pts)'))
+                                  : 'Incorrect (0 pts)',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -2786,14 +3060,26 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                             ),
                             if (!_isCorrect) ...[
                               const SizedBox(height: 4),
-                              Text(
-                                'Correct sentence: "$sentence"',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: textColor.withValues(alpha: 0.9),
-                                ),
-                              ),
+                              () {
+                                final ans = _activityAnswer(_currentWord);
+                                final raw = _activitySentence(_currentWord);
+                                final blankRegex = RegExp(
+                                  r'\{BLANK\}|\[BLANK\]|<BLANK>|\(BLANK\)|\{blank\}|\[blank\]|<blank>|\(blank\)|\(\.\.\.\)|\[\.\.\.\]|\.\.\.|_{1,}|-{2,}|\[_\]',
+                                  caseSensitive: false,
+                                );
+                                String displaySentence = raw;
+                                if (raw.contains(blankRegex)) {
+                                  displaySentence = raw.replaceFirst(blankRegex, ans);
+                                }
+                                return Text(
+                                  'Correct sentence: "$displaySentence"',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: textColor.withValues(alpha: 0.9),
+                                  ),
+                                );
+                              }(),
                             ],
                           ],
                         ),
@@ -2830,6 +3116,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   Widget _buildPronunciationBody(ThemeData theme) {
     final sentence = _activitySentence(_currentWord);
     final target = _activityAnswer(_currentWord);
+    final pref = Provider.of<AuthProvider>(context, listen: false).learner?.languagePreference;
 
     // Highlight target word in sentence
     final parts = sentence.split(' ');
@@ -2916,7 +3203,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                   const SizedBox(height: 32),
 
                   const Text(
-                    "Give it a try — say the sentence aloud. Tap skip if you would rather move on.",
+                    "Give it a try â€” say the sentence aloud. Tap skip if you would rather move on.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -3020,7 +3307,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  '🎉',
+                                  'ðŸŽ‰',
                                   style: TextStyle(fontSize: 32),
                                 ),
                                 if (_attemptResult!.transcribedText != null &&
@@ -3086,7 +3373,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                     _attemptResult!.isInconclusive
                                         ? "Couldn't hear you clearly. Please try again."
                                         : _pronunciationAttempt >= 3
-                                        ? 'No attempts left — keep practicing!'
+                                        ? 'No attempts left â€” keep practicing!'
                                         : _buildFailureMessage(
                                             _attemptResult!.similarityScore,
                                           ),
@@ -3133,7 +3420,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                         null) ...[
                                       const SizedBox(height: 6),
                                       Text(
-                                        'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% — need 80% to pass',
+                                        'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% â€” need 80% to pass',
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,
@@ -3219,7 +3506,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    // Priority: use backend tip → fallback to local tip
+                                    // Priority: use backend tip â†’ fallback to local tip
                                     (_attemptResult!.phonologicalTip != null &&
                                             _attemptResult!.phonologicalTip!
                                                 .trim()
@@ -3390,7 +3677,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                 ),
                 child: Text(
                   (_attemptResult!.isCorrect || _pronunciationAttempt >= 3)
-                      ? "CONTINUE TO NEXT WORD"
+                      ? LocalizationService.translate(pref, 'continue').toUpperCase()
                       : "TRY AGAIN",
                   style: const TextStyle(
                     fontSize: 15,
@@ -3624,7 +3911,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                     ],
                   ),
                   child: const Center(
-                    child: Text('🏆', style: TextStyle(fontSize: 72)),
+                    child: Text('ðŸ†', style: TextStyle(fontSize: 72)),
                   ),
                 ),
               ),
@@ -3724,6 +4011,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                               redirectPath: '/cumulative-mixed-review',
                               extraParams: {
                                 'sessionId': widget.sessionId,
+                                'lessonId': widget.lessonId,
                                 'allWords': widget.allWords,
                                 'categoryId': widget.categoryId,
                                 'isSandbox': widget.isSandbox,
@@ -3780,6 +4068,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
     );
   }
 
+
   Widget _buildStatRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3807,21 +4096,36 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
   void _showExitConfirmation() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Exit Activity?'),
         content: const Text(
-          'Leaving now will discard your progress in this sentence building module.',
+          'Your progress will be saved. You can continue from where you left off when you return.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('CANCEL'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              // Save progress snapshot so user can resume later
+              await LocalStorageService.saveModuleProgressSnapshot(
+                widget.sessionId,
+                {
+                  'wordDifficulties': _wordDifficulties,
+                  'wordStages': _wordStage,
+                  'lessonId': widget.lessonId,
+                  'moduleNumber': widget.moduleNumber,
+                  'savedAt': DateTime.now().toIso8601String(),
+                },
+              );
+              if (!mounted) return;
+              // ignore: use_build_context_synchronously
               final provider = Provider.of<LessonProvider>(context, listen: false);
               provider.recordPartialModuleTime(widget.sessionId, 3, _computeActiveSeconds(), lessonId: widget.lessonId);
-              Navigator.of(context).pop();
+              // ignore: use_build_context_synchronously
+              Navigator.of(ctx).pop();
+              // ignore: use_build_context_synchronously
               context.go('/home');
             },
             child: const Text(

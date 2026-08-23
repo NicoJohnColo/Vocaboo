@@ -300,6 +300,16 @@ class LessonProvider with ChangeNotifier {
     String status, {
     int moduleNumber = 1,
   }) async {
+    String validStatus = status;
+    if (validStatus == 'LEARNING' || validStatus == 'FAMILIAR' || validStatus == 'PROFICIENT') {
+      validStatus = 'PRACTICED';
+    } else if (validStatus != 'MASTERED' && 
+               validStatus != 'NEEDS_PRONUNCIATION_REVIEW' && 
+               validStatus != 'INTRODUCED' && 
+               validStatus != 'PRONUNCIATION_PENDING') {
+      validStatus = 'PRACTICED';
+    }
+
     try {
       // Fire and forget progress update as requested in UC-1.3 to avoid blocking UI latency
       http.patch(
@@ -309,7 +319,7 @@ class LessonProvider with ChangeNotifier {
           'wordId': wordId,
           'pathway': pathway,
           'stepCompleted': stepCompleted,
-          'status': status,
+          'status': validStatus,
           'moduleNumber': moduleNumber,
         }),
       ).then((response) {
@@ -806,7 +816,7 @@ class LessonProvider with ChangeNotifier {
         uri,
         headers: _headers,
         body: json.encode({
-          'isCorrect': isCorrect,
+          'correct': isCorrect,
           if (activityType != null) 'activityType': activityType,
         }),
       );
@@ -898,6 +908,23 @@ class LessonProvider with ChangeNotifier {
       debugPrint('LessonProvider.fetchWordMasterySummary error: $e');
     }
     return [];
+  }
+
+  /// Resets difficulty and performance progress for words in a lesson (optionally for a specific POS).
+  Future<bool> resetLessonProgress(String lessonId, {String? partOfSpeech}) async {
+    try {
+      final uri = (partOfSpeech != null && partOfSpeech.isNotEmpty && partOfSpeech != 'ALL')
+          ? Uri.parse('$baseUrl/lessons/$lessonId/reset-progress?partOfSpeech=${Uri.encodeComponent(partOfSpeech)}')
+          : Uri.parse('$baseUrl/lessons/$lessonId/reset-progress');
+
+      final response = await http.post(uri, headers: _headers);
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.resetLessonProgress error: $e');
+    }
+    return false;
   }
 
   Future<Map<String, dynamic>?> generateSandbox({required String customWord}) async {
@@ -1018,6 +1045,44 @@ class LessonProvider with ChangeNotifier {
     }
   }
 
+  /// Completes a cumulative review session and records the history on backend.
+  Future<Map<String, dynamic>?> completeCumulativeReview(
+    String sessionId, {
+    required double accuracyScore,
+    int? totalAttempts,
+    int? correctCount,
+    String? badgeAwarded,
+    int? pointsEarned,
+    int? timeSpentSeconds,
+    String? categoryId,
+    String? lessonPairId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/cumulative-review/sessions/$sessionId/complete'),
+        headers: _headers,
+        body: json.encode({
+          'accuracyScore': accuracyScore,
+          'totalAttempts': totalAttempts,
+          'correctCount': correctCount,
+          'badgeAwarded': badgeAwarded,
+          'pointsEarned': pointsEarned,
+          'timeSpentSeconds': timeSpentSeconds,
+          'categoryId': categoryId,
+          'lessonPairId': lessonPairId,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.completeCumulativeReview error: $e');
+    }
+    return null;
+  }
+
   Future<List<Map<String, dynamic>>> fetchSandboxModuleScores(String sessionId) async {
     try {
       final response = await http.get(
@@ -1096,7 +1161,7 @@ class LessonProvider with ChangeNotifier {
 
   }
 
-  /// Resets learner progress.
+  /// Resets learner progress completely across backend and local storage.
   Future<void> resetProgress() async {
     try {
       final response = await http.post(
@@ -1109,23 +1174,47 @@ class LessonProvider with ChangeNotifier {
       
       if (response.statusCode == 401) {
         _auth?.logout();
+        return;
       } else if (response.statusCode != 204 && response.statusCode != 200) {
         throw Exception('Failed to reset progress: ${response.statusCode}');
       }
+
+      // 1. Wipe ALL local lesson progress, session states, scores, and module snapshots
+      await LocalStorageService.clearAllLessonData();
+
+      // 2. Refresh user profile (resets points, XP, streak, words mastered in UI)
+      if (_auth != null) {
+        await _auth!.fetchProfile();
+      }
+
+      // 3. Reload categories and lessons fresh from backend
+      if (_categories.isNotEmpty) {
+        await loadCategories();
+        for (final cat in _categories) {
+          await loadLessons(cat.categoryId);
+        }
+      }
+
+      notifyListeners();
     } catch (e) {
       debugPrint('LessonProvider.resetProgress error: $e');
       rethrow;
     }
-
   }
 
-  /// Resets a single lesson's progress.
+  /// Resets a single lesson's progress across backend and local storage.
   Future<bool> resetLesson(String lessonId) async {
     try {
+      // 1. Always wipe local storage data for this specific lesson
+      await LocalStorageService.saveLessonScore(lessonId, 0.0);
+      await LocalStorageService.clearLessonScoreDetails(lessonId);
+      await LocalStorageService.clearModuleProgressSnapshot(lessonId);
+
       final response = await http.post(
         Uri.parse('$baseUrl/lessons/$lessonId/reset'),
         headers: _headers,
       );
+      
       if (response.statusCode == 200 || response.statusCode == 204) {
         // Update local state to reflect reset
         final index = _lessons.indexWhere((l) => l.lessonId == lessonId);
@@ -1141,8 +1230,8 @@ class LessonProvider with ChangeNotifier {
             status: 'UNLOCKED',
             masteryScore: null,
           );
-          notifyListeners();
         }
+        notifyListeners();
         return true;
       } else if (response.statusCode == 401) {
         _auth?.logout();

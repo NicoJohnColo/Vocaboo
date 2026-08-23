@@ -117,13 +117,18 @@ public class LessonService {
 
             int actualWordCount = lessonWords.size();
 
-            List<DifficultyProgress> progressList = difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonIdAndModuleNumber(learnerId, lesson.getLessonId(), 3);
-            Map<UUID, DifficultyProgress> progressMap = progressList.stream()
-                    .collect(Collectors.toMap(
-                            p -> p.getWord().getWordId(),
-                            p -> p,
-                            (p1, p2) -> p1
-                    ));
+            List<DifficultyProgress> progressList = difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonId(learnerId, lesson.getLessonId());
+            Map<UUID, DifficultyLevel> highestWordLevel = new java.util.HashMap<>();
+            for (DifficultyProgress dp : progressList) {
+                if (dp.getWord() != null) {
+                    UUID wid = dp.getWord().getWordId();
+                    if (dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
+                        highestWordLevel.put(wid, DifficultyLevel.MASTERED);
+                    } else {
+                        highestWordLevel.putIfAbsent(wid, dp.getCurrentLevel());
+                    }
+                }
+            }
 
             int masteredWordCount = 0;
             Map<String, Integer> posTotalWordCounts = new java.util.HashMap<>();
@@ -133,8 +138,8 @@ public class LessonService {
                 String pos = w.getPartOfSpeech() != null ? w.getPartOfSpeech().toUpperCase() : "UNKNOWN";
                 posTotalWordCounts.merge(pos, 1, Integer::sum);
 
-                DifficultyProgress dp = progressMap.get(w.getWordId());
-                if (dp != null && dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
+                DifficultyLevel level = highestWordLevel.get(w.getWordId());
+                if (level == DifficultyLevel.MASTERED) {
                     masteredWordCount++;
                     posMasteredWordCounts.merge(pos, 1, Integer::sum);
                 }
@@ -181,7 +186,7 @@ public class LessonService {
                         .distractorPool(word.getDistractorPool())
                         .fillBlankSentence(word.getFillBlankSentence())
                         .tileSentence(word.getTileSentence())
-                        .hintText(word.getHintText())
+                        .explanationText(word.getExplanationText())
                         .audioTextCebuano(word.getAudioTextCebuano())
                         .audioTextEnglish(word.getAudioTextEnglish())
                         .activityType(word.getActivityType())
@@ -451,7 +456,22 @@ public class LessonService {
                                 .build());
                 
                 status.setAttempts(status.getAttempts() + 1);
-                status.setMasteryScore(BigDecimal.valueOf(serverFinalScore));
+                
+                List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId);
+                int totalLessonAttempts = 0;
+                int totalLessonCorrect = 0;
+                for (VocabularyWord lw : lessonWords) {
+                    WordPerformance wp = wordPerformanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, lw.getWordId()).orElse(null);
+                    if (wp != null && wp.getTotalAttempts() > 0) {
+                        totalLessonAttempts += wp.getTotalAttempts();
+                        totalLessonCorrect += wp.getCorrectCount();
+                    }
+                }
+                double computedScore = totalLessonAttempts > 0 
+                    ? (totalLessonCorrect * 100.0 / totalLessonAttempts) 
+                    : serverFinalScore;
+
+                status.setMasteryScore(BigDecimal.valueOf(computedScore).setScale(2, java.math.RoundingMode.HALF_UP));
                 status.setStatus(LessonStatus.COMPLETED);
                 status.setCompletedAt(java.time.OffsetDateTime.now());
                 status.setUpdatedAt(java.time.OffsetDateTime.now());
@@ -524,5 +544,24 @@ public class LessonService {
                 .totalWords(totalWords)
                 .masteredWords(masteredWords)
                 .build();
+    }
+
+    @Transactional
+    public void resetLesson(UUID lessonId, UUID learnerId) {
+        // We do NOT delete word_performance or difficulty_progress here,
+        // because "Retry" should just reset the module progression (Module 1, 2, 3),
+        // but lifetime word mastery should be retained and updated dynamically.
+        
+        // 3. Delete practice results & sessions for this lesson
+        jdbcTemplate.update("DELETE FROM practice_results WHERE session_id IN (SELECT session_id FROM practice_sessions WHERE learner_id = ? AND lesson_id = ?)", learnerId, lessonId);
+        jdbcTemplate.update("DELETE FROM practice_sessions WHERE learner_id = ? AND lesson_id = ?", learnerId, lessonId);
+        
+        // 4. Delete introduction sessions for this lesson
+        jdbcTemplate.update("DELETE FROM introduction_sessions WHERE learner_id = ? AND lesson_id = ?", learnerId, lessonId);
+        
+        // 5. Delete lesson module scores
+        jdbcTemplate.update("DELETE FROM lesson_module_scores WHERE learner_id = ? AND lesson_id = ?", learnerId, lessonId);
+
+
     }
 }

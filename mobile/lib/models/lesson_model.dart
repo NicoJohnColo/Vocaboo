@@ -52,9 +52,12 @@ class LessonModel {
           ? List<String>.from(json['sourceLessonIds']) 
           : null,
       compositeReviewAfterLessonId: json['compositeReviewAfterLessonId'],
-      contextParagraph: json['contextParagraph'],
-      posTotalWordCounts: json['posTotalWordCounts'] != null ? Map<String, int>.from(json['posTotalWordCounts']) : const {},
-      posMasteredWordCounts: json['posMasteredWordCounts'] != null ? Map<String, int>.from(json['posMasteredWordCounts']) : const {},
+      posTotalWordCounts: json['posTotalWordCounts'] != null
+          ? (json['posTotalWordCounts'] as Map).map((k, v) => MapEntry(k.toString().toUpperCase(), (v as num).toInt()))
+          : const {},
+      posMasteredWordCounts: json['posMasteredWordCounts'] != null
+          ? (json['posMasteredWordCounts'] as Map).map((k, v) => MapEntry(k.toString().toUpperCase(), (v as num).toInt()))
+          : const {},
     );
   }
 

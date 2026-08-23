@@ -39,6 +39,43 @@ public class RewardData {
     @Builder.Default
     private OffsetDateTime earnedAt = OffsetDateTime.now();
 
+    public Learner getLearner() {
+        return learner;
+    }
+
+    public Lesson getLesson() {
+        return lesson;
+    }
+
+    public String getBadgeType() {
+        return badgeType;
+    }
+
+    public OffsetDateTime getEarnedAt() {
+        return earnedAt;
+    }
+
+    public static RewardDataBuilder builder() { return new RewardDataBuilder(); }
+
+    public static class RewardDataBuilder {
+        private Learner learner;
+        private Lesson lesson;
+        private String badgeType;
+
+        public RewardDataBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public RewardDataBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
+        public RewardDataBuilder badgeType(String badgeType) { this.badgeType = badgeType; return this; }
+
+        public RewardData build() {
+            RewardData r = new RewardData();
+            r.learner = this.learner;
+            r.lesson = this.lesson;
+            r.badgeType = this.badgeType;
+            r.earnedAt = OffsetDateTime.now();
+            return r;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         earnedAt = OffsetDateTime.now();

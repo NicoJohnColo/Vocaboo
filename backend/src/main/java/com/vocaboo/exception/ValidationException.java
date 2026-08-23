@@ -22,4 +22,6 @@ public class ValidationException extends RuntimeException {
         super("Validation failed");
         this.details = details;
     }
+
+    public List<Map<String, String>> getDetails() { return details; }
 }

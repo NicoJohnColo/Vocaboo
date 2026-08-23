@@ -21,4 +21,12 @@ public class MasteryRequest {
     private int totalItems;
     private int masteredCount;
     private List<String> missedWordIds;
+
+    public double getLessonScore() { return lessonScore; }
+    public Double getCumulativeReviewScore() { return cumulativeReviewScore; }
+    public boolean isPassed() { return passed; }
+    public List<UUID> getLessonIds() { return lessonIds; }
+    public int getTotalItems() { return totalItems; }
+    public int getMasteredCount() { return masteredCount; }
+    public List<String> getMissedWordIds() { return missedWordIds; }
 }

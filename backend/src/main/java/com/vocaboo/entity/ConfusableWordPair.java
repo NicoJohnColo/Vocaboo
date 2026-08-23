@@ -46,6 +46,43 @@ public class ConfusableWordPair {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public UUID getPairId() { return pairId; }
+    public Lesson getLesson() { return lesson; }
+    public VocabularyWord getWordA() { return wordA; }
+    public VocabularyWord getWordB() { return wordB; }
+    public String getContrastiveSentenceA() { return contrastiveSentenceA; }
+    public String getContrastiveSentenceB() { return contrastiveSentenceB; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
+
+    public static ConfusableWordPairBuilder builder() {
+        return new ConfusableWordPairBuilder();
+    }
+
+    public static class ConfusableWordPairBuilder {
+        private Lesson lesson;
+        private VocabularyWord wordA;
+        private VocabularyWord wordB;
+        private String contrastiveSentenceA;
+        private String contrastiveSentenceB;
+
+        public ConfusableWordPairBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
+        public ConfusableWordPairBuilder wordA(VocabularyWord wordA) { this.wordA = wordA; return this; }
+        public ConfusableWordPairBuilder wordB(VocabularyWord wordB) { this.wordB = wordB; return this; }
+        public ConfusableWordPairBuilder contrastiveSentenceA(String contrastiveSentenceA) { this.contrastiveSentenceA = contrastiveSentenceA; return this; }
+        public ConfusableWordPairBuilder contrastiveSentenceB(String contrastiveSentenceB) { this.contrastiveSentenceB = contrastiveSentenceB; return this; }
+
+        public ConfusableWordPair build() {
+            ConfusableWordPair p = new ConfusableWordPair();
+            p.lesson = this.lesson;
+            p.wordA = this.wordA;
+            p.wordB = this.wordB;
+            p.contrastiveSentenceA = this.contrastiveSentenceA;
+            p.contrastiveSentenceB = this.contrastiveSentenceB;
+            p.createdAt = OffsetDateTime.now();
+            return p;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

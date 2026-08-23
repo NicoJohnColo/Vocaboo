@@ -145,8 +145,8 @@ public class AdminLearnerService {
             LearnerLessonStatus st = statusMap.get(lesson.getLessonId());
             List<LessonModuleScore> lms = scoreMap.getOrDefault(lesson.getLessonId(), List.of());
 
-            List<ModuleScoreDetail> modDetails = lms.stream()
-                    .map(m -> ModuleScoreDetail.builder()
+            List<AdminLearnerDetailResponse.ModuleScoreDetail> modDetails = lms.stream()
+                    .map(m -> AdminLearnerDetailResponse.ModuleScoreDetail.builder()
                             .moduleNumber(m.getModuleNumber())
                             .score(m.getScore())
                             .correctCount(m.getCorrectCount())
@@ -156,7 +156,7 @@ public class AdminLearnerService {
                     .collect(Collectors.toList());
 
             BigDecimal m1 = null, m2 = null, m3 = null, m4 = null;
-            for (ModuleScoreDetail md : modDetails) {
+            for (AdminLearnerDetailResponse.ModuleScoreDetail md : modDetails) {
                 if (md.getModuleNumber() != null) {
                     if (md.getModuleNumber() == 1) m1 = md.getScore();
                     else if (md.getModuleNumber() == 2) m2 = md.getScore();
@@ -179,7 +179,7 @@ public class AdminLearnerService {
             OffsetDateTime lastPracticed = st != null ? (st.getCompletedAt() != null ? st.getCompletedAt() : st.getUpdatedAt()) : null;
             boolean bonusAwarded = st != null && (Boolean.TRUE.equals(st.getLessonCompletionBonusAwarded()) || Boolean.TRUE.equals(st.getPerfectScoreBonusAwarded()));
 
-            return LearnerLessonProgressDetail.builder()
+            return AdminLearnerDetailResponse.LearnerLessonProgressDetail.builder()
                     .lessonId(lesson.getLessonId())
                     .lessonTitle(lesson.getLessonTitle())
                     .gradeLevel(lesson.getGradeLevel() != null ? lesson.getGradeLevel().name() : "")
@@ -198,12 +198,12 @@ public class AdminLearnerService {
         }).collect(Collectors.toList());
 
         // Build Weak words (accuracy < 70% or demeritPoints > 0)
-        List<LearnerWordPerformanceDetail> weakWords = wordPerformances.stream()
+        List<AdminLearnerDetailResponse.LearnerWordPerformanceDetail> weakWords = wordPerformances.stream()
                 .filter(wp -> (wp.getDemeritPoints() != null && wp.getDemeritPoints() > 0) ||
                               (wp.getTotalAttempts() != null && wp.getTotalAttempts() > 0 && wp.getAccuracy() != null && wp.getAccuracy().compareTo(BigDecimal.valueOf(70.0)) < 0))
                 .sorted(Comparator.comparing((WordPerformance wp) -> wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0).reversed()
                         .thenComparing(wp -> wp.getAccuracy() != null ? wp.getAccuracy() : BigDecimal.ZERO))
-                .map(wp -> LearnerWordPerformanceDetail.builder()
+                .map(wp -> AdminLearnerDetailResponse.LearnerWordPerformanceDetail.builder()
                         .wordId(wp.getWord().getWordId())
                         .englishWord(wp.getWord().getEnglishWord())
                         .cebuanoMeaning(wp.getWord().getCebuanoMeaning())
@@ -299,8 +299,8 @@ public class AdminLearnerService {
             bestCumBadge = "BRONZE";
         }
 
-        List<CumulativeReviewPerformanceDetail> cumDetails = cumSessions.stream().map(cs -> {
-            return CumulativeReviewPerformanceDetail.builder()
+        List<AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail> cumDetails = cumSessions.stream().map(cs -> {
+            return AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail.builder()
                     .sessionId(cs.getId())
                     .lessonPairId(cs.getLessonPairId())
                     .categoryName(cs.getLessonPairId())

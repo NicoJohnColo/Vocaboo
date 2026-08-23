@@ -15,4 +15,9 @@ public class DifficultyAdjustmentRequest {
     private Boolean correct;
     private String action; // e.g. "INCREMENT", "DECREMENT", "DIAGNOSTIC_BOOST", "DIAGNOSTIC_FAIL"
     private String activityType;
+
+    public UUID getLearnerId() { return learnerId; }
+    public Boolean getCorrect() { return correct; }
+    public String getAction() { return action; }
+    public String getActivityType() { return activityType; }
 }

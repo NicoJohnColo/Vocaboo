@@ -55,6 +55,29 @@ public class GeminiService {
         private List<String> sentenceArrangementTokens;
         private String sentenceCompletionBlank;
         private List<String> sentenceCompletionOptions;
+
+        public String getEnglishWord() { return englishWord; }
+        public String getCebuanoMeaning() { return cebuanoMeaning; }
+        public String getExampleSentenceEnglish() { return exampleSentenceEnglish; }
+        public String getExampleSentenceCebuano() { return exampleSentenceCebuano; }
+        public String getPhonologicalTip() { return phonologicalTip; }
+        public List<String> getMultipleChoiceDistractors() { return multipleChoiceDistractors; }
+        public List<MatchingEntryDto> getMatchingSet() { return matchingSet; }
+        public List<String> getSentenceArrangementTokens() { return sentenceArrangementTokens; }
+        public String getSentenceCompletionBlank() { return sentenceCompletionBlank; }
+        public List<String> getSentenceCompletionOptions() { return sentenceCompletionOptions; }
+
+        public void setEnglishWord(String englishWord) { this.englishWord = englishWord; }
+        public void setCebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; }
+        public void setExampleSentenceEnglish(String exampleSentenceEnglish) { this.exampleSentenceEnglish = exampleSentenceEnglish; }
+        public void setExampleSentenceCebuano(String exampleSentenceCebuano) { this.exampleSentenceCebuano = exampleSentenceCebuano; }
+        public void setPhonologicalTip(String phonologicalTip) { this.phonologicalTip = phonologicalTip; }
+        public void setMultipleChoiceDistractors(List<String> multipleChoiceDistractors) { this.multipleChoiceDistractors = multipleChoiceDistractors; }
+        public void setFillInTheBlankSentence(String fillInTheBlankSentence) { this.fillInTheBlankSentence = fillInTheBlankSentence; }
+        public void setMatchingSet(List<MatchingEntryDto> matchingSet) { this.matchingSet = matchingSet; }
+        public void setSentenceArrangementTokens(List<String> sentenceArrangementTokens) { this.sentenceArrangementTokens = sentenceArrangementTokens; }
+        public void setSentenceCompletionBlank(String sentenceCompletionBlank) { this.sentenceCompletionBlank = sentenceCompletionBlank; }
+        public void setSentenceCompletionOptions(List<String> sentenceCompletionOptions) { this.sentenceCompletionOptions = sentenceCompletionOptions; }
     }
 
     @Data
@@ -65,6 +88,30 @@ public class GeminiService {
         private String englishWord;
         private String cebuanoMeaning;
         private String cebuanoTranslation;
+
+        public String getEnglishWord() { return englishWord; }
+        public String getCebuanoMeaning() { return cebuanoMeaning; }
+        public String getCebuanoTranslation() { return cebuanoTranslation; }
+
+        public static MatchingEntryDtoBuilder builder() { return new MatchingEntryDtoBuilder(); }
+
+        public static class MatchingEntryDtoBuilder {
+            private String englishWord;
+            private String cebuanoMeaning;
+            private String cebuanoTranslation;
+
+            public MatchingEntryDtoBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
+            public MatchingEntryDtoBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+            public MatchingEntryDtoBuilder cebuanoTranslation(String cebuanoTranslation) { this.cebuanoTranslation = cebuanoTranslation; return this; }
+
+            public MatchingEntryDto build() {
+                MatchingEntryDto dto = new MatchingEntryDto();
+                dto.englishWord = this.englishWord;
+                dto.cebuanoMeaning = this.cebuanoMeaning;
+                dto.cebuanoTranslation = this.cebuanoTranslation;
+                return dto;
+            }
+        }
     }
 
     private static final String SANDBOX_SYSTEM_PROMPT = "You generate exactly one child-friendly Cebuano-English vocabulary lesson for Vocaboo.\n"

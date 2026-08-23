@@ -21,8 +21,9 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class LessonManagementService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LessonManagementService.class);
 
     private final LessonRepository lessonRepository;
     private final VocabularyCategoryRepository categoryRepository;

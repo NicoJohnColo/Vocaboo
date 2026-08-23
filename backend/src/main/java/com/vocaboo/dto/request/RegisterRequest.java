@@ -26,4 +26,9 @@ public class RegisterRequest {
 
     @NotNull(message = "Language preference is required")
     private LanguageMedium languagePreference;
+
+    public String getDisplayName() { return displayName; }
+    public Integer getAge() { return age; }
+    public String getPin() { return pin; }
+    public LanguageMedium getLanguagePreference() { return languagePreference; }
 }

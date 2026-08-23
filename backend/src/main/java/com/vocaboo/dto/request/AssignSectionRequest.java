@@ -14,4 +14,8 @@ public class AssignSectionRequest {
 
     @JsonProperty("section_id")
     private UUID sectionId;
+
+    public UUID getSectionId() {
+        return sectionId;
+    }
 }

@@ -105,11 +105,12 @@ class MasteryBadgeServiceTest {
     }
 
     @Test
-    void emptyWordList_returnsBronze() {
+    void unplayedLesson_returnsNullAndNoRewardSaved() {
         when(wordRepo.findByLessonLessonIdOrderByWordOrderAsc(lessonId)).thenReturn(List.of());
 
         String badge = service.calculateAndSaveBadge(learnerId, lessonId);
 
-        assertThat(badge).isEqualTo("BRONZE");
+        assertThat(badge).isNull();
+        verify(rewardRepo, never()).save(any());
     }
 }

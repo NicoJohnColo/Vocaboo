@@ -45,6 +45,47 @@ public class PracticeResult {
     @Builder.Default
     private OffsetDateTime recordedAt = OffsetDateTime.now();
 
+    public UUID getResultId() { return resultId; }
+    public PracticeSession getSession() { return session; }
+    public Boolean getIsCorrect() { return isCorrect; }
+    public boolean isCorrect() { return Boolean.TRUE.equals(isCorrect); }
+    public Integer getAttemptNumber() { return attemptNumber; }
+    public Integer getPoints() { return points; }
+    public VocabularyWord getWord() { return word; }
+    public String getActivityType() { return activityType; }
+    public OffsetDateTime getRecordedAt() { return recordedAt; }
+
+    public static PracticeResultBuilder builder() { return new PracticeResultBuilder(); }
+
+    public static class PracticeResultBuilder {
+        private PracticeSession session;
+        private VocabularyWord word;
+        private Boolean isCorrect;
+        private Integer attemptNumber = 1;
+        private String activityType;
+        private Integer points = 0;
+
+        public PracticeResultBuilder session(PracticeSession session) { this.session = session; return this; }
+        public PracticeResultBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public PracticeResultBuilder isCorrect(Boolean isCorrect) { this.isCorrect = isCorrect; return this; }
+        public PracticeResultBuilder attemptNumber(Integer attemptNumber) { this.attemptNumber = attemptNumber; return this; }
+        public PracticeResultBuilder activityType(String activityType) { this.activityType = activityType; return this; }
+        public PracticeResultBuilder points(Integer points) { this.points = points; return this; }
+        public PracticeResultBuilder recordedAt(OffsetDateTime recordedAt) { return this; }
+
+        public PracticeResult build() {
+            PracticeResult r = new PracticeResult();
+            r.session = this.session;
+            r.word = this.word;
+            r.isCorrect = this.isCorrect;
+            r.attemptNumber = this.attemptNumber;
+            r.activityType = this.activityType;
+            r.points = this.points;
+            r.recordedAt = OffsetDateTime.now();
+            return r;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         recordedAt = OffsetDateTime.now();

@@ -34,6 +34,33 @@ public class ReviewItem {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public VocabularyWord getWord() { return word; }
+    public Boolean getIsCorrect() { return isCorrect; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
+    public ReviewSession getSession() { return session; }
+
+    public static ReviewItemBuilder builder() { return new ReviewItemBuilder(); }
+
+    public static class ReviewItemBuilder {
+        private ReviewSession session;
+        private VocabularyWord word;
+        private Boolean isCorrect;
+
+        public ReviewItemBuilder session(ReviewSession session) { this.session = session; return this; }
+        public ReviewItemBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public ReviewItemBuilder isCorrect(Boolean isCorrect) { this.isCorrect = isCorrect; return this; }
+        public ReviewItemBuilder createdAt(OffsetDateTime createdAt) { return this; }
+
+        public ReviewItem build() {
+            ReviewItem item = new ReviewItem();
+            item.session = this.session;
+            item.word = this.word;
+            item.isCorrect = this.isCorrect;
+            item.createdAt = OffsetDateTime.now();
+            return item;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

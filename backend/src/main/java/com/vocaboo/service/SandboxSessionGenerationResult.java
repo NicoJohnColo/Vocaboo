@@ -16,4 +16,24 @@ import lombok.Setter;
 public class SandboxSessionGenerationResult {
     private SandboxSession session;
     private SandboxLessonResponse lesson;
+
+    public SandboxSession getSession() { return session; }
+    public SandboxLessonResponse getLesson() { return lesson; }
+
+    public static SandboxSessionGenerationResultBuilder builder() { return new SandboxSessionGenerationResultBuilder(); }
+
+    public static class SandboxSessionGenerationResultBuilder {
+        private SandboxSession session;
+        private SandboxLessonResponse lesson;
+
+        public SandboxSessionGenerationResultBuilder session(SandboxSession session) { this.session = session; return this; }
+        public SandboxSessionGenerationResultBuilder lesson(SandboxLessonResponse lesson) { this.lesson = lesson; return this; }
+
+        public SandboxSessionGenerationResult build() {
+            SandboxSessionGenerationResult r = new SandboxSessionGenerationResult();
+            r.session = this.session;
+            r.lesson = this.lesson;
+            return r;
+        }
+    }
 }

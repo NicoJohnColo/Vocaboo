@@ -18,4 +18,7 @@ public class ChangePinRequest {
     @NotBlank(message = "New PIN is required")
     @Pattern(regexp = "^\\d{4}$", message = "New PIN must be exactly 4 digits")
     private String newPin;
+
+    public String getCurrentPin() { return currentPin; }
+    public String getNewPin() { return newPin; }
 }

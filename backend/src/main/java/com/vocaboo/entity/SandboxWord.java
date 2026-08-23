@@ -45,6 +45,45 @@ public class SandboxWord {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public UUID getWordId() { return wordId; }
+    public String getEnglishWord() {
+        return englishWord;
+    }
+
+    public static SandboxWordBuilder builder() { return new SandboxWordBuilder(); }
+
+    public static class SandboxWordBuilder {
+        private SandboxSession session;
+        private String englishWord;
+        private String cebuanoMeaning;
+        private String exampleSentenceEnglish;
+        private String exampleSentenceCebuano;
+        private String phonologicalTipKey;
+        private Integer wordOrder;
+
+        public SandboxWordBuilder session(SandboxSession session) { this.session = session; return this; }
+        public SandboxWordBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
+        public SandboxWordBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+        public SandboxWordBuilder exampleSentenceEnglish(String exampleSentenceEnglish) { this.exampleSentenceEnglish = exampleSentenceEnglish; return this; }
+        public SandboxWordBuilder exampleSentenceCebuano(String exampleSentenceCebuano) { this.exampleSentenceCebuano = exampleSentenceCebuano; return this; }
+        public SandboxWordBuilder phonologicalTipKey(String phonologicalTipKey) { this.phonologicalTipKey = phonologicalTipKey; return this; }
+        public SandboxWordBuilder wordOrder(Integer wordOrder) { this.wordOrder = wordOrder; return this; }
+        public SandboxWordBuilder createdAt(OffsetDateTime createdAt) { return this; }
+
+        public SandboxWord build() {
+            SandboxWord w = new SandboxWord();
+            w.session = this.session;
+            w.englishWord = this.englishWord;
+            w.cebuanoMeaning = this.cebuanoMeaning;
+            w.exampleSentenceEnglish = this.exampleSentenceEnglish;
+            w.exampleSentenceCebuano = this.exampleSentenceCebuano;
+            w.phonologicalTipKey = this.phonologicalTipKey;
+            w.wordOrder = this.wordOrder;
+            w.createdAt = OffsetDateTime.now();
+            return w;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

@@ -37,6 +37,30 @@ public class WrongAnswerRecord {
     @Builder.Default
     private OffsetDateTime recordedAt = OffsetDateTime.now();
 
+    public static WrongAnswerRecordBuilder builder() { return new WrongAnswerRecordBuilder(); }
+
+    public static class WrongAnswerRecordBuilder {
+        private Learner learner;
+        private VocabularyWord word;
+        private String wrongAnswer;
+        private String activityFormat;
+
+        public WrongAnswerRecordBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public WrongAnswerRecordBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public WrongAnswerRecordBuilder wrongAnswer(String wrongAnswer) { this.wrongAnswer = wrongAnswer; return this; }
+        public WrongAnswerRecordBuilder activityFormat(String activityFormat) { this.activityFormat = activityFormat; return this; }
+
+        public WrongAnswerRecord build() {
+            WrongAnswerRecord r = new WrongAnswerRecord();
+            r.learner = this.learner;
+            r.word = this.word;
+            r.wrongAnswer = this.wrongAnswer;
+            r.activityFormat = this.activityFormat;
+            r.recordedAt = OffsetDateTime.now();
+            return r;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         recordedAt = OffsetDateTime.now();

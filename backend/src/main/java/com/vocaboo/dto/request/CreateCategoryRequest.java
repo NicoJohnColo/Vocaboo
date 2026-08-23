@@ -22,4 +22,16 @@ public class CreateCategoryRequest {
 
     @JsonProperty("sort_order")
     private Integer sortOrder; // Optional; auto-calculated if null
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Integer getSortOrder() {
+        return sortOrder;
+    }
 }

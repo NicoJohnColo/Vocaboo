@@ -543,6 +543,30 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   style: const TextStyle(fontSize: 16, color: Color(0xFF64748B)),
                 ),
                 const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFFCD34D)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.stars_rounded, color: Color(0xFFD97706), size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        '+15 PTS for correct pronunciation',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 const Text(
                   'Speak naturally. It will score automatically when you pause, or stop after 30 seconds.',
                   textAlign: TextAlign.center,
@@ -1466,7 +1490,41 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                 'Listen and Repeat',
                 style: TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 0.5),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFF7ED), Color(0xFFFEF3C7)],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.stars_rounded, color: Color(0xFFD97706), size: 18),
+                    SizedBox(width: 6),
+                    Text(
+                      '+15 PTS for correct pronunciation',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFB45309),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               Text(
                 word.englishWord,
                 style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
@@ -1501,6 +1559,30 @@ class _VocabularyIntroductionScreenState extends State<VocabularyIntroductionScr
                   const Text(
                     'Sounds good! 🎉',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF86EFAC)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.stars_rounded, color: Color(0xFF16A34A), size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          '+15 Points Earned!',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   if (_attemptResult!.transcribedText != null && _attemptResult!.transcribedText!.trim().isNotEmpty) ...[
                     const SizedBox(height: 12),

@@ -1332,7 +1332,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
       // Starting local speech_to_text concurrently with AudioRecorder causes
       // an Android microphone resource conflict: the OS terminates the
       // recorder session early, producing a near-empty .m4a file (< 6 KB)
-      // that Deepgram cannot transcribe (returns empty transcript â†’ 400).
+      // that Deepgram cannot transcribe (returns empty transcript -> 400).
       // Audio is instead captured fully by AudioRecorder and evaluated via
       // the Deepgram backend once recording completes.
       // await _startStreamingRecognition(_currentWord.englishWord);
@@ -1638,36 +1638,36 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
     switch (tipKey) {
       case 'f_sound':
         return "The /f/ sound doesn't exist in Cebuano. "
-            "Gently touch your upper front teeth to your lower lip and push air out â€” "
+            "Gently touch your upper front teeth to your lower lip and push air out — "
             "like blowing out a candle slowly. Practice: 'fff-ish', 'fff-ather'.";
       case 'v_sound':
         return "The /v/ sound doesn't exist in Cebuano. "
-            "Touch your upper teeth to your lower lip and hum â€” feel the vibration. "
+            "Touch your upper teeth to your lower lip and hum — feel the vibration. "
             "It's like /f/ but with your voice on. Practice: 'vvv-ery', 'vvv-oice'.";
       case 'th_sound':
-        return "The /Î¸/ (TH) sound doesn't exist in Cebuano. "
+        return "The /θ/ (TH) sound doesn't exist in Cebuano. "
             "Place the tip of your tongue lightly between your upper and lower front teeth, "
             "then blow air out gently. Practice: 'th-ink', 'th-ree', 'th-ank'.";
       case 'th_voiced':
-        return "The voiced /Ã°/ (TH) sound is like 'th' in 'the' or 'this'. "
-            "Put your tongue between your teeth and hum â€” feel the buzz. "
+        return "The voiced /ð/ (TH) sound is like 'th' in 'the' or 'this'. "
+            "Put your tongue between your teeth and hum — feel the buzz. "
             "Practice: 'th-is', 'th-at', 'broth-er'.";
       case 'r_sound':
         return "English /r/ is different from Cebuano. "
-            "Keep your tongue back and curved â€” don't roll it. "
+            "Keep your tongue back and curved — don't roll it. "
             "The tongue should not touch the roof of your mouth. Practice: 'rr-un', 'rr-ead'.";
       case 'l_sound':
         return "For English /l/, place the tip of your tongue on the ridge just behind "
             "your upper front teeth and let air flow around the sides. "
             "Practice: 'll-ight', 'll-ove', 'bell'.";
       case 'short_i':
-        return "The short /Éª/ sound (as in 'sit') is shorter and more relaxed than the long /iË/ in 'see'. "
+        return "The short /ɪ/ sound (as in 'sit') is shorter and more relaxed than the long /iː/ in 'see'. "
             "Relax your lips and say a quick 'ih'. Practice: 'f-ih-sh', 's-ih-t', 'th-ih-s'.";
       case 'short_e':
-        return "The /É›/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
+        return "The /ɛ/ sound (as in 'bed') is made with your mouth slightly open and lips relaxed. "
             "It is between 'a' and 'ee'. Practice: 'b-eh-d', 'p-eh-n', 'h-eh-lp'.";
       case 'schwa':
-        return "Many English unstressed syllables use the schwa /É™/ â€” a neutral, relaxed sound "
+        return "Many English unstressed syllables use the schwa /ə/ — a neutral, relaxed sound "
             "like a quick 'uh'. The vowel in 'the', 'a', and the 2nd syllable of 'pencil' are schwa. "
             "Practice: 'penc-uh-l', 'erase-uh-r'.";
       default:
@@ -1679,10 +1679,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
 
   /// Returns a score-aware failure coaching message.
   String _buildFailureMessage(double? score) {
-    if (score == null) return 'Not quite â€” give it another try!';
+    if (score == null) return 'Not quite — give it another try!';
     final pct = (score * 100).round();
     if (pct >= 70) {
-      return 'Very close ($pct%)! Small adjustment needed â€” try again.';
+      return 'Very close ($pct%)! Small adjustment needed — try again.';
     } else if (pct >= 50) {
       return 'Getting there ($pct%). Focus on each syllable and try again.';
     } else if (pct >= 30) {
@@ -3203,12 +3203,48 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                   const SizedBox(height: 32),
 
                   const Text(
-                    "Give it a try â€” say the sentence aloud. Tap skip if you would rather move on.",
+                    "Give it a try — say the sentence aloud. Tap skip if you would rather move on.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
                       color: Color(0xFF475569),
                       fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFF7ED), Color(0xFFFEF3C7)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFFDE68A)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.stars_rounded, color: Color(0xFFD97706), size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            '+15 PTS for correct pronunciation',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFB45309),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -3305,9 +3341,33 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                     fontSize: 15,
                                   ),
                                 ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDCFCE7),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFF86EFAC)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.stars_rounded, color: Color(0xFF16A34A), size: 18),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        '+15 Points Earned!',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF15803D),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'ðŸŽ‰',
+                                  '🎉',
                                   style: TextStyle(fontSize: 32),
                                 ),
                                 if (_attemptResult!.transcribedText != null &&
@@ -3373,7 +3433,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                     _attemptResult!.isInconclusive
                                         ? "Couldn't hear you clearly. Please try again."
                                         : _pronunciationAttempt >= 3
-                                        ? 'No attempts left â€” keep practicing!'
+                                        ? 'No attempts left — keep practicing!'
                                         : _buildFailureMessage(
                                             _attemptResult!.similarityScore,
                                           ),
@@ -3420,7 +3480,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                         null) ...[
                                       const SizedBox(height: 6),
                                       Text(
-                                        'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% â€” need 80% to pass',
+                                        'Match: ${(_attemptResult!.similarityScore! * 100).toStringAsFixed(0)}% — need 80% to pass',
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,
@@ -3506,7 +3566,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    // Priority: use backend tip â†’ fallback to local tip
+                                    // Priority: use backend tip -> fallback to local tip
                                     (_attemptResult!.phonologicalTip != null &&
                                             _attemptResult!.phonologicalTip!
                                                 .trim()
@@ -3911,7 +3971,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen> with Wi
                     ],
                   ),
                   child: const Center(
-                    child: Text('ðŸ†', style: TextStyle(fontSize: 72)),
+                    child: Text('🏆', style: TextStyle(fontSize: 72)),
                   ),
                 ),
               ),

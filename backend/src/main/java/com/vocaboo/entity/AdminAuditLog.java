@@ -46,4 +46,30 @@ public class AdminAuditLog {
     protected void onCreate() {
         if (timestamp == null) timestamp = OffsetDateTime.now();
     }
+
+    public static AdminAuditLogBuilder builder() {
+        return new AdminAuditLogBuilder();
+    }
+
+    public static class AdminAuditLogBuilder {
+        private UUID adminId;
+        private String action;
+        private UUID targetId;
+        private String details;
+
+        public AdminAuditLogBuilder adminId(UUID adminId) { this.adminId = adminId; return this; }
+        public AdminAuditLogBuilder action(String action) { this.action = action; return this; }
+        public AdminAuditLogBuilder targetId(UUID targetId) { this.targetId = targetId; return this; }
+        public AdminAuditLogBuilder details(String details) { this.details = details; return this; }
+
+        public AdminAuditLog build() {
+            AdminAuditLog log = new AdminAuditLog();
+            log.adminId = this.adminId;
+            log.action = this.action;
+            log.targetId = this.targetId;
+            log.details = this.details;
+            log.timestamp = OffsetDateTime.now();
+            return log;
+        }
+    }
 }

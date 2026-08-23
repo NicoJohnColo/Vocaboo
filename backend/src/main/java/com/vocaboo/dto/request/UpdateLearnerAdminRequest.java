@@ -34,4 +34,32 @@ public class UpdateLearnerAdminRequest {
 
     @JsonProperty("is_active")
     private Boolean isActive;
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public Integer getAge() {
+        return age;
+    }
+
+    public GradeLevel getGradeLevel() {
+        return gradeLevel;
+    }
+
+    public UUID getSectionId() {
+        return sectionId;
+    }
+
+    public LanguageMedium getLanguagePreference() {
+        return languagePreference;
+    }
+
+    public String getPosFocus() {
+        return posFocus;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
 }

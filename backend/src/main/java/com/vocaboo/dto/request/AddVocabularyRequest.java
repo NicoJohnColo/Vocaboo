@@ -61,4 +61,22 @@ public class AddVocabularyRequest {
     private String phonologicalTipKey;
     
     private Boolean isConfusablePairMember;
+
+    public String getEnglishWord() { return englishWord; }
+    public String getCebuanoMeaning() { return cebuanoMeaning; }
+    public String getPartOfSpeech() { return partOfSpeech; }
+    public String getGradeLevel() { return gradeLevel; }
+    public String getExampleSentenceEnglish() { return exampleSentenceEnglish; }
+    public String getExampleSentenceCebuano() { return exampleSentenceCebuano; }
+    public String getAudioAssetPath() { return audioAssetPath; }
+    public String getImageAssetPath() { return imageAssetPath; }
+    public String getDistractorPool() { return distractorPool; }
+    public String getFillBlankSentence() { return fillBlankSentence; }
+    public String getTileSentence() { return tileSentence; }
+    public String getExplanationText() { return explanationText; }
+    public String getAudioTextCebuano() { return audioTextCebuano; }
+    public String getAudioTextEnglish() { return audioTextEnglish; }
+    public String getEligibleActivityTypes() { return eligibleActivityTypes; }
+    public String getPhonologicalTipKey() { return phonologicalTipKey; }
+    public Boolean getIsConfusablePairMember() { return isConfusablePairMember; }
 }

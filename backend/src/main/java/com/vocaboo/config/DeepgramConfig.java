@@ -19,4 +19,9 @@ public class DeepgramConfig {
 
     @Value("${deepgram.language:en}")
     private String language;
+
+    public String getApiKey() { return apiKey; }
+    public String getApiUrl() { return apiUrl; }
+    public String getModel() { return model; }
+    public String getLanguage() { return language; }
 }

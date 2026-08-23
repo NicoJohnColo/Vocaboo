@@ -18,4 +18,8 @@ public class ResetLearnerProgressRequest {
      */
     @JsonProperty("lesson_id")
     private UUID lessonId;
+
+    public UUID getLessonId() {
+        return lessonId;
+    }
 }

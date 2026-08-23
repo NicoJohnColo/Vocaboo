@@ -20,4 +20,9 @@ public class PracticeResultRequest {
 
     private Integer attemptNumber;
     private String activityType;
+
+    public UUID getWordId() { return wordId; }
+    public Boolean getCorrect() { return correct; }
+    public Integer getAttemptNumber() { return attemptNumber; }
+    public String getActivityType() { return activityType; }
 }

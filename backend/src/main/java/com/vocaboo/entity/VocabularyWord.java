@@ -130,6 +130,141 @@ public class VocabularyWord {
     @Column(name = "audio_text_english", columnDefinition = "TEXT")
     private String audioTextEnglish;
 
+    public Lesson getLesson() {
+        return lesson;
+    }
+
+    public UUID getWordId() {
+        return wordId;
+    }
+
+    public String getEnglishWord() {
+        return englishWord;
+    }
+
+    public String getCebuanoMeaning() {
+        return cebuanoMeaning;
+    }
+
+    public GradeLevel getGradeLevel() {
+        return gradeLevel;
+    }
+
+    public Boolean getIsDeleted() {
+        return isDeleted;
+    }
+
+    public String getPartOfSpeech() { return partOfSpeech; }
+    public Integer getWordOrder() { return wordOrder; }
+    public String getExampleSentenceEnglish() { return exampleSentenceEnglish; }
+    public String getExampleSentenceCebuano() { return exampleSentenceCebuano; }
+    public String getAudioAssetPath() { return audioAssetPath; }
+    public String getImageAssetPath() { return imageAssetPath; }
+    public Boolean getAudioVerified() { return audioVerified; }
+    public Boolean getImageVerified() { return imageVerified; }
+    public Boolean getIsConfusablePairMember() { return isConfusablePairMember; }
+    public String getPhonologicalTipKey() { return phonologicalTipKey; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
+    public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public String getDistractorPool() { return distractorPool; }
+    public String getFillBlankSentence() { return fillBlankSentence; }
+    public String getTileSentence() { return tileSentence; }
+    public String getExplanationText() { return explanationText; }
+    public String getAudioTextCebuano() { return audioTextCebuano; }
+    public String getAudioTextEnglish() { return audioTextEnglish; }
+    public String getEligibleActivityTypes() { return eligibleActivityTypes; }
+
+    public void setEnglishWord(String englishWord) { this.englishWord = englishWord; }
+    public void setCebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; }
+    public void setPartOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; }
+    public void setExampleSentenceEnglish(String exampleSentenceEnglish) { this.exampleSentenceEnglish = exampleSentenceEnglish; }
+    public void setExampleSentenceCebuano(String exampleSentenceCebuano) { this.exampleSentenceCebuano = exampleSentenceCebuano; }
+    public void setAudioAssetPath(String audioAssetPath) { this.audioAssetPath = audioAssetPath; }
+    public void setImageAssetPath(String imageAssetPath) { this.imageAssetPath = imageAssetPath; }
+    public void setDistractorPool(String distractorPool) { this.distractorPool = distractorPool; }
+    public void setFillBlankSentence(String fillBlankSentence) { this.fillBlankSentence = fillBlankSentence; }
+    public void setTileSentence(String tileSentence) { this.tileSentence = tileSentence; }
+    public void setExplanationText(String explanationText) { this.explanationText = explanationText; }
+    public void setAudioTextCebuano(String audioTextCebuano) { this.audioTextCebuano = audioTextCebuano; }
+    public void setAudioTextEnglish(String audioTextEnglish) { this.audioTextEnglish = audioTextEnglish; }
+    public void setEligibleActivityTypes(String eligibleActivityTypes) { this.eligibleActivityTypes = eligibleActivityTypes; }
+    public void setPhonologicalTipKey(String phonologicalTipKey) { this.phonologicalTipKey = phonologicalTipKey; }
+    public void setIsConfusablePairMember(Boolean isConfusablePairMember) { this.isConfusablePairMember = isConfusablePairMember; }
+
+    public static VocabularyWordBuilder builder() {
+        return new VocabularyWordBuilder();
+    }
+
+    public static class VocabularyWordBuilder {
+        private Lesson lesson;
+        private String englishWord;
+        private String cebuanoMeaning;
+        private String exampleSentenceEnglish;
+        private String exampleSentenceCebuano;
+        private GradeLevel gradeLevel;
+        private Integer wordOrder = 1;
+        private String partOfSpeech;
+        private String audioAssetPath;
+        private String imageAssetPath;
+        private String distractorPool;
+        private String fillBlankSentence;
+        private String tileSentence;
+        private String explanationText;
+        private String audioTextCebuano;
+        private String audioTextEnglish;
+        private String phonologicalTipKey;
+        private Boolean isConfusablePairMember = false;
+        private Boolean isDeleted = false;
+        private String eligibleActivityTypes;
+
+        public VocabularyWordBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
+        public VocabularyWordBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
+        public VocabularyWordBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+        public VocabularyWordBuilder exampleSentenceEnglish(String exampleSentenceEnglish) { this.exampleSentenceEnglish = exampleSentenceEnglish; return this; }
+        public VocabularyWordBuilder exampleSentenceCebuano(String exampleSentenceCebuano) { this.exampleSentenceCebuano = exampleSentenceCebuano; return this; }
+        public VocabularyWordBuilder gradeLevel(GradeLevel gradeLevel) { this.gradeLevel = gradeLevel; return this; }
+        public VocabularyWordBuilder wordOrder(Integer wordOrder) { this.wordOrder = wordOrder; return this; }
+        public VocabularyWordBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
+        public VocabularyWordBuilder audioAssetPath(String audioAssetPath) { this.audioAssetPath = audioAssetPath; return this; }
+        public VocabularyWordBuilder imageAssetPath(String imageAssetPath) { this.imageAssetPath = imageAssetPath; return this; }
+        public VocabularyWordBuilder distractorPool(String distractorPool) { this.distractorPool = distractorPool; return this; }
+        public VocabularyWordBuilder fillBlankSentence(String fillBlankSentence) { this.fillBlankSentence = fillBlankSentence; return this; }
+        public VocabularyWordBuilder tileSentence(String tileSentence) { this.tileSentence = tileSentence; return this; }
+        public VocabularyWordBuilder explanationText(String explanationText) { this.explanationText = explanationText; return this; }
+        public VocabularyWordBuilder audioTextCebuano(String audioTextCebuano) { this.audioTextCebuano = audioTextCebuano; return this; }
+        public VocabularyWordBuilder audioTextEnglish(String audioTextEnglish) { this.audioTextEnglish = audioTextEnglish; return this; }
+        public VocabularyWordBuilder phonologicalTipKey(String phonologicalTipKey) { this.phonologicalTipKey = phonologicalTipKey; return this; }
+        public VocabularyWordBuilder isConfusablePairMember(Boolean isConfusablePairMember) { this.isConfusablePairMember = isConfusablePairMember; return this; }
+        public VocabularyWordBuilder isDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; return this; }
+        public VocabularyWordBuilder eligibleActivityTypes(String eligibleActivityTypes) { this.eligibleActivityTypes = eligibleActivityTypes; return this; }
+
+        public VocabularyWord build() {
+            VocabularyWord w = new VocabularyWord();
+            w.lesson = this.lesson;
+            w.englishWord = this.englishWord;
+            w.cebuanoMeaning = this.cebuanoMeaning;
+            w.exampleSentenceEnglish = this.exampleSentenceEnglish;
+            w.exampleSentenceCebuano = this.exampleSentenceCebuano;
+            w.gradeLevel = this.gradeLevel;
+            w.wordOrder = this.wordOrder;
+            w.partOfSpeech = this.partOfSpeech;
+            w.audioAssetPath = this.audioAssetPath;
+            w.imageAssetPath = this.imageAssetPath;
+            w.distractorPool = this.distractorPool;
+            w.fillBlankSentence = this.fillBlankSentence;
+            w.tileSentence = this.tileSentence;
+            w.explanationText = this.explanationText;
+            w.audioTextCebuano = this.audioTextCebuano;
+            w.audioTextEnglish = this.audioTextEnglish;
+            w.phonologicalTipKey = this.phonologicalTipKey;
+            w.isConfusablePairMember = this.isConfusablePairMember != null ? this.isConfusablePairMember : false;
+            w.isDeleted = this.isDeleted != null ? this.isDeleted : false;
+            w.createdAt = OffsetDateTime.now();
+            w.updatedAt = OffsetDateTime.now();
+            return w;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

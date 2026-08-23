@@ -27,4 +27,24 @@ public class CreateLessonRequest {
 
     @Pattern(regexp = "REGULAR|COMPOSITE_REVIEW|", message = "Lesson type must be REGULAR or COMPOSITE_REVIEW")
     private String lessonType;
+
+    public String getLessonTitle() {
+        return lessonTitle;
+    }
+
+    public String getLessonDescription() {
+        return lessonDescription;
+    }
+
+    public String getCategoryId() {
+        return categoryId;
+    }
+
+    public String getGradeLevel() {
+        return gradeLevel;
+    }
+
+    public String getLessonType() {
+        return lessonType;
+    }
 }

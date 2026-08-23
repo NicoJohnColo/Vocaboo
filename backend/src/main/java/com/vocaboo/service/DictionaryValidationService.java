@@ -12,8 +12,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Service
-@Slf4j
 public class DictionaryValidationService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DictionaryValidationService.class);
 
     private final Set<String> dictionary = new HashSet<>();
 

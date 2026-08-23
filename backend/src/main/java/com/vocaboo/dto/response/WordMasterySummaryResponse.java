@@ -43,4 +43,45 @@ public class WordMasterySummaryResponse {
     private Integer correctAttempts;
     private BigDecimal accuracy;
     private Integer tierDropCount;
+
+    public static WordMasterySummaryResponseBuilder builder() { return new WordMasterySummaryResponseBuilder(); }
+
+    public static class WordMasterySummaryResponseBuilder {
+        private UUID wordId;
+        private String englishWord;
+        private String cebuanoMeaning;
+        private String partOfSpeech;
+        private String tierState;
+        private String wordRating;
+        private Integer totalAttempts;
+        private Integer correctAttempts;
+        private BigDecimal accuracy;
+        private Integer tierDropCount;
+
+        public WordMasterySummaryResponseBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
+        public WordMasterySummaryResponseBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
+        public WordMasterySummaryResponseBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+        public WordMasterySummaryResponseBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
+        public WordMasterySummaryResponseBuilder tierState(String tierState) { this.tierState = tierState; return this; }
+        public WordMasterySummaryResponseBuilder wordRating(String wordRating) { this.wordRating = wordRating; return this; }
+        public WordMasterySummaryResponseBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
+        public WordMasterySummaryResponseBuilder correctAttempts(Integer correctAttempts) { this.correctAttempts = correctAttempts; return this; }
+        public WordMasterySummaryResponseBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+        public WordMasterySummaryResponseBuilder tierDropCount(Integer tierDropCount) { this.tierDropCount = tierDropCount; return this; }
+
+        public WordMasterySummaryResponse build() {
+            WordMasterySummaryResponse r = new WordMasterySummaryResponse();
+            r.wordId = this.wordId;
+            r.englishWord = this.englishWord;
+            r.cebuanoMeaning = this.cebuanoMeaning;
+            r.partOfSpeech = this.partOfSpeech;
+            r.tierState = this.tierState;
+            r.wordRating = this.wordRating;
+            r.totalAttempts = this.totalAttempts;
+            r.correctAttempts = this.correctAttempts;
+            r.accuracy = this.accuracy;
+            r.tierDropCount = this.tierDropCount;
+            return r;
+        }
+    }
 }

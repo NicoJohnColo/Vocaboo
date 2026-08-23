@@ -23,4 +23,8 @@ public class PracticeSessionRequest {
     @Min(value = 1, message = "Module number must be between 1 and 4")
     @Max(value = 4, message = "Module number must be between 1 and 4")
     private Integer moduleNumber;
+
+    public UUID getLearnerId() { return learnerId; }
+    public UUID getLessonId() { return lessonId; }
+    public Integer getModuleNumber() { return moduleNumber; }
 }

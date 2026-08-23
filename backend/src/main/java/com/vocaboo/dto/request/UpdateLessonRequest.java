@@ -19,4 +19,16 @@ public class UpdateLessonRequest {
 
     @Pattern(regexp = "GRADE_3_4|GRADE_5_6|GRADE_6|", message = "Grade level must be GRADE_3_4, GRADE_5_6, or GRADE_6")
     private String gradeLevel;
+
+    public String getLessonTitle() {
+        return lessonTitle;
+    }
+
+    public String getLessonDescription() {
+        return lessonDescription;
+    }
+
+    public String getGradeLevel() {
+        return gradeLevel;
+    }
 }

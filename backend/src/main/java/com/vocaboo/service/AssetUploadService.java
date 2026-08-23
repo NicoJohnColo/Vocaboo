@@ -20,10 +20,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AssetUploadService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AssetUploadService.class);
 
     private final AssetUploadRepository assetUploadRepository;
 

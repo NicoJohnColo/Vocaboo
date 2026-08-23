@@ -41,4 +41,13 @@ public class TeacherRegisterRequest {
 
     @Size(max = 200, message = "School name cannot exceed 200 characters")
     private String school;
+
+    public String getUsername() { return username; }
+    public String getEmail() { return email; }
+    public String getPassword() { return password; }
+    public String getFirstname() { return firstname; }
+    public String getMiddlename() { return middlename; }
+    public String getLastname() { return lastname; }
+    public String getGender() { return gender; }
+    public String getSchool() { return school; }
 }

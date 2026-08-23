@@ -50,6 +50,11 @@ public class LearnerController {
         private String languagePreference;
         private Boolean masteryApplyImmediately;
         private String posFocus;
+
+        public String getDisplayName() { return displayName; }
+        public String getLanguagePreference() { return languagePreference; }
+        public Boolean getMasteryApplyImmediately() { return masteryApplyImmediately; }
+        public String getPosFocus() { return posFocus; }
     }
 
     @PatchMapping("/preferences")

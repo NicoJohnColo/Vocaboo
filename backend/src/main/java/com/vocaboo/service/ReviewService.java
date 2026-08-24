@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import com.vocaboo.dto.response.CategoryReviewResponse;
 

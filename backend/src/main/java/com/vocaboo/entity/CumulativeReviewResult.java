@@ -43,4 +43,39 @@ public class CumulativeReviewResult {
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
+
+    public boolean isCorrect() { return correct; }
+    public String getActivityType() { return activityType; }
+    public Integer getAttemptNumber() { return attemptNumber; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
+
+    public static CumulativeReviewResultBuilder builder() { return new CumulativeReviewResultBuilder(); }
+
+    public static class CumulativeReviewResultBuilder {
+        private CumulativeReviewSession session;
+        private VocabularyWord word;
+        private String activityType;
+        private boolean correct;
+        private Integer attemptNumber = 1;
+        private CrossLessonSentence crossLessonSentence;
+
+        public CumulativeReviewResultBuilder session(CumulativeReviewSession session) { this.session = session; return this; }
+        public CumulativeReviewResultBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public CumulativeReviewResultBuilder activityType(String activityType) { this.activityType = activityType; return this; }
+        public CumulativeReviewResultBuilder correct(boolean correct) { this.correct = correct; return this; }
+        public CumulativeReviewResultBuilder attemptNumber(Integer attemptNumber) { this.attemptNumber = attemptNumber; return this; }
+        public CumulativeReviewResultBuilder crossLessonSentence(CrossLessonSentence crossLessonSentence) { this.crossLessonSentence = crossLessonSentence; return this; }
+
+        public CumulativeReviewResult build() {
+            CumulativeReviewResult r = new CumulativeReviewResult();
+            r.session = this.session;
+            r.word = this.word;
+            r.activityType = this.activityType;
+            r.correct = this.correct;
+            r.attemptNumber = this.attemptNumber;
+            r.crossLessonSentence = this.crossLessonSentence;
+            r.createdAt = OffsetDateTime.now();
+            return r;
+        }
+    }
 }

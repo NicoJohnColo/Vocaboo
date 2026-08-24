@@ -121,6 +121,99 @@ public class DifficultyProgress {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    public Integer getReintroductionCount() {
+        return reintroductionCount;
+    }
+
+    public DifficultyLevel getCurrentLevel() { return currentLevel; }
+    public Integer getConsecutiveCorrect() { return consecutiveCorrect; }
+    public Integer getConsecutiveIncorrect() { return consecutiveIncorrect; }
+    public Boolean getRecallInCurrentStreak() { return recallInCurrentStreak; }
+    public Boolean getSentenceCompletionClearedAtCurrentTier() { return sentenceCompletionClearedAtCurrentTier; }
+    public Boolean getSentenceRearrangementClearedAtCurrentTier() { return sentenceRearrangementClearedAtCurrentTier; }
+    public VocabularyWord getWord() { return word; }
+    public Integer getAttemptCountAtCurrentTier() { return attemptCountAtCurrentTier; }
+
+    public void setCurrentLevel(DifficultyLevel currentLevel) { this.currentLevel = currentLevel; }
+    public void setConsecutiveCorrect(Integer consecutiveCorrect) { this.consecutiveCorrect = consecutiveCorrect; }
+    public void setConsecutiveIncorrect(Integer consecutiveIncorrect) { this.consecutiveIncorrect = consecutiveIncorrect; }
+    public void setRecallInCurrentStreak(Boolean recallInCurrentStreak) { this.recallInCurrentStreak = recallInCurrentStreak; }
+    public void setSentenceCompletionClearedAtCurrentTier(Boolean sentenceCompletionClearedAtCurrentTier) { this.sentenceCompletionClearedAtCurrentTier = sentenceCompletionClearedAtCurrentTier; }
+    public void setSentenceRearrangementClearedAtCurrentTier(Boolean sentenceRearrangementClearedAtCurrentTier) { this.sentenceRearrangementClearedAtCurrentTier = sentenceRearrangementClearedAtCurrentTier; }
+    public void setAttemptCountAtCurrentTier(Integer attemptCountAtCurrentTier) { this.attemptCountAtCurrentTier = attemptCountAtCurrentTier; }
+    public void setLastAdjustedAt(OffsetDateTime lastAdjustedAt) { this.lastAdjustedAt = lastAdjustedAt; }
+    public Learner getLearner() { return learner; }
+    public UUID getProgressId() { return progressId; }
+    public Boolean getNeedsReintroduction() { return needsReintroduction; }
+    public OffsetDateTime getLastReintroducedAt() { return lastReintroducedAt; }
+    public Boolean getNeedsTeacherReview() { return needsTeacherReview; }
+    public Boolean getDiagnosticAdministered() { return diagnosticAdministered; }
+    public String getDiagnosticResult() { return diagnosticResult; }
+    public String getDiagnosticActivityType() { return diagnosticActivityType; }
+    public OffsetDateTime getLastAdjustedAt() { return lastAdjustedAt; }
+    public Boolean getMasteryBonusAwarded() { return masteryBonusAwarded; }
+
+    public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public void setMasteryBonusAwarded(Boolean masteryBonusAwarded) { this.masteryBonusAwarded = masteryBonusAwarded; }
+    public void setNeedsReintroduction(Boolean needsReintroduction) { this.needsReintroduction = needsReintroduction; }
+    public void setReintroductionCount(Integer reintroductionCount) { this.reintroductionCount = reintroductionCount; }
+    public void setLastReintroducedAt(OffsetDateTime lastReintroducedAt) { this.lastReintroducedAt = lastReintroducedAt; }
+    public void setDiagnosticAdministered(Boolean diagnosticAdministered) { this.diagnosticAdministered = diagnosticAdministered; }
+    public void setDiagnosticResult(String diagnosticResult) { this.diagnosticResult = diagnosticResult; }
+    public void setDiagnosticActivityType(String diagnosticActivityType) { this.diagnosticActivityType = diagnosticActivityType; }
+
+    public static DifficultyProgressBuilder builder() { return new DifficultyProgressBuilder(); }
+
+    public static class DifficultyProgressBuilder {
+        private Learner learner;
+        private VocabularyWord word;
+        private Integer moduleNumber = 2;
+        private DifficultyLevel currentLevel = DifficultyLevel.LEARNING;
+        private Integer consecutiveCorrect = 0;
+        private Integer consecutiveIncorrect = 0;
+        private Boolean recallInCurrentStreak = false;
+        private Boolean sentenceCompletionClearedAtCurrentTier = false;
+        private Boolean sentenceRearrangementClearedAtCurrentTier = false;
+        private Integer attemptCountAtCurrentTier = 1;
+        private Boolean masteryBonusAwarded = false;
+        private Boolean needsReintroduction = false;
+
+        public DifficultyProgressBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public DifficultyProgressBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public DifficultyProgressBuilder moduleNumber(Integer moduleNumber) { this.moduleNumber = moduleNumber; return this; }
+        public DifficultyProgressBuilder currentLevel(DifficultyLevel currentLevel) { this.currentLevel = currentLevel; return this; }
+        public DifficultyProgressBuilder consecutiveCorrect(Integer consecutiveCorrect) { this.consecutiveCorrect = consecutiveCorrect; return this; }
+        public DifficultyProgressBuilder consecutiveIncorrect(Integer consecutiveIncorrect) { this.consecutiveIncorrect = consecutiveIncorrect; return this; }
+        public DifficultyProgressBuilder recallInCurrentStreak(Boolean recallInCurrentStreak) { this.recallInCurrentStreak = recallInCurrentStreak; return this; }
+        public DifficultyProgressBuilder sentenceCompletionClearedAtCurrentTier(Boolean sentenceCompletionClearedAtCurrentTier) { this.sentenceCompletionClearedAtCurrentTier = sentenceCompletionClearedAtCurrentTier; return this; }
+        public DifficultyProgressBuilder sentenceRearrangementClearedAtCurrentTier(Boolean sentenceRearrangementClearedAtCurrentTier) { this.sentenceRearrangementClearedAtCurrentTier = sentenceRearrangementClearedAtCurrentTier; return this; }
+        public DifficultyProgressBuilder attemptCountAtCurrentTier(Integer attemptCountAtCurrentTier) { this.attemptCountAtCurrentTier = attemptCountAtCurrentTier; return this; }
+        public DifficultyProgressBuilder masteryBonusAwarded(Boolean masteryBonusAwarded) { this.masteryBonusAwarded = masteryBonusAwarded; return this; }
+        public DifficultyProgressBuilder needsReintroduction(Boolean needsReintroduction) { this.needsReintroduction = needsReintroduction; return this; }
+        public DifficultyProgressBuilder reintroductionCount(Integer reintroductionCount) { return this; }
+        public DifficultyProgressBuilder createdAt(OffsetDateTime createdAt) { return this; }
+        public DifficultyProgressBuilder updatedAt(OffsetDateTime updatedAt) { return this; }
+
+        public DifficultyProgress build() {
+            DifficultyProgress p = new DifficultyProgress();
+            p.learner = this.learner;
+            p.word = this.word;
+            p.moduleNumber = this.moduleNumber;
+            p.currentLevel = this.currentLevel;
+            p.consecutiveCorrect = this.consecutiveCorrect;
+            p.consecutiveIncorrect = this.consecutiveIncorrect;
+            p.recallInCurrentStreak = this.recallInCurrentStreak;
+            p.sentenceCompletionClearedAtCurrentTier = this.sentenceCompletionClearedAtCurrentTier;
+            p.sentenceRearrangementClearedAtCurrentTier = this.sentenceRearrangementClearedAtCurrentTier;
+            p.attemptCountAtCurrentTier = this.attemptCountAtCurrentTier;
+            p.masteryBonusAwarded = this.masteryBonusAwarded;
+            p.lastAdjustedAt = OffsetDateTime.now();
+            p.createdAt = OffsetDateTime.now();
+            p.updatedAt = OffsetDateTime.now();
+            return p;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

@@ -35,4 +35,20 @@ public class BulkLearnerActionRequest {
 
     @JsonProperty("lesson_id")
     private UUID lessonId;
+
+    public BulkActionType getAction() {
+        return action;
+    }
+
+    public List<UUID> getLearnerIds() {
+        return learnerIds;
+    }
+
+    public UUID getSectionId() {
+        return sectionId;
+    }
+
+    public UUID getLessonId() {
+        return lessonId;
+    }
 }

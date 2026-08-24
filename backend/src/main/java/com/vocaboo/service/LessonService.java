@@ -17,12 +17,14 @@ import com.vocaboo.entity.Lesson;
 import com.vocaboo.entity.LessonStatus;
 import com.vocaboo.entity.VocabularyCategory;
 import com.vocaboo.entity.VocabularyWord;
+import com.vocaboo.entity.WordPerformance;
 import com.vocaboo.entity.ConfusableWordPair;
 import com.vocaboo.entity.DifficultyLevel;
 import com.vocaboo.entity.DifficultyProgress;
 import com.vocaboo.repository.LearnerLessonStatusRepository;
 import com.vocaboo.repository.LearnerRepository;
 import com.vocaboo.repository.LessonRepository;
+import com.vocaboo.repository.WordPerformanceRepository;
 import com.vocaboo.repository.VocabularyCategoryRepository;
 import com.vocaboo.repository.VocabularyWordRepository;
 import com.vocaboo.repository.ConfusableWordPairRepository;
@@ -52,6 +54,7 @@ public class LessonService {
     private final LearnerRepository learnerRepository;
     private final ConfusableWordPairRepository confusableRepository;
     private final DifficultyProgressRepository difficultyProgressRepository;
+    private final WordPerformanceRepository wordPerformanceRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 

@@ -65,20 +65,30 @@ public class MasteryBadgeService {
 
     @Transactional
     public String calculateAndSaveBadge(UUID learnerId, UUID lessonId) {
+        LearnerLessonStatus lls = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId).orElse(null);
         List<VocabularyWord> allLessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
-        if (allLessonWords == null || allLessonWords.isEmpty()) {
-            return calculateAndSaveBadge(learnerId, lessonId, 0.0);
-        }
 
         int totalCorrect = 0;
         int totalAttempts = 0;
-        for (VocabularyWord word : allLessonWords) {
-            WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
-                    .orElse(null);
-            if (perf != null) {
-                totalCorrect += perf.getCorrectCount();
-                totalAttempts += perf.getTotalAttempts();
+        if (allLessonWords != null) {
+            for (VocabularyWord word : allLessonWords) {
+                WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
+                        .orElse(null);
+                if (perf != null) {
+                    totalCorrect += perf.getCorrectCount();
+                    totalAttempts += perf.getTotalAttempts();
+                }
             }
+        }
+
+        boolean hasAttempted = totalAttempts > 0 || (lls != null && lls.getMasteryScore() != null);
+        if (!hasAttempted) {
+            List<RewardData> unearnedRewards = rewardRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
+            if (!unearnedRewards.isEmpty()) {
+                rewardRepository.deleteAll(unearnedRewards);
+                rewardRepository.flush();
+            }
+            return null;
         }
 
         double accuracy = 0.0;
@@ -86,14 +96,15 @@ public class MasteryBadgeService {
             accuracy = (totalCorrect * 100.0 / totalAttempts);
         }
 
-        LearnerLessonStatus lls = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId).orElse(null);
         if (lls != null && lls.getMasteryScore() != null && lls.getMasteryScore().doubleValue() > accuracy) {
             accuracy = lls.getMasteryScore().doubleValue();
         }
 
-        long masteredCount = difficultyRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
-        if (masteredCount >= allLessonWords.size() && accuracy < 90.0) {
-            accuracy = 97.5;
+        if (allLessonWords != null && !allLessonWords.isEmpty()) {
+            long masteredCount = difficultyRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
+            if (masteredCount >= allLessonWords.size() && accuracy < 90.0) {
+                accuracy = 97.5;
+            }
         }
 
         return calculateAndSaveBadge(learnerId, lessonId, accuracy);

@@ -25,6 +25,10 @@ public class ReviewController {
         private UUID sessionId;
         private UUID wordId;
         private Boolean isCorrect;
+
+        public UUID getSessionId() { return sessionId; }
+        public UUID getWordId() { return wordId; }
+        public Boolean getIsCorrect() { return isCorrect; }
     }
 
     @Data
@@ -32,6 +36,10 @@ public class ReviewController {
         private UUID lessonId;
         private UUID sessionId;
         private Double score;
+
+        public UUID getLessonId() { return lessonId; }
+        public UUID getSessionId() { return sessionId; }
+        public Double getScore() { return score; }
     }
 
     @Data
@@ -39,6 +47,10 @@ public class ReviewController {
         private UUID categoryId;
         private UUID sessionId;
         private Double score;
+
+        public UUID getCategoryId() { return categoryId; }
+        public UUID getSessionId() { return sessionId; }
+        public Double getScore() { return score; }
     }
 
     @Data
@@ -49,6 +61,13 @@ public class ReviewController {
         private Integer totalCount;
         private Double score;
         private Integer timeSeconds;
+
+        public UUID getLessonId() { return lessonId; }
+        public Integer getModuleNumber() { return moduleNumber; }
+        public Integer getCorrectCount() { return correctCount; }
+        public Integer getTotalCount() { return totalCount; }
+        public Double getScore() { return score; }
+        public Integer getTimeSeconds() { return timeSeconds; }
     }
 
     @Data
@@ -58,6 +77,12 @@ public class ReviewController {
         private Integer moduleNumber;
         private Integer timeSeconds;
         private Boolean isPartial;
+
+        public UUID getLessonId() { return lessonId; }
+        public UUID getSessionId() { return sessionId; }
+        public Integer getModuleNumber() { return moduleNumber; }
+        public Integer getTimeSeconds() { return timeSeconds; }
+        public Boolean getIsPartial() { return isPartial; }
     }
 
     @PostMapping("/lessons/{lessonId}/review/start")

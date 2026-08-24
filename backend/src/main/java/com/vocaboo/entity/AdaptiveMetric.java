@@ -48,6 +48,9 @@ public class AdaptiveMetric {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    public Integer getOptionCount() { return optionCount; }
+    public Integer getTimeLimitSeconds() { return timeLimitSeconds; }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

@@ -17,4 +17,7 @@ public class LoginRequest {
     @NotBlank(message = "PIN is required")
     @Pattern(regexp = "^\\d{4}$", message = "PIN must be exactly 4 digits")
     private String pin;
+
+    public String getLearnerId() { return learnerId; }
+    public String getPin() { return pin; }
 }

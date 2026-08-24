@@ -38,4 +38,12 @@ public class PronunciationEvaluationRequest {
     @Min(1)
     @Max(3)
     private Integer attemptNumber;
+
+    public UUID getSessionId() { return sessionId; }
+    public UUID getWordId() { return wordId; }
+    public UUID getLessonId() { return lessonId; }
+    public Integer getModuleNumber() { return moduleNumber; }
+    public String getTargetWord() { return targetWord; }
+    public String getAudioBase64() { return audioBase64; }
+    public Integer getAttemptNumber() { return attemptNumber; }
 }

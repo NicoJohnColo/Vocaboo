@@ -29,6 +29,10 @@ public class CumulativeReviewController {
         private String lessonPairId;
         private String categoryId;
         private String sessionId;
+
+        public String getLessonPairId() { return lessonPairId; }
+        public String getCategoryId() { return categoryId; }
+        public String getSessionId() { return sessionId; }
     }
 
     @Data
@@ -41,6 +45,15 @@ public class CumulativeReviewController {
         private Integer timeSpentSeconds;
         private String lessonPairId;
         private String categoryId;
+
+        public Double getAccuracyScore() { return accuracyScore; }
+        public Integer getTotalAttempts() { return totalAttempts; }
+        public Integer getCorrectCount() { return correctCount; }
+        public String getBadgeAwarded() { return badgeAwarded; }
+        public Integer getPointsEarned() { return pointsEarned; }
+        public Integer getTimeSpentSeconds() { return timeSpentSeconds; }
+        public String getLessonPairId() { return lessonPairId; }
+        public String getCategoryId() { return categoryId; }
     }
 
     @PostMapping("/start")

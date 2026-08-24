@@ -16,4 +16,8 @@ public class UpdateSectionRequest {
     @Size(max = 100, message = "Section name must not exceed 100 characters")
     @JsonProperty("section_name")
     private String sectionName;
+
+    public String getSectionName() {
+        return sectionName;
+    }
 }

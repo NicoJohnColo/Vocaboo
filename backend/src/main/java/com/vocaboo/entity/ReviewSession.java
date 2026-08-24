@@ -41,6 +41,40 @@ public class ReviewSession {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    public UUID getSessionId() {
+        return sessionId;
+    }
+
+    public Learner getLearner() { return learner; }
+    public Lesson getLesson() { return lesson; }
+    public void setMasteryScore(Double masteryScore) { this.masteryScore = masteryScore; }
+    public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
+    public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public static ReviewSessionBuilder builder() { return new ReviewSessionBuilder(); }
+
+    public static class ReviewSessionBuilder {
+        private Learner learner;
+        private Lesson lesson;
+        private Double masteryScore;
+
+        public ReviewSessionBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public ReviewSessionBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
+        public ReviewSessionBuilder masteryScore(Double masteryScore) { this.masteryScore = masteryScore; return this; }
+        public ReviewSessionBuilder createdAt(OffsetDateTime createdAt) { return this; }
+        public ReviewSessionBuilder updatedAt(OffsetDateTime updatedAt) { return this; }
+
+        public ReviewSession build() {
+            ReviewSession s = new ReviewSession();
+            s.learner = this.learner;
+            s.lesson = this.lesson;
+            s.masteryScore = this.masteryScore;
+            s.createdAt = OffsetDateTime.now();
+            s.updatedAt = OffsetDateTime.now();
+            return s;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

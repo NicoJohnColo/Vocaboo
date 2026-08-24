@@ -48,6 +48,62 @@ public class PracticeSession {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getCompletedAt() {
+        return completedAt;
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
+    }
+
+    public Learner getLearner() { return learner; }
+    public Lesson getLesson() { return lesson; }
+    public Integer getModuleNumber() { return moduleNumber; }
+    public BigDecimal getScore() { return score; }
+    public Integer getStarsEarned() { return starsEarned; }
+
+    public void setScore(BigDecimal score) { this.score = score; }
+    public void setStarsEarned(Integer starsEarned) { this.starsEarned = starsEarned; }
+    public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
+    public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public static PracticeSessionBuilder builder() { return new PracticeSessionBuilder(); }
+
+    public static class PracticeSessionBuilder {
+        private UUID sessionId;
+        private Learner learner;
+        private Lesson lesson;
+        private Integer moduleNumber;
+        private BigDecimal score;
+        private Integer starsEarned = 0;
+
+        public PracticeSessionBuilder sessionId(UUID sessionId) { this.sessionId = sessionId; return this; }
+        public PracticeSessionBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public PracticeSessionBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
+        public PracticeSessionBuilder moduleNumber(Integer moduleNumber) { this.moduleNumber = moduleNumber; return this; }
+        public PracticeSessionBuilder score(BigDecimal score) { this.score = score; return this; }
+        public PracticeSessionBuilder starsEarned(Integer starsEarned) { this.starsEarned = starsEarned; return this; }
+        public PracticeSessionBuilder createdAt(OffsetDateTime createdAt) { return this; }
+        public PracticeSessionBuilder updatedAt(OffsetDateTime updatedAt) { return this; }
+
+        public PracticeSession build() {
+            PracticeSession s = new PracticeSession();
+            s.sessionId = this.sessionId;
+            s.learner = this.learner;
+            s.lesson = this.lesson;
+            s.moduleNumber = this.moduleNumber;
+            s.score = this.score;
+            s.starsEarned = this.starsEarned;
+            s.createdAt = OffsetDateTime.now();
+            s.updatedAt = OffsetDateTime.now();
+            return s;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

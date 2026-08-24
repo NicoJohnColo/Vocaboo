@@ -43,6 +43,40 @@ public class ReinforcementQueueItem {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public VocabularyWord getWord() { return word; }
+    public Boolean getIsResolved() { return isResolved; }
+    public Integer getAttemptsCount() { return attemptsCount; }
+    public void setIsResolved(Boolean isResolved) { this.isResolved = isResolved; }
+    public void setScheduledAt(OffsetDateTime scheduledAt) { this.scheduledAt = scheduledAt; }
+    public void setAttemptsCount(Integer attemptsCount) { this.attemptsCount = attemptsCount; }
+
+    public static ReinforcementQueueItemBuilder builder() { return new ReinforcementQueueItemBuilder(); }
+
+    public static class ReinforcementQueueItemBuilder {
+        private Learner learner;
+        private VocabularyWord word;
+        private OffsetDateTime scheduledAt;
+        private Integer attemptsCount = 0;
+        private Boolean isResolved = false;
+
+        public ReinforcementQueueItemBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public ReinforcementQueueItemBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public ReinforcementQueueItemBuilder scheduledAt(OffsetDateTime scheduledAt) { this.scheduledAt = scheduledAt; return this; }
+        public ReinforcementQueueItemBuilder attemptsCount(Integer attemptsCount) { this.attemptsCount = attemptsCount; return this; }
+        public ReinforcementQueueItemBuilder isResolved(Boolean isResolved) { this.isResolved = isResolved; return this; }
+
+        public ReinforcementQueueItem build() {
+            ReinforcementQueueItem item = new ReinforcementQueueItem();
+            item.learner = this.learner;
+            item.word = this.word;
+            item.scheduledAt = this.scheduledAt != null ? this.scheduledAt : OffsetDateTime.now();
+            item.attemptsCount = this.attemptsCount != null ? this.attemptsCount : 0;
+            item.isResolved = this.isResolved != null ? this.isResolved : false;
+            item.createdAt = OffsetDateTime.now();
+            return item;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

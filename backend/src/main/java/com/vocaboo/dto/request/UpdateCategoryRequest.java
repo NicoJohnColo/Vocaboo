@@ -21,4 +21,16 @@ public class UpdateCategoryRequest {
 
     @JsonProperty("sort_order")
     private Integer sortOrder;
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Integer getSortOrder() {
+        return sortOrder;
+    }
 }

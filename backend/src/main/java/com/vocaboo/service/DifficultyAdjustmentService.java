@@ -17,10 +17,11 @@ import java.util.ArrayList;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DifficultyAdjustmentService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DifficultyAdjustmentService.class);
 
     private final DifficultyProgressRepository progressRepository;
     private final DifficultyAuditLogRepository auditLogRepository;
@@ -106,11 +107,6 @@ public class DifficultyAdjustmentService {
     @Transactional
     public DifficultyProgressResponse calculateNext(UUID learnerId, UUID wordId, boolean isCorrect) {
         return calculateNext(learnerId, wordId, isCorrect, 2, "MULTIPLE_CHOICE");
-    }
-
-    @Transactional(readOnly = true)
-    public DifficultyLevel getCurrentLevel(UUID learnerId, UUID wordId, Integer moduleNumber) {
-        return getOrCreateProgress(learnerId, wordId, moduleNumber).getCurrentLevel();
     }
 
     @Transactional(readOnly = true)

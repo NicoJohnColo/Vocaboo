@@ -31,4 +31,10 @@ public class ProgressRequest {
 
     @Builder.Default
     private Integer moduleNumber = 1;
+
+    public UUID getWordId() { return wordId; }
+    public Pathway getPathway() { return pathway; }
+    public Integer getStepCompleted() { return stepCompleted; }
+    public WordStatus getStatus() { return status; }
+    public Integer getModuleNumber() { return moduleNumber; }
 }

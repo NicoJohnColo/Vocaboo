@@ -35,6 +35,59 @@ public class VocabularyCategory {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public UUID getCategoryId() {
+        return categoryId;
+    }
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Integer getSortOrder() {
+        return sortOrder;
+    }
+
+    public void setSortOrder(Integer sortOrder) {
+        this.sortOrder = sortOrder;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public static VocabularyCategoryBuilder builder() { return new VocabularyCategoryBuilder(); }
+
+    public static class VocabularyCategoryBuilder {
+        private String categoryName;
+        private String description;
+        private Integer sortOrder = 0;
+
+        public VocabularyCategoryBuilder categoryName(String categoryName) { this.categoryName = categoryName; return this; }
+        public VocabularyCategoryBuilder description(String description) { this.description = description; return this; }
+        public VocabularyCategoryBuilder sortOrder(Integer sortOrder) { this.sortOrder = sortOrder; return this; }
+
+        public VocabularyCategory build() {
+            VocabularyCategory c = new VocabularyCategory();
+            c.categoryName = this.categoryName;
+            c.description = this.description;
+            c.sortOrder = this.sortOrder;
+            c.createdAt = OffsetDateTime.now();
+            return c;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

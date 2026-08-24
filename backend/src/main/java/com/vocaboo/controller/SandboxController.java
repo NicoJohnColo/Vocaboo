@@ -38,6 +38,8 @@ public class SandboxController {
     public static class SandboxGenerateRequest {
         @NotBlank
         private String customWord;
+
+        public String getCustomWord() { return customWord; }
     }
 
     @Data
@@ -46,6 +48,11 @@ public class SandboxController {
         private Integer moduleNumber;
         private Integer stepCompleted;
         private String status;
+
+        public UUID getWordId() { return wordId; }
+        public Integer getModuleNumber() { return moduleNumber; }
+        public Integer getStepCompleted() { return stepCompleted; }
+        public String getStatus() { return status; }
     }
 
     @Data
@@ -54,12 +61,19 @@ public class SandboxController {
         private Integer correctCount;
         private Integer totalCount;
         private Double score;
+
+        public Integer getModuleNumber() { return moduleNumber; }
+        public Integer getCorrectCount() { return correctCount; }
+        public Integer getTotalCount() { return totalCount; }
+        public Double getScore() { return score; }
     }
 
     @Data
     public static class SandboxCompletionRequest {
         @NotNull
         private Double score;
+
+        public Double getScore() { return score; }
     }
 
     @Data
@@ -67,6 +81,29 @@ public class SandboxController {
     public static class SandboxSessionResponse {
         private com.vocaboo.dto.response.SandboxSessionDto session;
         private List<SandboxLessonResponse> words;
+
+        public SandboxSessionResponse() {}
+        public SandboxSessionResponse(com.vocaboo.dto.response.SandboxSessionDto session, List<SandboxLessonResponse> words) {
+            this.session = session;
+            this.words = words;
+        }
+
+        public static SandboxSessionResponseBuilder builder() { return new SandboxSessionResponseBuilder(); }
+
+        public static class SandboxSessionResponseBuilder {
+            private com.vocaboo.dto.response.SandboxSessionDto session;
+            private List<SandboxLessonResponse> words;
+
+            public SandboxSessionResponseBuilder session(com.vocaboo.dto.response.SandboxSessionDto session) { this.session = session; return this; }
+            public SandboxSessionResponseBuilder words(List<SandboxLessonResponse> words) { this.words = words; return this; }
+
+            public SandboxSessionResponse build() {
+                SandboxSessionResponse r = new SandboxSessionResponse();
+                r.session = this.session;
+                r.words = this.words;
+                return r;
+            }
+        }
     }
 
     @PostMapping("/generate")

@@ -37,6 +37,8 @@ public class SentenceTemplate {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public String getTemplateText() { return templateText; }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

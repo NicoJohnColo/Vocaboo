@@ -64,6 +64,73 @@ public class LessonModuleScore {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    public Lesson getLesson() {
+        return lesson;
+    }
+
+    public Integer getModuleNumber() {
+        return moduleNumber;
+    }
+
+    public BigDecimal getScore() {
+        return score;
+    }
+
+    public Integer getCorrectCount() {
+        return correctCount;
+    }
+
+    public Integer getTotalCount() {
+        return totalCount;
+    }
+
+    public Integer getTimeSeconds() {
+        return timeSeconds;
+    }
+
+    public void setCorrectCount(Integer correctCount) { this.correctCount = correctCount; }
+    public void setTotalCount(Integer totalCount) { this.totalCount = totalCount; }
+    public void setScore(BigDecimal score) { this.score = score; }
+    public void setStarsEarned(Integer starsEarned) { this.starsEarned = starsEarned; }
+    public void setTimeSeconds(Integer timeSeconds) { this.timeSeconds = timeSeconds; }
+
+    public static LessonModuleScoreBuilder builder() { return new LessonModuleScoreBuilder(); }
+
+    public static class LessonModuleScoreBuilder {
+        private Learner learner;
+        private Lesson lesson;
+        private Integer moduleNumber;
+        private Integer correctCount = 0;
+        private Integer totalCount = 0;
+        private BigDecimal score = BigDecimal.ZERO;
+        private Integer starsEarned = 0;
+        private Integer timeSeconds;
+
+        public LessonModuleScoreBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public LessonModuleScoreBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
+        public LessonModuleScoreBuilder moduleNumber(Integer moduleNumber) { this.moduleNumber = moduleNumber; return this; }
+        public LessonModuleScoreBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
+        public LessonModuleScoreBuilder totalCount(Integer totalCount) { this.totalCount = totalCount; return this; }
+        public LessonModuleScoreBuilder score(BigDecimal score) { this.score = score; return this; }
+        public LessonModuleScoreBuilder starsEarned(Integer starsEarned) { this.starsEarned = starsEarned; return this; }
+        public LessonModuleScoreBuilder timeSeconds(Integer timeSeconds) { this.timeSeconds = timeSeconds; return this; }
+
+        public LessonModuleScore build() {
+            LessonModuleScore s = new LessonModuleScore();
+            s.learner = this.learner;
+            s.lesson = this.lesson;
+            s.moduleNumber = this.moduleNumber;
+            s.correctCount = this.correctCount;
+            s.totalCount = this.totalCount;
+            s.score = this.score;
+            s.starsEarned = this.starsEarned;
+            s.timeSeconds = this.timeSeconds;
+            s.recordedAt = OffsetDateTime.now();
+            s.updatedAt = OffsetDateTime.now();
+            return s;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         recordedAt = OffsetDateTime.now();

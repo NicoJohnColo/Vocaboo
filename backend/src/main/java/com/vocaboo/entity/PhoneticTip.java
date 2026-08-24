@@ -35,6 +35,10 @@ public class PhoneticTip {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    public String getTipCebuano() { return tipCebuano; }
+    public String getTipEnglish() { return tipEnglish; }
+    public String getTipMixed() { return tipMixed; }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

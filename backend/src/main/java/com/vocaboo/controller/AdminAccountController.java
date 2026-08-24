@@ -31,15 +31,17 @@ public class AdminAccountController {
 
         List<Admin> admins = adminAccountService.listAllAdmins(school_id);
         List<Map<String, Object>> response = admins.stream()
-                .map(a -> Map.<String, Object>of(
-                        "admin_id",   a.getAdminId(),
-                        "username",   a.getUsername(),
-                        "email",      a.getEmail(),
-                        "is_active",  a.getIsActive(),
-                        "school_id",  a.getSchoolId() != null ? a.getSchoolId() : "",
-                        "created_at", a.getCreatedAt(),
-                        "last_login", a.getLastLoginAt() != null ? a.getLastLoginAt() : ""
-                ))
+                .map(a -> {
+                    Map<String, Object> map = new java.util.HashMap<>();
+                    map.put("admin_id", a.getAdminId());
+                    map.put("username", a.getUsername());
+                    map.put("email", a.getEmail());
+                    map.put("is_active", a.getIsActive());
+                    map.put("school_id", a.getSchoolId() != null ? a.getSchoolId() : "");
+                    map.put("created_at", a.getCreatedAt());
+                    map.put("last_login", a.getLastLoginAt() != null ? a.getLastLoginAt() : "");
+                    return map;
+                })
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(response);

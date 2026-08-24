@@ -17,4 +17,7 @@ public class DiagnosticRequest {
 
     @NotNull(message = "Responses map is required")
     private Map<UUID, Boolean> responses;
+
+    public UUID getLessonId() { return lessonId; }
+    public Map<UUID, Boolean> getResponses() { return responses; }
 }

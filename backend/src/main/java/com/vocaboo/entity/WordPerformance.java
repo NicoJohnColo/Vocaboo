@@ -81,6 +81,96 @@ public class WordPerformance {
     @Builder.Default
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    public Learner getLearner() {
+        return learner;
+    }
+
+    public VocabularyWord getWord() {
+        return word;
+    }
+
+    public OffsetDateTime getLastPracticedAt() {
+        return lastPracticedAt;
+    }
+
+    public BigDecimal getAccuracy() {
+        return accuracy;
+    }
+
+    public Integer getDemeritPoints() {
+        return demeritPoints;
+    }
+
+    public Integer getTierDropCount() {
+        return tierDropCount;
+    }
+
+    public Integer getFallbackCount() {
+        return fallbackCount;
+    }
+
+    public Integer getTotalAttempts() {
+        return totalAttempts;
+    }
+
+    public Integer getCorrectCount() {
+        return correctCount;
+    }
+
+    public Integer getIncorrectCount() {
+        return incorrectCount;
+    }
+
+    public void setTotalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; }
+    public void setCorrectCount(Integer correctCount) { this.correctCount = correctCount; }
+    public void setIncorrectCount(Integer incorrectCount) { this.incorrectCount = incorrectCount; }
+    public void setAccuracy(BigDecimal accuracy) { this.accuracy = accuracy; }
+    public void setDemeritPoints(Integer demeritPoints) { this.demeritPoints = demeritPoints; }
+    public void setLastPracticedAt(OffsetDateTime lastPracticedAt) { this.lastPracticedAt = lastPracticedAt; }
+    public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public static WordPerformanceBuilder builder() { return new WordPerformanceBuilder(); }
+
+    public static class WordPerformanceBuilder {
+        private Learner learner;
+        private VocabularyWord word;
+        private Integer correctCount = 0;
+        private Integer incorrectCount = 0;
+        private Integer demeritPoints = 0;
+        private Integer tierDropCount = 0;
+        private Integer fallbackCount = 0;
+        private Integer totalAttempts = 0;
+        private BigDecimal accuracy = BigDecimal.ZERO;
+
+        public WordPerformanceBuilder learner(Learner learner) { this.learner = learner; return this; }
+        public WordPerformanceBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public WordPerformanceBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
+        public WordPerformanceBuilder incorrectCount(Integer incorrectCount) { this.incorrectCount = incorrectCount; return this; }
+        public WordPerformanceBuilder createdAt(OffsetDateTime createdAt) { return this; }
+        public WordPerformanceBuilder demeritPoints(Integer demeritPoints) { this.demeritPoints = demeritPoints; return this; }
+        public WordPerformanceBuilder tierDropCount(Integer tierDropCount) { this.tierDropCount = tierDropCount; return this; }
+        public WordPerformanceBuilder fallbackCount(Integer fallbackCount) { this.fallbackCount = fallbackCount; return this; }
+        public WordPerformanceBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
+        public WordPerformanceBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+
+        public WordPerformance build() {
+            WordPerformance w = new WordPerformance();
+            w.learner = this.learner;
+            w.word = this.word;
+            w.correctCount = this.correctCount;
+            w.incorrectCount = this.incorrectCount;
+            w.demeritPoints = this.demeritPoints;
+            w.tierDropCount = this.tierDropCount;
+            w.fallbackCount = this.fallbackCount;
+            w.totalAttempts = this.totalAttempts;
+            w.accuracy = this.accuracy;
+            w.lastPracticedAt = OffsetDateTime.now();
+            w.createdAt = OffsetDateTime.now();
+            w.updatedAt = OffsetDateTime.now();
+            return w;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

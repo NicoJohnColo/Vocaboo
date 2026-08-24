@@ -49,6 +49,32 @@ public class RefreshToken {
         if (createdAt == null) createdAt = OffsetDateTime.now();
     }
 
+    public String getTokenHash() { return tokenHash; }
+    public UUID getUserId() { return userId; }
+    public void setRevokedAt(OffsetDateTime revokedAt) { this.revokedAt = revokedAt; }
+
+    public static RefreshTokenBuilder builder() { return new RefreshTokenBuilder(); }
+
+    public static class RefreshTokenBuilder {
+        private UUID userId;
+        private String tokenHash;
+        private OffsetDateTime expiresAt;
+
+        public RefreshTokenBuilder userId(UUID userId) { this.userId = userId; return this; }
+        public RefreshTokenBuilder tokenHash(String tokenHash) { this.tokenHash = tokenHash; return this; }
+        public RefreshTokenBuilder expiresAt(OffsetDateTime expiresAt) { this.expiresAt = expiresAt; return this; }
+        public RefreshTokenBuilder createdAt(OffsetDateTime createdAt) { return this; }
+
+        public RefreshToken build() {
+            RefreshToken t = new RefreshToken();
+            t.userId = this.userId;
+            t.tokenHash = this.tokenHash;
+            t.expiresAt = this.expiresAt;
+            t.createdAt = OffsetDateTime.now();
+            return t;
+        }
+    }
+
     public boolean isExpired() {
         return OffsetDateTime.now().isAfter(expiresAt);
     }

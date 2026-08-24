@@ -94,6 +94,159 @@ public class Lesson {
     @Column(name = "target_grades", columnDefinition = "TEXT")
     private String targetGrades;
 
+    public UUID getLessonId() {
+        return lessonId;
+    }
+
+    public String getLessonTitle() {
+        return lessonTitle;
+    }
+
+    public GradeLevel getGradeLevel() {
+        return gradeLevel;
+    }
+
+    public Boolean getIsDeleted() {
+        return isDeleted;
+    }
+
+    public VocabularyCategory getCategory() {
+        return category;
+    }
+
+    public Integer getLessonOrder() {
+        return lessonOrder;
+    }
+
+    public void setLessonOrder(Integer lessonOrder) {
+        this.lessonOrder = lessonOrder;
+    }
+
+    public String getLessonDescription() {
+        return lessonDescription;
+    }
+
+    public Integer getTotalWordCount() {
+        return totalWordCount;
+    }
+
+    public LessonType getLessonType() {
+        return lessonType;
+    }
+
+    public String getContentStatus() {
+        return contentStatus;
+    }
+
+    public String getTargetGrades() {
+        return targetGrades;
+    }
+
+    public OffsetDateTime getPublishedDate() {
+        return publishedDate;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public String getContextParagraph() {
+        return contextParagraph;
+    }
+
+    public List<UUID> getSourceLessonIds() { return sourceLessonIds; }
+    public UUID getCompositeReviewAfterLessonId() { return compositeReviewAfterLessonId; }
+
+    public void setLessonTitle(String lessonTitle) {
+        this.lessonTitle = lessonTitle;
+    }
+
+    public void setLessonDescription(String lessonDescription) {
+        this.lessonDescription = lessonDescription;
+    }
+
+    public void setGradeLevel(GradeLevel gradeLevel) {
+        this.gradeLevel = gradeLevel;
+    }
+
+    public void setTotalWordCount(Integer totalWordCount) {
+        this.totalWordCount = totalWordCount;
+    }
+
+    public void setContextParagraph(String contextParagraph) {
+        this.contextParagraph = contextParagraph;
+    }
+
+    public void setContentStatus(String contentStatus) {
+        this.contentStatus = contentStatus;
+    }
+
+    public void setPublishedDate(OffsetDateTime publishedDate) {
+        this.publishedDate = publishedDate;
+    }
+
+    public void setPublishedByAdminId(UUID publishedByAdminId) {
+        this.publishedByAdminId = publishedByAdminId;
+    }
+
+    public void setTargetGrades(String targetGrades) {
+        this.targetGrades = targetGrades;
+    }
+
+    public static LessonBuilder builder() {
+        return new LessonBuilder();
+    }
+
+    public static class LessonBuilder {
+        private VocabularyCategory category;
+        private String lessonTitle;
+        private String lessonDescription;
+        private GradeLevel gradeLevel;
+        private LessonType lessonType = LessonType.REGULAR;
+        private Integer lessonOrder = 1;
+        private Integer totalWordCount = 0;
+        private List<UUID> sourceLessonIds;
+        private String contextParagraph;
+        private UUID compositeReviewAfterLessonId;
+        private String contentStatus = "DRAFT";
+        private Boolean isDeleted = false;
+
+        public LessonBuilder category(VocabularyCategory category) { this.category = category; return this; }
+        public LessonBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
+        public LessonBuilder lessonDescription(String lessonDescription) { this.lessonDescription = lessonDescription; return this; }
+        public LessonBuilder gradeLevel(GradeLevel gradeLevel) { this.gradeLevel = gradeLevel; return this; }
+        public LessonBuilder lessonType(LessonType lessonType) { this.lessonType = lessonType; return this; }
+        public LessonBuilder lessonOrder(Integer lessonOrder) { this.lessonOrder = lessonOrder; return this; }
+        public LessonBuilder totalWordCount(Integer totalWordCount) { this.totalWordCount = totalWordCount; return this; }
+        public LessonBuilder sourceLessonIds(List<UUID> sourceLessonIds) { this.sourceLessonIds = sourceLessonIds; return this; }
+        public LessonBuilder contextParagraph(String contextParagraph) { this.contextParagraph = contextParagraph; return this; }
+        public LessonBuilder compositeReviewAfterLessonId(UUID compositeReviewAfterLessonId) { this.compositeReviewAfterLessonId = compositeReviewAfterLessonId; return this; }
+        public LessonBuilder contentStatus(String contentStatus) { this.contentStatus = contentStatus; return this; }
+        public LessonBuilder isDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; return this; }
+
+        public Lesson build() {
+            Lesson l = new Lesson();
+            l.category = this.category;
+            l.lessonTitle = this.lessonTitle;
+            l.lessonDescription = this.lessonDescription;
+            l.gradeLevel = this.gradeLevel;
+            l.lessonType = this.lessonType;
+            l.lessonOrder = this.lessonOrder;
+            l.totalWordCount = this.totalWordCount;
+            l.sourceLessonIds = this.sourceLessonIds;
+            l.contextParagraph = this.contextParagraph;
+            l.compositeReviewAfterLessonId = this.compositeReviewAfterLessonId;
+            l.contentStatus = this.contentStatus;
+            l.createdAt = OffsetDateTime.now();
+            l.updatedAt = OffsetDateTime.now();
+            return l;
+        }
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

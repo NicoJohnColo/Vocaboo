@@ -97,16 +97,17 @@ public class PracticeSessionService {
                 ? activityType.toUpperCase()
                 : "MULTIPLE_CHOICE";
 
-        // Activities fully excluded from all scoring
+        // Activities excluded from percentage accuracy scoring
         if (SCORING_EXCLUDED.contains(resolvedActivityType)) {
-            // Still record the result row for audit, but with 0 points and no accuracy impact
+            int excludedPoints = ("PRONUNCIATION_FEEDBACK".equals(resolvedActivityType) && isCorrect) ? 15 : 0;
+            // Still record the result row for audit; awards 15 pts for correct pronunciation without accuracy impact
             PracticeResult result = PracticeResult.builder()
                     .session(session)
                     .word(word)
                     .isCorrect(isCorrect)
                     .attemptNumber(1)
                     .activityType(resolvedActivityType)
-                    .points(0)
+                    .points(excludedPoints)
                     .recordedAt(OffsetDateTime.now())
                     .build();
             return toResultResponse(resultRepository.save(result));

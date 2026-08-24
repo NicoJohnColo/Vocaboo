@@ -20,4 +20,36 @@ public class RecentWordProgressResponse {
     private String currentLevel; // 'LEARNING', 'FAMILIAR', 'PROFICIENT', 'MASTERED'
     private String partOfSpeech;
     private OffsetDateTime lastPracticedAt;
+
+    public static RecentWordProgressResponseBuilder builder() { return new RecentWordProgressResponseBuilder(); }
+
+    public static class RecentWordProgressResponseBuilder {
+        private UUID wordId;
+        private String englishWord;
+        private String cebuanoMeaning;
+        private BigDecimal accuracy;
+        private String currentLevel;
+        private String partOfSpeech;
+        private OffsetDateTime lastPracticedAt;
+
+        public RecentWordProgressResponseBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
+        public RecentWordProgressResponseBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
+        public RecentWordProgressResponseBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+        public RecentWordProgressResponseBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+        public RecentWordProgressResponseBuilder currentLevel(String currentLevel) { this.currentLevel = currentLevel; return this; }
+        public RecentWordProgressResponseBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
+        public RecentWordProgressResponseBuilder lastPracticedAt(OffsetDateTime lastPracticedAt) { this.lastPracticedAt = lastPracticedAt; return this; }
+
+        public RecentWordProgressResponse build() {
+            RecentWordProgressResponse r = new RecentWordProgressResponse();
+            r.wordId = this.wordId;
+            r.englishWord = this.englishWord;
+            r.cebuanoMeaning = this.cebuanoMeaning;
+            r.accuracy = this.accuracy;
+            r.currentLevel = this.currentLevel;
+            r.partOfSpeech = this.partOfSpeech;
+            r.lastPracticedAt = this.lastPracticedAt;
+            return r;
+        }
+    }
 }

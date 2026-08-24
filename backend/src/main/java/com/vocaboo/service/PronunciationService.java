@@ -214,6 +214,7 @@ public class PronunciationService {
         attemptRepository.save(attempt);
 
         boolean manualTeacherFallback = !isCorrect && (request.getAttemptNumber() >= 3);
+        int pointsEarned = isCorrect ? 15 : 0;
 
         return PronunciationAttemptResponse.builder()
                 .attemptId(attempt.getAttemptId())
@@ -225,6 +226,7 @@ public class PronunciationService {
                 .isInconclusive(isInconclusive)
                 .similarityScore(similarityScore)
                 .manualTeacherFallback(manualTeacherFallback)
+                .pointsEarned(pointsEarned)
                 .build();
     }
 

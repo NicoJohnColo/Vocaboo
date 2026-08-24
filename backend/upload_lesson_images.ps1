@@ -4,7 +4,7 @@
 # 2. Upload new images from the mobile assets folder
 
 # Configuration
-$backendUrl = "http://192.168.1.186:8081"
+$backendUrl = "http://10.250.50.221:8081"
 $mobileAssetsPath = "C:\Users\Nicoj\OneDrive\Desktop\Vocaboo\mobile\assets\images"
 $lesson1Id = "b1000000-0000-0000-0000-000000000001"  # School Objects
 $lesson2Id = "b1000000-0000-0000-0000-000000000002"  # Family Members

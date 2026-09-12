@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../services/localization_service.dart';
 import '../services/tts_service.dart';
+import '../core/motion/motion.dart';
 
 class ConfusableWordsDistinctionScreen extends StatefulWidget {
   final String sessionId;
@@ -91,23 +95,26 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final pref = auth.learner?.languagePreference;
+
     if (widget.confusablePairs.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
-          title: const Text(
+          title: Text(
             "Confusable Words Distinction",
-            style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+            style: AppTypography.baloo2(fontWeight: FontWeight.w800, color: const Color(0xFF1E293B)),
           ),
           centerTitle: true,
           automaticallyImplyLeading: false,
         ),
-        body: const Center(
+        body: Center(
           child: Text(
             'No confusable pair was available for this lesson.',
-            style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+            style: AppTypography.nunito(fontSize: 14, color: const Color(0xFF64748B)),
           ),
         ),
       );
@@ -146,12 +153,18 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          "Confusable Words Distinction",
-          style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+          onPressed: () => Navigator.of(context).pop(_results),
         ),
-        centerTitle: true,
-        automaticallyImplyLeading: false,
+        title: Text(
+          'Confusable Words (${_currentIndex + 1}/${widget.confusablePairs.length})',
+          style: AppTypography.baloo2(
+            color: const Color(0xFF06A6FF),
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -160,16 +173,17 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
             // Progress Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-              child: LinearProgressIndicator(
-                value: widget.confusablePairs.isNotEmpty ? ((_currentIndex + 1) / widget.confusablePairs.length) : 0,
-                backgroundColor: const Color(0xFFE2E8F0),
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF59E0B)),
-                minHeight: 8,
+              child: App3DProgressBar(
+                value: widget.confusablePairs.isNotEmpty
+                    ? ((_currentIndex + 1) / widget.confusablePairs.length)
+                    : 0,
+                height: 20.0,
               ),
             ),
 
             Expanded(
               child: SingleChildScrollView(
+                key: ValueKey('confusable_${pair['pairId']}_$_currentIndex'),
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -191,7 +205,7 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                             decoration: BoxDecoration(
                               color: const Color(0xFFF0F9FF),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFF0284C7), width: 1.5),
+                              border: Border.all(color: const Color(0xFF0EA5E9), width: 1.5),
                             ),
                             child: Column(
                               children: [
@@ -206,17 +220,17 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                                   textAlign: TextAlign.center,
                                 ),
                                 const SizedBox(height: 12),
-                                ElevatedButton.icon(
+                                App3DButton(
                                   onPressed: () => _ttsService.speak(wordAEnglish),
-                                  icon: const Icon(Icons.volume_up_rounded, size: 16),
-                                  label: const Text("Listen"),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF0284C7),
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
+                                  icon: Icons.volume_up_rounded,
+                                  text: LocalizationService.translate(pref, 'listen'),
+                                  customBaseColor: const Color(0xFF0EA5E9),
+                                  customDepthColor: const Color(0xFF0369A1),
+                                  height: 38,
+                                  depth: 3.0,
+                                  borderRadius: 12,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                                 ),
                               ],
                             ),
@@ -229,9 +243,9 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFF7ED),
+                              color: const Color(0xFFFFFBEB),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFD97706), width: 1.5),
+                              border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
                             ),
                             child: Column(
                               children: [
@@ -242,9 +256,9 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                                     color: const Color(0xFFD97706),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: const Text(
-                                    'Bonus Word',
-                                    style: TextStyle(
+                                  child: Text(
+                                    LocalizationService.translate(pref, 'bonus_word'),
+                                    style: const TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
@@ -262,17 +276,17 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                                   textAlign: TextAlign.center,
                                 ),
                                 const SizedBox(height: 12),
-                                ElevatedButton.icon(
+                                App3DButton(
                                   onPressed: () => _ttsService.speak(wordBEnglish),
-                                  icon: const Icon(Icons.volume_up_rounded, size: 16),
-                                  label: const Text("Listen"),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFD97706),
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
+                                  icon: Icons.volume_up_rounded,
+                                  text: LocalizationService.translate(pref, 'listen'),
+                                  customBaseColor: const Color(0xFFD97706),
+                                  customDepthColor: const Color(0xFFB45309),
+                                  height: 38,
+                                  depth: 3.0,
+                                  borderRadius: 12,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                                 ),
                               ],
                             ),
@@ -282,9 +296,9 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                     ),
                     const SizedBox(height: 32),
 
-                    const Text(
-                      "Contrastive Exercise",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                    Text(
+                      LocalizationService.translate(pref, 'contrastive_exercise'),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                     ),
                     const SizedBox(height: 16),
 
@@ -397,35 +411,25 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
                 border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
               ),
               child: _isChecked
-                  ? ElevatedButton(
+                  ? App3DButton(
                       onPressed: () => _handleContinue(pair),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: (isCorrectA && isCorrectB) ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        (isCorrectA && isCorrectB) ? "CONTINUE" : "TRY AGAIN",
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                      ),
+                      variant: (isCorrectA && isCorrectB) ? App3DButtonVariant.success : App3DButtonVariant.danger,
+                      height: 54,
+                      depth: 5.0,
+                      isFullWidth: true,
+                      text: (isCorrectA && isCorrectB)
+                          ? LocalizationService.translate(pref, 'continue').toUpperCase()
+                          : LocalizationService.translate(pref, 'try_again'),
                     )
-                  : ElevatedButton(
+                  : App3DButton(
                       onPressed: (_selectedForA != null && _selectedForB != null)
                           ? () => _checkAnswers(pair)
                           : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF59E0B),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        "SUBMIT ANSWERS",
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                      ),
+                      variant: App3DButtonVariant.warning,
+                      height: 54,
+                      depth: 5.0,
+                      isFullWidth: true,
+                      text: LocalizationService.translate(pref, 'submit_answers'),
                     ),
             ),
           ],
@@ -436,25 +440,13 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
 
   Widget _buildChoiceButton(String text, bool isSelected, VoidCallback onTap) {
     return Expanded(
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
-          side: BorderSide(
-            color: isSelected ? const Color(0xFF06A6FF) : const Color(0xFFCBD5E1),
-            width: isSelected ? 2 : 1.5,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? const Color(0xFF06A6FF) : const Color(0xFF475569),
-          ),
-        ),
+      child: App3DChoiceTile(
+        text: text,
+        state: isSelected ? App3DChoiceState.selected : App3DChoiceState.idle,
+        onTap: onTap,
+        depth: 3.5,
+        borderRadius: 14,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       ),
     );
   }

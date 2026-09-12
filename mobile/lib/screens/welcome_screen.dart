@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../core/motion/motion.dart';
 import '../widgets/mascot_visual.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -18,23 +19,22 @@ class WelcomeScreen extends StatelessWidget {
             children: [
               const Spacer(),
               // Title "Vocaboo"
-              const Text(
+              Text(
                 'Vocaboo',
-                style: TextStyle(
+                style: AppTypography.baloo2(
                   fontSize: 48,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.0,
-                  color: Color(0xFF0F172A),
-                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                  color: const Color(0xFF06A6FF),
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Learning English through Cebuano',
-                style: TextStyle(
+                style: AppTypography.nunito(
                   fontSize: 16,
-                  color: Color(0xFF64748B),
+                  color: const Color(0xFF64748B),
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
@@ -48,40 +48,21 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              // GET STARTED Button (black)
-              ElevatedButton(
+              // GET STARTED Button (3D Primary)
+              App3DButton(
+                text: 'GET STARTED',
+                variant: App3DButtonVariant.primary,
+                height: 54,
                 onPressed: () => context.push('/profile-setup'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A), // Black
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'GET STARTED',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                  ),
-                ),
               ),
-              const SizedBox(height: 16),
-              // LOGIN Button / Link (optional, styled as simple link text button)
-              TextButton(
+              const SizedBox(height: 12),
+              // LOGIN Button (3D Secondary Outline)
+              App3DButton(
+                text: 'I ALREADY HAVE AN ACCOUNT',
+                variant: App3DButtonVariant.secondary,
+                height: 50,
+                depth: 3.0,
                 onPressed: () => context.push('/login'),
-                child: const Text(
-                  'I ALREADY HAVE AN ACCOUNT',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF475569),
-                    letterSpacing: 0.5,
-                  ),
-                ),
               ),
             ],
           ),

@@ -24,7 +24,15 @@ public class PracticeSessionRequest {
     @Max(value = 4, message = "Module number must be between 1 and 4")
     private Integer moduleNumber;
 
+    /**
+     * Optional. When provided, the session is tagged as CLASS context and all
+     * resulting point transactions are attributed to this classroom.
+     * Null = GLOBAL context (default free-play mode).
+     */
+    private UUID classroomContextId;
+
     public UUID getLearnerId() { return learnerId; }
     public UUID getLessonId() { return lessonId; }
     public Integer getModuleNumber() { return moduleNumber; }
+    public UUID getClassroomContextId() { return classroomContextId; }
 }

@@ -1,6 +1,7 @@
 package com.vocaboo.dto.request;
 
 import com.vocaboo.entity.LanguageMedium;
+import com.vocaboo.entity.GradeLevel;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -27,8 +28,14 @@ public class RegisterRequest {
     @NotNull(message = "Language preference is required")
     private LanguageMedium languagePreference;
 
+    private GradeLevel gradeLevel;
+
+    private String avatar;
+
     public String getDisplayName() { return displayName; }
     public Integer getAge() { return age; }
     public String getPin() { return pin; }
     public LanguageMedium getLanguagePreference() { return languagePreference; }
+    public GradeLevel getGradeLevel() { return gradeLevel; }
+    public String getAvatar() { return avatar; }
 }

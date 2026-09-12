@@ -1,16 +1,25 @@
 import { useEffect, useState } from 'react';
 import { LearnerService } from '../services/LearnerService';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
-export default function LearnerDetailModal({ learnerId, onClose, onResetProgress, onEditProfile }) {
+export default function LearnerDetailModal({ learnerId, classContext, onClose, onResetProgress, onEditProfile }) {
+  const { admin } = useAdminAuth();
+  const isTeacher = admin?.role?.toLowerCase() === 'teacher' || admin?.role?.toUpperCase() === 'ROLE_TEACHER';
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedClassId, setSelectedClassId] = useState(classContext?.classId || null);
+  const isClassScoped = Boolean(selectedClassId || isTeacher);
+
+  useEffect(() => {
+    setSelectedClassId(classContext?.classId || null);
+  }, [classContext?.classId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    LearnerService.getLearnerDetail(learnerId)
+    LearnerService.getLearnerDetail(learnerId, selectedClassId)
       .then(data => {
         if (!cancelled) {
           setDetail(data);
@@ -24,15 +33,27 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
         }
       });
     return () => { cancelled = true; };
-  }, [learnerId]);
+  }, [learnerId, selectedClassId]);
+
+  const enrolledClasses = detail?.enrolled_classes || detail?.enrolledClasses || [];
+  const currentEnrolled = enrolledClasses.find(c => (c.class_id || c.classId) === selectedClassId);
 
   const displayName = detail?.display_name || detail?.displayName || 'Student';
   const idVal = detail?.learner_id || detail?.learnerId || learnerId;
-  const sectionName = detail?.section_name || detail?.sectionName || 'Unassigned (Self-Paced)';
+  const isMultiClassCombined = isTeacher && enrolledClasses.length > 1 && !selectedClassId;
+  const targetClassName = currentEnrolled?.class_name || currentEnrolled?.className || (selectedClassId ? (detail?.class_name || detail?.className || classContext?.className) : null);
+  const targetClassCode = currentEnrolled?.class_code || currentEnrolled?.classCode || (selectedClassId ? (detail?.class_code || detail?.classCode || classContext?.classCode) : null);
+  const sectionName = isClassScoped ? (targetClassName || 'Selected Class') : (detail?.section_name || detail?.sectionName || 'Unassigned (Self-Paced)');
   const gradeLevel = detail?.grade_level || detail?.gradeLevel;
   const overallAcc = detail?.overall_accuracy ?? detail?.overallAccuracy ?? 0;
   const totalPts = detail?.total_points ?? detail?.totalPoints ?? 0;
   const masteredWords = detail?.words_mastered_count ?? detail?.masteredWordsCount ?? 0;
+  const classPts = detail?.class_points ?? detail?.classPoints;
+  const classAcc = detail?.class_accuracy ?? detail?.classAccuracy;
+  const classMastery = detail?.class_mastery_level ?? detail?.classMasteryLevel;
+  const classSessions = detail?.class_sessions_played ?? detail?.classSessionsPlayed;
+  const posBreakdown = detail?.pos_breakdown || detail?.posBreakdown || [];
+  const allWords = detail?.all_words || detail?.allWords || [];
   const lessons = detail?.lessons || detail?.lessonBreakdowns || [];
   const weakWords = detail?.weak_words || detail?.weakWords || [];
   const isStruggling = detail?.is_struggling ?? detail?.struggling ?? false;
@@ -40,9 +61,40 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--lg modal--xl" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="modal modal--xl" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 className="modal__title" style={{ margin: 0 }}>👤 Learner Diagnostic Profile</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+              display: 'grid', placeItems: 'center',
+              color: '#fff', fontSize: '1.2rem', fontWeight: 800,
+              boxShadow: '0 4px 12px rgba(37,99,235,0.30)',
+            }}>
+              {displayName?.charAt(0)?.toUpperCase() || 'S'}
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <h2 className="modal__title" style={{ margin: 0, fontSize: '1.2rem' }}>{displayName}</h2>
+                <span style={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: '#1d4ed8',
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 6,
+                  padding: '2px 8px',
+                  letterSpacing: '0.4px',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}>
+                  ID: {detail?.user_id || detail?.userId || '—'}
+                </span>
+              </div>
+              <div className="modal__subtitle">Learner Diagnostic &amp; Performance Profile</div>
+            </div>
+          </div>
           <button className="modal__close-btn" onClick={onClose}>✕</button>
         </div>
 
@@ -56,40 +108,224 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
 
         {detail && !loading && (
           <div>
-            {/* Header info */}
+            {/* Active Classroom Context Scope Banner & Class Switcher */}
+            <div style={{
+              background: isClassScoped
+                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.05))'
+                : 'linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(29, 78, 216, 0.04))',
+              border: isClassScoped
+                ? '1.5px solid rgba(16, 185, 129, 0.40)'
+                : '1.5px solid rgba(37, 99, 235, 0.25)',
+              borderRadius: 12,
+              padding: '12px 16px',
+              marginBottom: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 10,
+                  background: isClassScoped ? '#10b981' : '#3b82f6', color: '#fff',
+                  display: 'grid', placeItems: 'center',
+                  fontSize: '1.1rem', fontWeight: 800, flexShrink: 0,
+                  boxShadow: isClassScoped ? '0 2px 8px rgba(16, 185, 129, 0.3)' : '0 2px 8px rgba(37, 99, 235, 0.3)',
+                }}>{isClassScoped ? '🏫' : '🌍'}</div>
+                <div>
+                  <div style={{ fontWeight: 800, color: isClassScoped ? '#065f46' : '#1e40af', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {isClassScoped ? (
+                      <span>Active Classroom Scope: <u>{targetClassName || (isTeacher ? 'All Assigned Classes (Combined Scope)' : 'Classroom Scope')}</u></span>
+                    ) : (
+                      <span>Active Scope: <u>Global (Platform-Wide &amp; Lifetime)</u></span>
+                    )}
+                    {targetClassCode && (
+                      <span style={{
+                        fontFamily: 'monospace', fontSize: '0.78rem',
+                        background: 'rgba(5, 150, 105, 0.15)',
+                        padding: '2px 8px', borderRadius: 6,
+                        color: '#047857', fontWeight: 700
+                      }}>
+                        Code: {targetClassCode}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: isClassScoped ? '#047857' : '#2563eb', marginTop: 3 }}>
+                    {isClassScoped
+                      ? 'Showing performance metrics and lessons recorded strictly within this classroom context. Global activities and words are excluded.'
+                      : 'Showing performance metrics, mastered words, and curriculum lessons across the entire global platform.'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Class Switcher Dropdown */}
+              {enrolledClasses.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 800, color: isClassScoped ? '#065f46' : '#1e40af' }}>
+                    Switch Scope:
+                  </label>
+                  <select
+                    value={selectedClassId || ''}
+                    onChange={(e) => setSelectedClassId(e.target.value || null)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: 8,
+                      border: isClassScoped ? '1.5px solid #10b981' : '1.5px solid #3b82f6',
+                      background: '#fff',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      color: isClassScoped ? '#065f46' : '#1e40af',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                    }}
+                  >
+                    <option value="">{isTeacher ? '🏫 All Classes (Combined View)' : '🌍 Global Scope (Platform Lifetime)'}</option>
+                    {enrolledClasses.map(cls => (
+                      <option key={cls.class_id || cls.classId} value={cls.class_id || cls.classId}>
+                        🏫 {cls.class_name || cls.className} ({cls.class_code || cls.classCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Multi-Class Comparison Bar (When student is in multiple classes) */}
+            {enrolledClasses.length > 1 && (
+              <div style={{
+                marginBottom: 20,
+                background: 'var(--color-surface, #fff)',
+                border: '1.5px solid var(--color-border)',
+                borderRadius: 12,
+                padding: '14px 16px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--color-text-main)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>🏫 Multi-Class Comparison ({enrolledClasses.length} Classes)</span>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    Click a class card to isolate its lessons &amp; diagnostics
+                  </span>
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                  gap: 10,
+                }}>
+                  {enrolledClasses.map(cls => {
+                    const cid = cls.class_id || cls.classId;
+                    const cname = cls.class_name || cls.className;
+                    const ccode = cls.class_code || cls.classCode;
+                    const cpts = cls.class_points ?? cls.classPoints ?? 0;
+                    const cacc = cls.class_accuracy ?? cls.classAccuracy ?? 0;
+                    const csess = cls.class_sessions_played ?? cls.classSessionsPlayed ?? 0;
+                    const isCurrent = (selectedClassId === cid);
+
+                    return (
+                      <div
+                        key={cid}
+                        onClick={() => setSelectedClassId(cid)}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: isCurrent ? '2px solid #10b981' : '1px solid var(--color-border)',
+                          background: isCurrent ? 'rgba(16, 185, 129, 0.08)' : 'var(--color-surface-2, #f8fafc)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease-in-out',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                          <strong style={{ fontSize: '0.85rem', color: isCurrent ? '#065f46' : 'var(--color-text-main)' }}>
+                            {cname}
+                          </strong>
+                          {isCurrent && (
+                            <span className="status-pill status-pill--success" style={{ fontSize: '0.65rem', padding: '1px 5px' }}>
+                              SELECTED
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 6 }}>
+                          Code: {ccode}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                          <span style={{ fontWeight: 700, color: '#059669' }}>{cpts.toLocaleString()} pts</span>
+                          <span style={{ fontWeight: 700, color: Number(cacc) >= 70 ? 'var(--color-success)' : Number(cacc) > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
+                            {Number(cacc) > 0 ? `${Number(cacc).toFixed(1)}%` : '—'}
+                          </span>
+                          <span style={{ color: 'var(--color-text-muted)' }}>{csess} sess</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Dual Score & Header info */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 16,
-              padding: 16,
-              background: 'var(--glass-bg)',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-border)',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: 12,
               marginBottom: 20
             }}>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Learner Name</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text-main)' }}>{displayName}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)' }}>ID: {idVal}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Class / Section</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{sectionName}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Grade: {gradeLevel ? gradeLevel.replace('_', ' ') : 'N/A'}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Overall Accuracy</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: Number(overallAcc) >= 70 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                  {Number(overallAcc).toFixed(1)}%
+              {/* Score Card: Class-specific when scoped, Global when in global admin view */}
+              {isClassScoped ? (
+                <div className="retention-mini-card" style={{
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.04))',
+                  border: '1.5px solid rgba(16, 185, 129, 0.35)',
+                }}>
+                  <div className="retention-mini-card__label" style={{ color: '#059669', fontWeight: 800 }}>
+                    🏫 In-Class Score {targetClassName ? `(${targetClassName})` : isMultiClassCombined ? '(All Classes)' : ''}
+                  </div>
+                  <div className="retention-mini-card__value" style={{ color: '#059669' }}>
+                    {(classPts ?? totalPts)?.toLocaleString()} pts
+                  </div>
+                  <div className="retention-mini-card__sub" style={{ fontWeight: 600, color: '#047857' }}>
+                    {(classAcc ?? overallAcc) != null ? `${Number(classAcc ?? overallAcc).toFixed(1)}% Class Acc` : '—'} · {(classSessions ?? detail?.total_sessions_played ?? 0)} sessions
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Points: {totalPts}</div>
+              ) : (
+                <div className="retention-mini-card retention-mini-card--gold">
+                  <div className="retention-mini-card__label">🌍 Global Score (All-Time Everywhere)</div>
+                  <div className="retention-mini-card__value" style={{ color: Number(overallAcc) >= 70 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    {totalPts?.toLocaleString()} pts
+                  </div>
+                  <div className="retention-mini-card__sub">
+                    {Number(overallAcc).toFixed(1)}% Overall Acc (All Activities)
+                  </div>
+                </div>
+              )}
+
+              <div className="retention-mini-card" style={{
+                background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(29, 78, 216, 0.04))',
+                border: '1.5px solid rgba(37, 99, 235, 0.35)',
+              }}>
+                <div className="retention-mini-card__label" style={{ color: '#1d4ed8', fontWeight: 800 }}>
+                  🆔 Student User ID
+                </div>
+                <div className="retention-mini-card__value" style={{ fontFamily: 'monospace', fontSize: '1.15rem', fontWeight: 800, color: '#1d4ed8' }}>
+                  {detail?.user_id || detail?.userId || '—'}
+                </div>
+                <div className="retention-mini-card__sub" style={{ color: '#2563eb', fontWeight: 600 }}>
+                  System ID (XX-XXXX-XXX)
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Mastered Words</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+
+              <div className="retention-mini-card retention-mini-card--blue">
+                <div className="retention-mini-card__label">{isClassScoped ? 'Active Class' : 'Class / Section'}</div>
+                <div className="retention-mini-card__value" style={{ fontSize: '1.1rem', fontWeight: 700 }}>
+                  {sectionName}
+                </div>
+                <div className="retention-mini-card__sub">Grade: {gradeLevel ? gradeLevel.replace('_', ' ') : 'N/A'}</div>
+              </div>
+
+              <div className="retention-mini-card retention-mini-card--bronze">
+                <div className="retention-mini-card__label">{isClassScoped ? 'Class Mastered Words' : 'Mastered Words'}</div>
+                <div className="retention-mini-card__value" style={{ color: 'var(--primary-mid)' }}>
                   {masteredWords}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Lessons Tracked: {lessons.length}</div>
+                <div className="retention-mini-card__sub">{isClassScoped ? `Class Lessons: ${lessons.length}` : `Global Lessons: ${lessons.length}`}</div>
               </div>
             </div>
 
@@ -105,12 +341,78 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
               </div>
             )}
 
+            {/* Part of Speech (POS) Accuracy Breakdown */}
+            {posBreakdown.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 12px 0', color: 'var(--color-text-main)' }}>
+                  🏷️ Accuracy by Part of Speech (POS)
+                </h3>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: 10,
+                }}>
+                  {posBreakdown.map((pb, idx) => {
+                    const pos = pb.part_of_speech || pb.partOfSpeech || 'OTHER';
+                    const acc = Number(pb.accuracy ?? 0);
+                    const att = pb.total_attempts ?? pb.totalAttempts ?? 0;
+                    const corr = pb.correct_count ?? pb.correctCount ?? 0;
+                    const wordsCount = pb.total_words ?? pb.totalWords ?? 0;
+                    const color = acc >= 85 ? '#10b981' : acc >= 70 ? '#3b82f6' : acc >= 50 ? '#f59e0b' : '#ef4444';
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: 'var(--color-surface, #fff)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-main)' }}>
+                            {pos}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: color }}>
+                            {acc.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div style={{
+                          height: 5,
+                          width: '100%',
+                          background: 'var(--color-surface-2, #e2e8f0)',
+                          borderRadius: 3,
+                          overflow: 'hidden',
+                        }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${Math.min(100, Math.max(0, acc))}%`,
+                            background: color,
+                            borderRadius: 3,
+                          }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          <span>{wordsCount} words</span>
+                          <span>{corr}/{att} correct</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Lesson Progress Breakdown */}
             <div style={{ marginBottom: 24 }}>
-              <h3 style={{ fontSize: '1rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>📖 Lesson Progress</span>
-                <span className="table-meta" style={{ margin: 0 }}>({lessons.length} lessons)</span>
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, color: 'var(--color-text-main)' }}>
+                  📖 Lesson Progress ({lessons.length} lessons)
+                </h3>
+              </div>
 
               <div className="accounts-table-wrap">
                 <table className="accounts-table">
@@ -130,7 +432,7 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
                     {lessons.length === 0 && (
                       <tr>
                         <td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
-                          No lesson activity recorded yet.
+                          {isClassScoped ? 'No lessons published in this classroom yet.' : 'No lesson activity recorded yet.'}
                         </td>
                       </tr>
                     )}
@@ -154,12 +456,17 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
                       const rawM3 = getModScore(3);
                       const rawM4 = getModScore(4);
 
-                      // Module 1 is Intro exposure: If lesson completed or M2 reached, M1 was 100% completed
-                      const m1 = rawM1 != null ? rawM1 : ((rawM2 != null || isCompleted) ? 100 : null);
-                      const m2 = rawM2;
-                      const m3 = rawM3;
-                      // Module 4 is Test / Cumulative: If M4 score recorded use it, else if lesson is completed fallback to mastery score
-                      const m4 = rawM4 != null ? rawM4 : (isCompleted ? (mScore ?? 100) : null);
+                      const clampScore = (val) => {
+                        if (val == null) return null;
+                        const num = Number(val);
+                        return isNaN(num) ? null : Math.min(100, Math.max(0, num));
+                      };
+
+                      const m1Completed = (rawM1 != null || rawM2 != null || isCompleted);
+                      const m2 = clampScore(rawM2);
+                      const m3 = clampScore(rawM3);
+                      const m4 = clampScore(rawM4);
+                      const safeMScore = clampScore(mScore);
                       const lastPracticed = lb.last_practiced_at || lb.lastPracticedAt || lb.completed_at || lb.completedAt || detail?.last_active_at || detail?.lastActiveAt;
 
                       return (
@@ -168,17 +475,25 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
                             <strong>{lesTitle}</strong>
                           </td>
                           <td>
-                            <span className={`status-badge badge--${statusVal ? statusVal.toLowerCase() : 'draft'}`}>
-                              {statusVal}
+                            <span className={`status-pill ${
+                              statusVal === 'COMPLETED' ? 'status-pill--success'
+                              : statusVal === 'IN_PROGRESS' ? 'status-pill--warning'
+                              : 'status-pill--neutral'
+                            }`}>
+                              {statusVal || 'Not Started'}
                             </span>
                           </td>
-                          <td style={{ fontWeight: 600 }}>
-                            {mScore != null ? `${Number(mScore).toFixed(0)}%` : '—'}
+                          <td style={{ fontWeight: 700 }}>
+                            {safeMScore != null ? `${safeMScore.toFixed(0)}%` : '—'}
                           </td>
-                          <td>{m1 != null ? `${Number(m1).toFixed(0)}%` : '—'}</td>
-                          <td>{m2 != null ? `${Number(m2).toFixed(0)}%` : '—'}</td>
-                          <td>{m3 != null ? `${Number(m3).toFixed(0)}%` : '—'}</td>
-                          <td>{m4 != null ? `${Number(m4).toFixed(0)}%` : '—'}</td>
+                          <td>
+                            {m1Completed ? (
+                              <span style={{ color: 'var(--color-success, #16a34a)', fontWeight: 600 }}>Done</span>
+                            ) : '—'}
+                          </td>
+                          <td>{m2 != null ? `${m2.toFixed(0)}%` : '—'}</td>
+                          <td>{m3 != null ? `${m3.toFixed(0)}%` : '—'}</td>
+                          <td>{m4 != null ? `${m4.toFixed(0)}%` : '—'}</td>
                           <td className="text-muted" style={{ fontSize: '0.8rem' }}>
                             {lastPracticed ? new Date(lastPracticed).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                           </td>
@@ -190,173 +505,182 @@ export default function LearnerDetailModal({ learnerId, onClose, onResetProgress
               </div>
             </div>
 
-            {/* Cumulative Review & Long-Term Retention Section */}
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ fontSize: '1rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🌟 Cumulative Review & Retention Performance</span>
-                <span className="table-meta" style={{ margin: 0 }}>
-                  ({detail?.cumulative_reviews_completed ?? detail?.cumulativeReviewsCompleted ?? (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length} completed sessions)
-                </span>
-              </h3>
+            {/* Cumulative Review & Long-Term Retention Section (Only in Global Scope) */}
+            {!isClassScoped && (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, color: 'var(--color-text-main)' }}>
+                    🌟 Cumulative Review &amp; Retention Performance
+                  </h3>
+                  <span className="table-meta" style={{ margin: 0 }}>
+                    ({detail?.cumulative_reviews_completed ?? detail?.cumulativeReviewsCompleted ?? (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length} completed sessions)
+                  </span>
+                </div>
 
-              {/* Cumulative Summary Cards */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 12,
-                marginBottom: 16
-              }}>
+                {/* Cumulative Summary Cards */}
                 <div style={{
-                  background: 'var(--glass-bg)',
-                  padding: '12px 16px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-border)'
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 12,
+                  marginBottom: 16
                 }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Reviews Completed</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-primary)', marginTop: 2 }}>
-                    {detail?.cumulative_reviews_completed ?? detail?.cumulativeReviewsCompleted ?? (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length}
+                  <div className="retention-mini-card retention-mini-card--blue-soft">
+                    <div className="retention-mini-card__label">Reviews Completed</div>
+                    <div className="retention-mini-card__value" style={{ color: 'var(--primary-mid)' }}>
+                      {detail?.cumulative_reviews_completed ?? detail?.cumulativeReviewsCompleted ?? (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length}
+                    </div>
+                  </div>
+                  <div className="retention-mini-card retention-mini-card--blue">
+                    <div className="retention-mini-card__label">Avg Retention Score</div>
+                    <div className="retention-mini-card__value" style={{
+                      color: ((detail?.cumulative_reviews_completed ?? detail?.cumulativeReviewsCompleted ?? (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length) > 0 && (detail?.avg_cumulative_score ?? detail?.avgCumulativeScore) != null)
+                        ? (Number(detail?.avg_cumulative_score ?? detail?.avgCumulativeScore) >= 70 ? 'var(--color-success)' : 'var(--primary-mid)')
+                        : 'var(--color-text-dim)',
+                    }}>
+                      {((detail?.cumulative_reviews_completed ?? detail?.cumulativeReviewsCompleted ?? (detail?.cumulative_reviews || detail?.cumulativeReviews || []).length) > 0 && (detail?.avg_cumulative_score ?? detail?.avgCumulativeScore) != null)
+                        ? `${Number(detail?.avg_cumulative_score ?? detail?.avgCumulativeScore).toFixed(1)}%`
+                        : '—'}
+                    </div>
+                  </div>
+                  <div className="retention-mini-card retention-mini-card--gold">
+                    <div className="retention-mini-card__label">Best Badge Earned</div>
+                    <div className="retention-mini-card__value" style={{ fontSize: '1.05rem', fontWeight: 700 }}>
+                      {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'PERFECT_GOLD' && '🏆 Perfect Gold'}
+                      {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'GOLD' && '🥇 Gold'}
+                      {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'SILVER' && '🥈 Silver'}
+                      {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'BRONZE' && '🥉 Bronze'}
+                      {!(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) && <span className="text-muted" style={{ fontWeight: 500, fontSize: '0.85rem' }}>No badges yet</span>}
+                    </div>
                   </div>
                 </div>
-                <div style={{
-                  background: 'var(--glass-bg)',
-                  padding: '12px 16px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-border)'
-                }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Avg Retention Score</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: Number(detail?.avg_cumulative_score ?? detail?.avgCumulativeScore ?? 0) >= 70 ? 'var(--color-success)' : 'var(--color-accent-1)', marginTop: 2 }}>
-                    {Number(detail?.avg_cumulative_score ?? detail?.avgCumulativeScore ?? 0).toFixed(1)}%
-                  </div>
-                </div>
-                <div style={{
-                  background: 'var(--glass-bg)',
-                  padding: '12px 16px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-border)'
-                }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Best Badge Earned</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: 2 }}>
-                    {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'PERFECT_GOLD' && '🏆 Perfect Gold (100%)'}
-                    {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'GOLD' && '🥇 Gold (90%+)'}
-                    {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'SILVER' && '🥈 Silver (80%+)'}
-                    {(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) === 'BRONZE' && '🥉 Bronze (70%+)'}
-                    {!(detail?.best_cumulative_badge || detail?.bestCumulativeBadge) && <span className="text-muted" style={{ fontWeight: 500, fontSize: '0.95rem' }}>No badges yet</span>}
-                  </div>
+
+                {/* Cumulative Sessions Table */}
+                <div className="accounts-table-wrap">
+                  <table className="accounts-table">
+                    <thead>
+                      <tr>
+                        <th>Lesson Pair / Category</th>
+                        <th>Accuracy</th>
+                        <th>Badge</th>
+                        <th>Points Earned</th>
+                        <th>Questions</th>
+                        <th>Date Completed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(!detail?.cumulative_reviews && !detail?.cumulativeReviews || (detail?.cumulative_reviews || detail?.cumulativeReviews).length === 0) ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>
+                            No cumulative review sessions completed yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        (detail?.cumulative_reviews || detail?.cumulativeReviews).map((cs, idx) => {
+                          const sid = cs.session_id || cs.sessionId || idx;
+                          const pairName = cs.category_name || cs.categoryName || cs.lesson_pair_id || cs.lessonPairId || 'Cumulative Review';
+                          const acc = cs.accuracy_percent ?? cs.accuracyPercent;
+                          const badge = cs.badge_awarded || cs.badgeAwarded;
+                          const pts = cs.points_earned ?? cs.pointsEarned ?? 0;
+                          const corr = cs.correct_count ?? cs.correctCount ?? 0;
+                          const tot = cs.total_attempts ?? cs.totalAttempts ?? 0;
+                          const compDate = cs.completed_at || cs.completedAt;
+
+                          return (
+                            <tr key={sid}>
+                              <td><strong>{pairName}</strong></td>
+                              <td style={{ fontWeight: 700, color: Number(acc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
+                                {acc != null ? `${Number(acc).toFixed(1)}%` : '—'}
+                              </td>
+                              <td>
+                                {badge === 'PERFECT_GOLD' && <span className="status-pill status-pill--warning">🏆 Perfect Gold</span>}
+                                {badge === 'GOLD' && <span className="status-pill status-pill--warning">🥇 Gold</span>}
+                                {badge === 'SILVER' && <span className="status-pill status-pill--neutral">🥈 Silver</span>}
+                                {badge === 'BRONZE' && <span className="status-pill status-pill--neutral">🥉 Bronze</span>}
+                                {!badge && <span className="text-muted">—</span>}
+                              </td>
+                              <td style={{ fontWeight: 700, color: 'var(--primary-mid)' }}>+{pts} pts</td>
+                              <td className="text-muted">{corr} / {tot} correct</td>
+                              <td className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                {compDate ? new Date(compDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
+            )}
 
-              {/* Cumulative Sessions Table */}
-              <div className="accounts-table-wrap">
-                <table className="accounts-table">
-                  <thead>
-                    <tr>
-                      <th>Lesson Pair / Category</th>
-                      <th>Accuracy</th>
-                      <th>Badge</th>
-                      <th>Points Earned</th>
-                      <th>Questions</th>
-                      <th>Date Completed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(!detail?.cumulative_reviews && !detail?.cumulativeReviews || (detail?.cumulative_reviews || detail?.cumulativeReviews).length === 0) ? (
+            {/* All Words Practiced (Full Diagnostic Breakdown with POS & Accuracy) */}
+            {allWords.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text-main)' }}>
+                  <span>📚 Per-Word Diagnostic &amp; Accuracy ({allWords.length} words practiced)</span>
+                </h3>
+
+                <div className="accounts-table-wrap" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                  <table className="accounts-table">
+                    <thead>
                       <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>
-                          No cumulative review sessions completed yet.
-                        </td>
+                        <th>Word</th>
+                        <th>Part of Speech</th>
+                        <th>Cebuano Meaning</th>
+                        <th>Lesson</th>
+                        <th title="Highest score recorded in the lesson attempt">Lesson Best Acc</th>
+                        <th title="Cumulative accuracy across all lifetime sessions">Lifetime Acc</th>
+                        <th>Demerits</th>
+                        <th>Attempts</th>
                       </tr>
-                    ) : (
-                      (detail?.cumulative_reviews || detail?.cumulativeReviews).map((cs, idx) => {
-                        const sid = cs.session_id || cs.sessionId || idx;
-                        const pairName = cs.category_name || cs.categoryName || cs.lesson_pair_id || cs.lessonPairId || 'Cumulative Review';
-                        const acc = cs.accuracy_percent ?? cs.accuracyPercent;
-                        const badge = cs.badge_awarded || cs.badgeAwarded;
-                        const pts = cs.points_earned ?? cs.pointsEarned ?? 0;
-                        const corr = cs.correct_count ?? cs.correctCount ?? 0;
-                        const tot = cs.total_attempts ?? cs.totalAttempts ?? 0;
-                        const compDate = cs.completed_at || cs.completedAt;
+                    </thead>
+                    <tbody>
+                      {allWords.map(w => {
+                        const wid = w.word_id || w.wordId;
+                        const eng = w.english_word || w.englishWord;
+                        const pos = w.part_of_speech || w.partOfSpeech;
+                        const ceb = w.cebuano_meaning || w.cebuanoMeaning;
+                        const les = w.lesson_title || w.lessonTitle;
+                        const dem = w.demerit_points ?? w.demeritPoints ?? 0;
+                        const att = w.total_attempts ?? w.totalAttempts ?? ((w.correct_count || 0) + (w.incorrect_count || 0));
+                        const corr = w.correct_count ?? w.correctCount ?? 0;
+                        const lessonAcc = w.lesson_accuracy ?? w.lessonAccuracy ?? w.accuracy;
+                        const lifetimeAcc = w.lifetime_accuracy ?? w.lifetimeAccuracy ?? (att > 0 ? (corr * 100 / att) : lessonAcc);
 
                         return (
-                          <tr key={sid}>
-                            <td><strong>{pairName}</strong></td>
-                            <td style={{ fontWeight: 600, color: Number(acc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
-                              {acc != null ? `${Number(acc).toFixed(1)}%` : '—'}
-                            </td>
+                          <tr key={wid}>
+                            <td><strong>{eng}</strong></td>
                             <td>
-                              {badge === 'PERFECT_GOLD' && <span style={{ color: '#d97706', fontWeight: 700 }}>🏆 Perfect Gold</span>}
-                              {badge === 'GOLD' && <span style={{ color: '#eab308', fontWeight: 700 }}>🥇 Gold</span>}
-                              {badge === 'SILVER' && <span style={{ color: '#94a3b8', fontWeight: 700 }}>🥈 Silver</span>}
-                              {badge === 'BRONZE' && <span style={{ color: '#b45309', fontWeight: 700 }}>🥉 Bronze</span>}
-                              {!badge && <span className="text-muted">—</span>}
+                              {pos ? (
+                                <span style={{
+                                  fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px',
+                                  borderRadius: 6, background: '#f1f5f9', color: '#475569',
+                                  border: '1px solid #cbd5e1',
+                                }}>
+                                  {pos}
+                                </span>
+                              ) : <span className="text-muted">—</span>}
                             </td>
-                            <td style={{ fontWeight: 600, color: 'var(--color-primary)' }}>+{pts} pts</td>
-                            <td className="text-muted">{corr} / {tot} correct</td>
-                            <td className="text-muted" style={{ fontSize: '0.8rem' }}>
-                              {compDate ? new Date(compDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            <td className="text-muted">{ceb}</td>
+                            <td className="text-muted">{les}</td>
+                            <td style={{ color: Number(lessonAcc) < 70 ? 'var(--color-danger)' : Number(lessonAcc) >= 85 ? 'var(--color-success)' : 'var(--color-text-main)', fontWeight: 700 }}>
+                              {lessonAcc != null ? `${Number(lessonAcc).toFixed(1)}%` : '0%'}
                             </td>
+                            <td style={{ color: Number(lifetimeAcc) < 70 ? 'var(--color-danger)' : Number(lifetimeAcc) >= 85 ? 'var(--color-success)' : 'var(--color-text-main)', fontWeight: 600 }}>
+                              {lifetimeAcc != null ? `${Number(lifetimeAcc).toFixed(1)}%` : '0%'}
+                            </td>
+                            <td style={{ color: Number(dem) > 0 ? 'var(--color-danger)' : 'inherit', fontWeight: 600 }}>
+                              {dem || 0}
+                            </td>
+                            <td>{att || 0}</td>
                           </tr>
                         );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-
-            {/* Weak Words Requiring Reinforcement */}
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ fontSize: '1rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🎯 Reinforcement Focus (Weak Words)</span>
-              </h3>
-
-              <div className="accounts-table-wrap">
-                <table className="accounts-table">
-                  <thead>
-                    <tr>
-                      <th>Word</th>
-                      <th>Cebuano Meaning</th>
-                      <th>Lesson</th>
-                      <th>Accuracy</th>
-                      <th>Demerit Points</th>
-                      <th>Attempts</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {weakWords.length === 0 && (
-                      <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-success)', padding: 20 }}>
-                          ✓ No weak words identified. Learner is performing well!
-                        </td>
-                      </tr>
-                    )}
-                    {weakWords.map(w => {
-                      const wid = w.word_id || w.wordId;
-                      const eng = w.english_word || w.englishWord;
-                      const ceb = w.cebuano_meaning || w.cebuanoMeaning;
-                      const les = w.lesson_title || w.lessonTitle;
-                      const acc = w.accuracy ?? w.avg_accuracy;
-                      const dem = w.demerit_points ?? w.demeritPoints;
-                      const att = w.total_attempts ?? w.totalAttempts ?? ((w.correct_count || 0) + (w.incorrect_count || 0));
-
-                      return (
-                        <tr key={wid}>
-                          <td><strong>{eng}</strong></td>
-                          <td className="text-muted">{ceb}</td>
-                          <td className="text-muted">{les}</td>
-                          <td style={{ color: Number(acc) < 70 ? 'var(--color-danger)' : 'var(--color-text-main)', fontWeight: 600 }}>
-                            {acc != null ? `${Number(acc).toFixed(1)}%` : '0%'}
-                          </td>
-                          <td style={{ color: Number(dem) > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                            {dem || 0}
-                          </td>
-                          <td>{att || 0}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            )}
 
             {/* Actions footer */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>

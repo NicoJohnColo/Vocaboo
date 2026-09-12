@@ -23,6 +23,7 @@ public class AdminAccountService {
     private static final Logger log = LoggerFactory.getLogger(AdminAccountService.class);
 
     private final AdminRepository adminRepository;
+    private final com.vocaboo.repository.TeacherRepository teacherRepository;
     private final AdminAuditLogRepository auditLogRepository;
     private final PasswordEncoder passwordEncoder;
     private final AdminEmailService emailService;
@@ -74,6 +75,38 @@ public class AdminAccountService {
         return newAdmin;
     }
 
+    @Transactional
+    public com.vocaboo.entity.Teacher createTeacherAccount(UUID invitedByAdminId, String username, String email, String school, String firstname, String lastname) {
+        if (teacherRepository.findByUsername(username.trim()).isPresent() || adminRepository.findByUsername(username.trim()).isPresent()) {
+            throw new IllegalArgumentException("Username '" + username + "' is already taken.");
+        }
+        if (teacherRepository.findByEmail(email.trim()).isPresent() || adminRepository.findByEmail(email.trim()).isPresent()) {
+            throw new IllegalArgumentException("An account with email '" + email + "' already exists.");
+        }
+
+        String temporaryPassword = generateTemporaryPassword();
+        String hashedPassword = passwordEncoder.encode(temporaryPassword);
+
+        com.vocaboo.entity.Teacher newTeacher = com.vocaboo.entity.Teacher.builder()
+                .username(username.trim())
+                .email(email.trim())
+                .passwordHash(hashedPassword)
+                .school(school != null && !school.isBlank() ? school.trim() : null)
+                .firstname(firstname != null && !firstname.isBlank() ? firstname.trim() : username.trim())
+                .lastname(lastname != null && !lastname.isBlank() ? lastname.trim() : "")
+                .build();
+
+        newTeacher = teacherRepository.save(newTeacher);
+
+        audit(invitedByAdminId, "CREATE_TEACHER", newTeacher.getTeacherId(),
+              "Created teacher: " + username + " | email: " + email);
+
+        emailService.sendWelcomeEmail(email, username, temporaryPassword);
+
+        log.info("Teacher account created: {} by admin: {}", username, invitedByAdminId);
+        return newTeacher;
+    }
+
     // ── Enable / Disable ────────────────────────────────────────────────────
 
     @Transactional
@@ -103,16 +136,33 @@ public class AdminAccountService {
      */
     @Transactional
     public void resetAdminPassword(UUID actingAdminId, UUID targetAdminId) {
-        Admin target = findOrThrow(targetAdminId);
+        java.util.Optional<Admin> adminOpt = adminRepository.findById(targetAdminId);
+        if (adminOpt.isPresent()) {
+            Admin target = adminOpt.get();
+            String rawToken = UUID.randomUUID().toString();
+            target.setPasswordResetToken(rawToken);
+            target.setPasswordResetExpiry(OffsetDateTime.now().plusHours(1));
+            adminRepository.save(target);
+            emailService.sendPasswordResetEmail(target.getEmail(), target.getUsername(), rawToken);
+            audit(actingAdminId, "RESET_PASSWORD", targetAdminId, "Password reset email sent");
+            log.info("Password reset requested for admin: {} by: {}", targetAdminId, actingAdminId);
+            return;
+        }
 
-        String rawToken = UUID.randomUUID().toString();
-        target.setPasswordResetToken(rawToken);
-        target.setPasswordResetExpiry(OffsetDateTime.now().plusHours(1));
-        adminRepository.save(target);
+        java.util.Optional<com.vocaboo.entity.Teacher> teacherOpt = teacherRepository.findById(targetAdminId);
+        if (teacherOpt.isPresent()) {
+            com.vocaboo.entity.Teacher target = teacherOpt.get();
+            String rawToken = UUID.randomUUID().toString();
+            target.setPasswordResetToken(rawToken);
+            target.setPasswordResetExpiry(OffsetDateTime.now().plusHours(1));
+            teacherRepository.save(target);
+            emailService.sendPasswordResetEmail(target.getEmail(), target.getUsername(), rawToken);
+            audit(actingAdminId, "RESET_PASSWORD_TEACHER", targetAdminId, "Password reset email sent to teacher");
+            log.info("Password reset requested for teacher: {} by admin: {}", targetAdminId, actingAdminId);
+            return;
+        }
 
-        emailService.sendPasswordResetEmail(target.getEmail(), target.getUsername(), rawToken);
-        audit(actingAdminId, "RESET_PASSWORD", targetAdminId, "Password reset email sent");
-        log.info("Password reset requested for admin: {} by: {}", targetAdminId, actingAdminId);
+        throw new IllegalArgumentException("Account not found: " + targetAdminId);
     }
 
     /**
@@ -192,6 +242,58 @@ public class AdminAccountService {
             return adminRepository.findBySchoolId(schoolId);
         }
         return adminRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public List<java.util.Map<String, Object>> listAllAccounts(UUID schoolId) {
+        List<java.util.Map<String, Object>> list = new java.util.ArrayList<>();
+
+        // Admins
+        List<Admin> admins = schoolId != null ? adminRepository.findBySchoolId(schoolId) : adminRepository.findAll();
+        for (Admin a : admins) {
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("account_id", a.getAdminId());
+            map.put("admin_id", a.getAdminId());
+            map.put("username", a.getUsername());
+            map.put("email", a.getEmail());
+            map.put("role", "ADMIN");
+            map.put("is_active", a.getIsActive() != null ? a.getIsActive() : true);
+            map.put("school_id", a.getSchoolId() != null ? a.getSchoolId() : "");
+            map.put("school", a.getSchoolId() != null ? a.getSchoolId().toString() : "");
+            map.put("created_at", a.getCreatedAt());
+            map.put("last_login", a.getLastLoginAt() != null ? a.getLastLoginAt() : "");
+            list.add(map);
+        }
+
+        // Teachers
+        List<com.vocaboo.entity.Teacher> teachers = teacherRepository.findAll();
+        for (com.vocaboo.entity.Teacher t : teachers) {
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("account_id", t.getTeacherId());
+            map.put("admin_id", t.getTeacherId());
+            map.put("username", t.getUsername());
+            map.put("email", t.getEmail());
+            map.put("role", "TEACHER");
+            map.put("firstname", t.getFirstname());
+            map.put("lastname", t.getLastname());
+            map.put("is_active", true);
+            map.put("school", t.getSchool() != null ? t.getSchool() : "");
+            map.put("school_id", "");
+            map.put("created_at", t.getCreatedAt());
+            map.put("last_login", "");
+            list.add(map);
+        }
+
+        list.sort((a, b) -> {
+            OffsetDateTime t1 = (OffsetDateTime) a.get("created_at");
+            OffsetDateTime t2 = (OffsetDateTime) b.get("created_at");
+            if (t1 == null && t2 == null) return 0;
+            if (t1 == null) return 1;
+            if (t2 == null) return -1;
+            return t2.compareTo(t1);
+        });
+
+        return list;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

@@ -12,8 +12,31 @@ export default function AssignSectionModal({ learners, onConfirm, onClose, loadi
     SectionService.getAllSections()
       .then(list => {
         if (!cancelled) {
-          setSections(list);
-          if (list.length > 0) setSelectedSectionId(list[0].section_id);
+          // Sort naturally by grade and name (e.g. Grade 4 -> Grade 5 -> Grade 6)
+          const sorted = [...list].sort((a, b) => {
+            const na = a.section_name || '';
+            const nb = b.section_name || '';
+            return na.localeCompare(nb, undefined, { numeric: true, sensitivity: 'base' });
+          });
+
+          setSections(sorted);
+
+          if (sorted.length > 0) {
+            // Intelligent preselection based on learner's existing section or grade
+            const target = Array.isArray(learners) ? learners[0] : learners;
+            const existingSecId = target?.section_id || target?.sectionId || target?.class_id || target?.classId;
+            const existingGrade = (target?.grade_level || target?.gradeLevel || '').replace('GRADE_', 'Grade ');
+
+            let matchedId = '';
+            if (existingSecId && sorted.some(s => s.section_id === existingSecId)) {
+              matchedId = existingSecId;
+            } else if (existingGrade) {
+              const byGrade = sorted.find(s => s.section_name && s.section_name.includes(existingGrade));
+              if (byGrade) matchedId = byGrade.section_id;
+            }
+
+            setSelectedSectionId(matchedId || sorted[0].section_id);
+          }
           setLoadingSections(false);
         }
       })
@@ -21,7 +44,7 @@ export default function AssignSectionModal({ learners, onConfirm, onClose, loadi
         if (!cancelled) setLoadingSections(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [learners]);
 
   const isBulk = Array.isArray(learners);
   const count = isBulk ? learners.length : 1;

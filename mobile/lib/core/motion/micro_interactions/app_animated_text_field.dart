@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 /// An animated input text field with smooth focus glow, label float,
 /// and animated error message slide-reveal.
@@ -81,10 +82,9 @@ class _AppAnimatedTextFieldState extends State<AppAnimatedTextField> {
         AnimatedDefaultTextStyle(
           duration: AppDurations.short,
           curve: AppCurves.emphasizedDecelerate,
-          style: TextStyle(
-            fontFamily: 'Outfit',
+          style: AppTypography.nunito(
             fontSize: 14,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             color: hasError
                 ? const Color(0xFFEF4444)
                 : (_isFocused ? primaryColor : const Color(0xFF475569)),
@@ -118,18 +118,17 @@ class _AppAnimatedTextFieldState extends State<AppAnimatedTextField> {
             obscureText: widget.obscureText,
             keyboardType: widget.keyboardType,
             onChanged: widget.onChanged,
-            style: const TextStyle(
-              fontFamily: 'Outfit',
+            style: AppTypography.nunito(
               fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF0F172A),
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF0F172A),
             ),
             decoration: InputDecoration(
               hintText: widget.hint,
-              hintStyle: const TextStyle(
-                fontFamily: 'Outfit',
+              hintStyle: AppTypography.nunito(
                 fontSize: 14,
-                color: Color(0xFF94A3B8),
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF94A3B8),
               ),
               prefixIcon: widget.prefixIcon,
               suffixIcon: widget.suffixIcon,
@@ -157,11 +156,10 @@ class _AppAnimatedTextFieldState extends State<AppAnimatedTextField> {
                       Expanded(
                         child: Text(
                           widget.errorText!,
-                          style: const TextStyle(
-                            fontFamily: 'Outfit',
+                          style: AppTypography.nunito(
                             fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFFEF4444),
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFEF4444),
                           ),
                         ),
                       ),

@@ -23,6 +23,11 @@ export const VocabularyService = {
       explanationText: payload.explanation_text,
       audioTextCebuano: payload.audio_text_cebuano,
       audioTextEnglish: payload.audio_text_english,
+      eligibleActivityTypes: payload.eligible_activity_types,
+      phonologicalTipKey: payload.phonological_tip_key,
+      isConfusablePairMember: payload.is_confusable_pair_member,
+      hintDefinition: payload.hint_definition,
+      hintCebuanoSentence: payload.hint_cebuano_sentence,
     };
     const res = await apiFetch(`/api/admin/lessons/${lessonId}/vocabulary`, {
       method: 'POST',
@@ -62,6 +67,11 @@ export const VocabularyService = {
       explanationText: payload.explanation_text,
       audioTextCebuano: payload.audio_text_cebuano,
       audioTextEnglish: payload.audio_text_english,
+      eligibleActivityTypes: payload.eligible_activity_types,
+      phonologicalTipKey: payload.phonological_tip_key,
+      isConfusablePairMember: payload.is_confusable_pair_member,
+      hintDefinition: payload.hint_definition,
+      hintCebuanoSentence: payload.hint_cebuano_sentence,
     };
     const res = await apiFetch(`/api/admin/lessons/${lessonId}/vocabulary/${wordId}`, {
       method: 'PUT',
@@ -112,11 +122,20 @@ export const VocabularyService = {
     const res = await apiFetch(`/api/admin/lessons/${lessonId}/vocabulary/bulk-import/template`);
     if (!res.ok) throw new Error('Failed to download template');
     
+    let filename = 'vocabulary_import_template.csv';
+    const disposition = res.headers.get('Content-Disposition');
+    if (disposition && disposition.indexOf('filename=') !== -1) {
+      const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+      if (matches != null && matches[1]) {
+        filename = matches[1].replace(/['"]/g, '').trim();
+      }
+    }
+
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'vocabulary_import_template.csv';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

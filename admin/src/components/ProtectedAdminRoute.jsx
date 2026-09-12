@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 
-export default function ProtectedAdminRoute({ children }) {
+export default function ProtectedAdminRoute({ children, requiredRole }) {
   const { isAuthenticated, isLoading, admin } = useAdminAuth();
   const location = useLocation();
 
@@ -26,6 +26,10 @@ export default function ProtectedAdminRoute({ children }) {
 
   if (!admin.mustChangePassword && isForceChangePath) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requiredRole && admin.role !== requiredRole) {
+    return <Navigate to="/classes" replace />;
   }
 
   return children;

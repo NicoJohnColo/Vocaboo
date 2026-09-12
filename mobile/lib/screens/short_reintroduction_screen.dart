@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
 
+import '../core/motion/typography_tokens.dart';
+
 import '../models/vocabulary_word_model.dart';
 
 import '../providers/lesson_provider.dart';
 
 import '../services/tts_service.dart';
 import '../widgets/cebuano_text_highlighter.dart';
+import '../widgets/app_3d_button.dart';
 
 
 
@@ -187,23 +190,14 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
             Center(
 
               child: Text(
-
                 word.cebuanoMeaning.toUpperCase(),
-
-                style: const TextStyle(
-
-                  fontFamily: 'Outfit',
-
+                style: TextStyle(
+                  fontFamily: AppTypography.displayFontFamily,
                   fontSize: 28,
-
-                  fontWeight: FontWeight.w900,
-
-                  color: Color(0xFF0F172A),
-
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF06A6FF),
                   letterSpacing: 0.5,
-
                 ),
-
               ),
 
             ),
@@ -285,21 +279,13 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
                         const SizedBox(height: 2),
 
                         Text(
-
                           targetWord,
-
-                          style: const TextStyle(
-
-                            fontFamily: 'Outfit',
-
+                          style: TextStyle(
+                            fontFamily: AppTypography.displayFontFamily,
                             fontSize: 22,
-
                             fontWeight: FontWeight.w800,
-
-                            color: Color(0xFF0284C7),
-
+                            color: const Color(0xFF0284C7),
                           ),
-
                         ),
 
                       ],
@@ -394,114 +380,42 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
 
 
 
-            // Primary Action Button
-
-            ElevatedButton.icon(
-
+            // Primary Action Button (Chunky 3D Duolingo Style)
+            App3DButton.success(
               onPressed: _isSubmitting ? null : _handleAcknowledge,
-
-              icon: _isSubmitting
-
-                  ? const SizedBox(
-
-                      width: 20,
-
-                      height: 20,
-
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-
-                    )
-
-                  : const Icon(Icons.check_circle_rounded, size: 22),
-
-              label: Text(_isSubmitting ? 'Updating...' : 'I understand this word'),
-
-              style: ElevatedButton.styleFrom(
-
-                backgroundColor: const Color(0xFF10B981),
-
-                foregroundColor: Colors.white,
-
-                padding: const EdgeInsets.symmetric(vertical: 16),
-
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-
-                textStyle: const TextStyle(
-
-                  fontFamily: 'Outfit',
-
-                  fontSize: 16,
-
-                  fontWeight: FontWeight.w800,
-
-                ),
-
-              ),
-
+              isLoading: _isSubmitting,
+              icon: Icons.check_circle_rounded,
+              text: 'I understand this word',
+              height: 54,
+              depth: 5.0,
+              isFullWidth: true,
             ),
-
           ],
-
         ),
-
       ),
-
     );
-
   }
 
-
-
   Widget _buildHighlightedSentence(String fullSentence, String wordToHighlight) {
-
-    final tokens = fullSentence.split(RegExp(r'\s+'));
-
-    final spans = <TextSpan>[];
-
-
-
-    for (int i = 0; i < tokens.length; i++) {
-
-      final token = tokens[i];
-
-      final cleanToken = token.replaceAll(RegExp(r"[^\p{L}\p{N}']", unicode: true), '');
-
-      final isMatch = cleanToken.equalsIgnoreCase(wordToHighlight);
-
-
-
-      spans.add(
-
-        TextSpan(
-
-          text: '$token ',
-
-          style: TextStyle(
-
-            fontFamily: 'Outfit',
-
-            fontSize: 15,
-
-            height: 1.4,
-
-            fontWeight: isMatch ? FontWeight.w900 : FontWeight.normal,
-
-            color: isMatch ? const Color(0xFFB45309) : const Color(0xFF78350F),
-
-            backgroundColor: isMatch ? const Color(0xFFFDE68A) : Colors.transparent,
-
-          ),
-
-        ),
-
-      );
-
-    }
-
-
-
-    return RichText(text: TextSpan(children: spans));
-
+    return CebuanoTextHighlighter(
+      text: fullSentence,
+      highlightWord: wordToHighlight,
+      style: TextStyle(
+        fontFamily: AppTypography.bodyFontFamily,
+        fontSize: 15,
+        height: 1.4,
+        color: const Color(0xFF78350F),
+      ),
+      highlightStyle: TextStyle(
+        fontFamily: AppTypography.bodyFontFamily,
+        fontSize: 15,
+        height: 1.4,
+        fontWeight: FontWeight.w800,
+        color: const Color(0xFFB45309),
+        decoration: TextDecoration.underline,
+        decorationColor: const Color(0xFFD97706),
+      ),
+    );
   }
 
 }

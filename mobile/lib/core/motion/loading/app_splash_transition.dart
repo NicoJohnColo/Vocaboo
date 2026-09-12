@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 /// An initial cold-start splash transition widget that sequences logo pop,
 /// brand glow expansion, and seamless cross-dissolve into the destination screen.
@@ -179,10 +180,9 @@ class _AppSplashTransitionState extends State<AppSplashTransition>
                               children: [
                                 Text(
                                   widget.title,
-                                  style: const TextStyle(
-                                    fontFamily: 'Outfit',
+                                  style: AppTypography.baloo2(
                                     fontSize: 32,
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight: FontWeight.w800,
                                     color: Colors.white,
                                     letterSpacing: 1.2,
                                   ),
@@ -190,11 +190,10 @@ class _AppSplashTransitionState extends State<AppSplashTransition>
                                 const SizedBox(height: 8),
                                 Text(
                                   widget.subtitle,
-                                  style: const TextStyle(
-                                    fontFamily: 'Outfit',
+                                  style: AppTypography.nunito(
                                     fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF94A3B8),
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF94A3B8),
                                   ),
                                 ),
                               ],

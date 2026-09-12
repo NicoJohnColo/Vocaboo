@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/typography_tokens.dart';
 import '../providers/auth_provider.dart';
 import '../services/localization_service.dart';
+import '../widgets/app_3d_button.dart';
 
 class RoundOneCompletedScreen extends StatelessWidget {
   final String sessionId;
@@ -42,11 +44,11 @@ class RoundOneCompletedScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              // Trophy/Achievement Icon
+              // Trophy/Mascot Icon
               Center(
                 child: Container(
-                  width: 120,
-                  height: 120,
+                  width: 130,
+                  height: 130,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFFFEF3C7), // Light amber
@@ -58,21 +60,29 @@ class RoundOneCompletedScreen extends StatelessWidget {
                       )
                     ],
                   ),
-                  child: const Icon(
-                    Icons.emoji_events_rounded,
-                    size: 80,
-                    color: Color(0xFFD97706),
+                  child: Center(
+                    child: Image.asset(
+                      'assets/images/thumbsup.png',
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.emoji_events_rounded,
+                        size: 80,
+                        color: Color(0xFFD97706),
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 36),
               Text(
                 LocalizationService.translate(pref, 'lesson_completed'),
-                style: const TextStyle(
-                  fontFamily: 'Outfit',
+                style: TextStyle(
+                  fontFamily: AppTypography.displayFontFamily,
                   fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF06A6FF),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -206,32 +216,20 @@ class RoundOneCompletedScreen extends StatelessWidget {
               ],
               const Spacer(),
 
-              // Primary back action (Black)
-              ElevatedButton(
+              // Primary back action (Dark)
+              App3DButton(
                 onPressed: () {
                   context.go('/home');
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A), // Black
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: Text(
-                  LocalizationService.translate(pref, 'back_to_path'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                  ),
-                ),
+                variant: App3DButtonVariant.dark,
+                height: 54,
+                depth: 5.0,
+                isFullWidth: true,
+                text: LocalizationService.translate(pref, 'back_to_path'),
               ),
-              const SizedBox(height: 16),
-              // Secondary practice action (Outlined slate)
-              OutlinedButton(
+              const SizedBox(height: 14),
+              // Secondary practice action (3D secondary outline)
+              App3DButton(
                 onPressed: () {
                   context.go(
                     '/session/$sessionId/practice',
@@ -245,22 +243,11 @@ class RoundOneCompletedScreen extends StatelessWidget {
                     },
                   );
                 },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  LocalizationService.translate(pref, 'practice_more'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                  ),
-                ),
+                variant: App3DButtonVariant.secondary,
+                height: 50,
+                depth: 3.5,
+                isFullWidth: true,
+                text: LocalizationService.translate(pref, 'practice_more'),
               ),
             ],
           ),

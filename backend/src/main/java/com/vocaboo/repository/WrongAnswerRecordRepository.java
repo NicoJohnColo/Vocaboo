@@ -9,4 +9,5 @@ import java.util.UUID;
 @Repository
 public interface WrongAnswerRecordRepository extends JpaRepository<WrongAnswerRecord, UUID> {
     List<WrongAnswerRecord> findByLearnerLearnerId(UUID learnerId);
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

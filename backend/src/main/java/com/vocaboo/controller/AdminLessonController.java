@@ -29,15 +29,18 @@ public class AdminLessonController {
     private final PublishWorkflowService publishWorkflowService;
 
     /**
-     * GET /api/admin/lessons — List all non-deleted lessons
+     * GET /api/admin/lessons — List non-deleted lessons
      * Optional: ?categoryId=uuid to filter by category
+     * Optional: ?classId=uuid to filter by class
      */
     @GetMapping
     public ResponseEntity<List<AdminLessonResponse>> getAllLessons(
-            @RequestParam(required = false) UUID categoryId) {
-        List<AdminLessonResponse> lessons = categoryId != null
-                ? lessonManagementService.getLessonsByCategory(categoryId)
-                : lessonManagementService.getAllLessons();
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) UUID classId,
+            @RequestParam(required = false) Boolean globalOnly,
+            Authentication auth) {
+        UUID teacherId = isTeacher(auth) ? parseTeacherId(auth) : null;
+        List<AdminLessonResponse> lessons = lessonManagementService.getLessons(categoryId, classId, teacherId, globalOnly);
         return ResponseEntity.ok(lessons);
     }
 
@@ -54,8 +57,10 @@ public class AdminLessonController {
      */
     @PostMapping
     public ResponseEntity<AdminLessonResponse> createLesson(
-            @Valid @RequestBody CreateLessonRequest req) {
-        AdminLessonResponse created = lessonManagementService.createLesson(req);
+            @Valid @RequestBody CreateLessonRequest req,
+            Authentication auth) {
+        UUID teacherId = isTeacher(auth) ? parseTeacherId(auth) : null;
+        AdminLessonResponse created = lessonManagementService.createLesson(req, teacherId);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -65,16 +70,19 @@ public class AdminLessonController {
     @PutMapping("/{id}")
     public ResponseEntity<AdminLessonResponse> updateLesson(
             @PathVariable UUID id,
-            @Valid @RequestBody UpdateLessonRequest req) {
-        return ResponseEntity.ok(lessonManagementService.updateLesson(id, req));
+            @Valid @RequestBody UpdateLessonRequest req,
+            Authentication auth) {
+        UUID teacherId = isTeacher(auth) ? parseTeacherId(auth) : null;
+        return ResponseEntity.ok(lessonManagementService.updateLesson(id, req, teacherId));
     }
 
     /**
      * DELETE /api/admin/lessons/{id} — Soft-delete lesson (cascade to words)
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteLesson(@PathVariable UUID id) {
-        lessonManagementService.deleteLesson(id);
+    public ResponseEntity<Void> deleteLesson(@PathVariable UUID id, Authentication auth) {
+        UUID teacherId = isTeacher(auth) ? parseTeacherId(auth) : null;
+        lessonManagementService.deleteLesson(id, teacherId);
         return ResponseEntity.noContent().build();
     }
 
@@ -118,5 +126,21 @@ public class AdminLessonController {
     @GetMapping("/{id}/validation-report")
     public ResponseEntity<Map<String, Object>> getValidationReport(@PathVariable UUID id) {
         return ResponseEntity.ok(publishWorkflowService.getValidationReport(id));
+    }
+
+    private boolean isTeacher(Authentication auth) {
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
+    }
+
+    private UUID parseTeacherId(Authentication auth) {
+        if (auth == null || auth.getName() == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(auth.getName());
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

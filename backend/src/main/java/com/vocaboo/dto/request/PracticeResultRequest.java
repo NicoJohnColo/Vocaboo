@@ -15,6 +15,7 @@ public class PracticeResultRequest {
     @NotNull(message = "Word ID is required")
     private UUID wordId;
 
+    @com.fasterxml.jackson.annotation.JsonAlias({"isCorrect", "correct"})
     @NotNull(message = "correct is required")
     private Boolean correct;
 
@@ -23,6 +24,8 @@ public class PracticeResultRequest {
 
     public UUID getWordId() { return wordId; }
     public Boolean getCorrect() { return correct; }
+    public Boolean getIsCorrect() { return correct; }
+    public void setIsCorrect(Boolean isCorrect) { this.correct = isCorrect; }
     public Integer getAttemptNumber() { return attemptNumber; }
     public String getActivityType() { return activityType; }
 }

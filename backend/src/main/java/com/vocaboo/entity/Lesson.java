@@ -67,6 +67,10 @@ public class Lesson {
     @Column(name = "composite_review_after_lesson_id")
     private UUID compositeReviewAfterLessonId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "class_id")
+    private Classroom classroom;
+
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
@@ -93,6 +97,44 @@ public class Lesson {
 
     @Column(name = "target_grades", columnDefinition = "TEXT")
     private String targetGrades;
+
+    // ── Per-Lesson Activity & Mastery Configurations ─────────────────────────
+
+    @Column(name = "module2_activities", columnDefinition = "TEXT")
+    @Builder.Default
+    private String module2Activities = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+
+    @Column(name = "module3_activities", columnDefinition = "TEXT")
+    @Builder.Default
+    private String module3Activities = "SENTENCE_COMPLETION;SENTENCE_ARRANGEMENT;PRONUNCIATION_FEEDBACK";
+
+    @Column(name = "module4_activities", columnDefinition = "TEXT")
+    @Builder.Default
+    private String module4Activities = "IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION";
+
+    @Column(name = "upgrade_streak_required")
+    @Builder.Default
+    private Integer upgradeStreakRequired = 2;
+
+    @Column(name = "demotion_threshold")
+    @Builder.Default
+    private Integer demotionThreshold = 2;
+
+    @Column(name = "reintroduction_threshold")
+    @Builder.Default
+    private Integer reintroductionThreshold = 4;
+
+    @Column(name = "module3_upgrade_streak_required")
+    @Builder.Default
+    private Integer module3UpgradeStreakRequired = 2;
+
+    @Column(name = "module3_demotion_threshold")
+    @Builder.Default
+    private Integer module3DemotionThreshold = 1;
+
+    @Column(name = "streak_celebration_threshold")
+    @Builder.Default
+    private Integer streakCelebrationThreshold = 3;
 
     public UUID getLessonId() {
         return lessonId;
@@ -193,16 +235,25 @@ public class Lesson {
         this.publishedByAdminId = publishedByAdminId;
     }
 
+    public void setLessonId(UUID lessonId) {
+        this.lessonId = lessonId;
+    }
+
     public void setTargetGrades(String targetGrades) {
         this.targetGrades = targetGrades;
     }
+
+    public Classroom getClassroom() { return classroom; }
+    public void setClassroom(Classroom classroom) { this.classroom = classroom; }
 
     public static LessonBuilder builder() {
         return new LessonBuilder();
     }
 
     public static class LessonBuilder {
+        private UUID lessonId;
         private VocabularyCategory category;
+        private Classroom classroom;
         private String lessonTitle;
         private String lessonDescription;
         private GradeLevel gradeLevel;
@@ -214,8 +265,19 @@ public class Lesson {
         private UUID compositeReviewAfterLessonId;
         private String contentStatus = "DRAFT";
         private Boolean isDeleted = false;
+        private String module2Activities = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+        private String module3Activities = "SENTENCE_COMPLETION;SENTENCE_ARRANGEMENT;PRONUNCIATION_FEEDBACK";
+        private String module4Activities = "IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION";
+        private Integer upgradeStreakRequired = 2;
+        private Integer demotionThreshold = 2;
+        private Integer reintroductionThreshold = 4;
+        private Integer module3UpgradeStreakRequired = 2;
+        private Integer module3DemotionThreshold = 1;
+        private Integer streakCelebrationThreshold = 3;
 
+        public LessonBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
         public LessonBuilder category(VocabularyCategory category) { this.category = category; return this; }
+        public LessonBuilder classroom(Classroom classroom) { this.classroom = classroom; return this; }
         public LessonBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
         public LessonBuilder lessonDescription(String lessonDescription) { this.lessonDescription = lessonDescription; return this; }
         public LessonBuilder gradeLevel(GradeLevel gradeLevel) { this.gradeLevel = gradeLevel; return this; }
@@ -227,10 +289,21 @@ public class Lesson {
         public LessonBuilder compositeReviewAfterLessonId(UUID compositeReviewAfterLessonId) { this.compositeReviewAfterLessonId = compositeReviewAfterLessonId; return this; }
         public LessonBuilder contentStatus(String contentStatus) { this.contentStatus = contentStatus; return this; }
         public LessonBuilder isDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; return this; }
+        public LessonBuilder module2Activities(String module2Activities) { this.module2Activities = module2Activities; return this; }
+        public LessonBuilder module3Activities(String module3Activities) { this.module3Activities = module3Activities; return this; }
+        public LessonBuilder module4Activities(String module4Activities) { this.module4Activities = module4Activities; return this; }
+        public LessonBuilder upgradeStreakRequired(Integer upgradeStreakRequired) { this.upgradeStreakRequired = upgradeStreakRequired; return this; }
+        public LessonBuilder demotionThreshold(Integer demotionThreshold) { this.demotionThreshold = demotionThreshold; return this; }
+        public LessonBuilder reintroductionThreshold(Integer reintroductionThreshold) { this.reintroductionThreshold = reintroductionThreshold; return this; }
+        public LessonBuilder module3UpgradeStreakRequired(Integer module3UpgradeStreakRequired) { this.module3UpgradeStreakRequired = module3UpgradeStreakRequired; return this; }
+        public LessonBuilder module3DemotionThreshold(Integer module3DemotionThreshold) { this.module3DemotionThreshold = module3DemotionThreshold; return this; }
+        public LessonBuilder streakCelebrationThreshold(Integer streakCelebrationThreshold) { this.streakCelebrationThreshold = streakCelebrationThreshold; return this; }
 
         public Lesson build() {
             Lesson l = new Lesson();
+            l.lessonId = this.lessonId;
             l.category = this.category;
+            l.classroom = this.classroom;
             l.lessonTitle = this.lessonTitle;
             l.lessonDescription = this.lessonDescription;
             l.gradeLevel = this.gradeLevel;
@@ -241,6 +314,15 @@ public class Lesson {
             l.contextParagraph = this.contextParagraph;
             l.compositeReviewAfterLessonId = this.compositeReviewAfterLessonId;
             l.contentStatus = this.contentStatus;
+            l.module2Activities = this.module2Activities != null ? this.module2Activities : "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+            l.module3Activities = this.module3Activities != null ? this.module3Activities : "SENTENCE_COMPLETION;SENTENCE_ARRANGEMENT;PRONUNCIATION_FEEDBACK";
+            l.module4Activities = this.module4Activities != null ? this.module4Activities : "IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION";
+            l.upgradeStreakRequired = this.upgradeStreakRequired != null ? this.upgradeStreakRequired : 2;
+            l.demotionThreshold = this.demotionThreshold != null ? this.demotionThreshold : 2;
+            l.reintroductionThreshold = this.reintroductionThreshold != null ? this.reintroductionThreshold : 4;
+            l.module3UpgradeStreakRequired = this.module3UpgradeStreakRequired != null ? this.module3UpgradeStreakRequired : 2;
+            l.module3DemotionThreshold = this.module3DemotionThreshold != null ? this.module3DemotionThreshold : 1;
+            l.streakCelebrationThreshold = this.streakCelebrationThreshold != null ? this.streakCelebrationThreshold : 3;
             l.createdAt = OffsetDateTime.now();
             l.updatedAt = OffsetDateTime.now();
             return l;

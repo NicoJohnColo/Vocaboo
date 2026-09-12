@@ -34,16 +34,18 @@ public class MasteryController {
             @RequestParam("lessonId") UUID lessonId,
             @RequestParam(value = "score", required = false) Double score,
             @RequestParam(value = "isPerfectFirstAttempt", required = false) Boolean isPerfectFirstAttempt,
+            @RequestParam(value = "classroomId", required = false) UUID classroomId,
             Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
-        SessionSummary summary = masteryService.completeSession(learnerId, sessionId, lessonId, score, isPerfectFirstAttempt);
+        SessionSummary summary = masteryService.completeSession(
+                learnerId, sessionId, lessonId, score, isPerfectFirstAttempt, classroomId);
 
         // Fetch the badge earned for this lesson
         List<RewardData> rewards = rewardRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
         String badge = rewards.stream()
                 .map(RewardData::getBadgeType)
                 .max(Comparator.comparingInt(this::getBadgeTier))
-                .orElse(score != null && score >= 90.0 ? "GOLD" : score != null && score >= 80.0 ? "SILVER" : "BRONZE");
+                .orElse(score != null && score >= 90.0 ? "GOLD" : score != null && score >= 75.0 ? "SILVER" : "BRONZE");
 
         return ResponseEntity.ok(mapToResponse(summary, badge));
     }
@@ -71,7 +73,7 @@ public class MasteryController {
         String badge = rewards.stream()
                 .map(RewardData::getBadgeType)
                 .max(Comparator.comparingInt(this::getBadgeTier))
-                .orElse(summary.getAccuracyRate() != null && summary.getAccuracyRate().doubleValue() >= 90.0 ? "GOLD" : "BRONZE");
+                .orElse(summary.getAccuracyRate() != null && summary.getAccuracyRate().doubleValue() >= 90.0 ? "GOLD" : summary.getAccuracyRate() != null && summary.getAccuracyRate().doubleValue() >= 75.0 ? "SILVER" : "BRONZE");
 
         return ResponseEntity.ok(mapToResponse(summary, badge));
     }
@@ -92,6 +94,10 @@ public class MasteryController {
             map.put("lessonTitle", reward.getLesson().getLessonTitle());
             map.put("badgeType", reward.getBadgeType());
             map.put("earnedAt", reward.getEarnedAt());
+            LearnerLessonStatus status = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, reward.getLesson().getLessonId()).orElse(null);
+            if (status != null && status.getMasteryScore() != null) {
+                map.put("score", status.getMasteryScore().doubleValue());
+            }
             list.add(map);
         }
         return ResponseEntity.ok(list);

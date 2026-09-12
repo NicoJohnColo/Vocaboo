@@ -9,6 +9,7 @@ export 'typography_tokens.dart';
 export 'page_transitions/app_page_transitions.dart';
 export 'page_transitions/interactive_back_gesture.dart';
 export 'page_transitions/shared_axis_transition.dart';
+export 'page_transitions/app_question_transition.dart';
 
 // Shared Element Continuity
 export 'shared_element/app_hero.dart';
@@ -36,3 +37,16 @@ export 'micro_interactions/app_animated_nav_bar.dart';
 export 'feedback/app_answer_feedback.dart';
 export 'feedback/app_badge_celebration.dart';
 export 'feedback/app_animated_progress_bar.dart';
+
+// Duolingo-Style Tactile UI System
+export '../../widgets/app_3d_button.dart';
+export '../../widgets/app_3d_choice_tile.dart';
+export '../../widgets/app_3d_progress_bar.dart';
+export '../../widgets/app_game_card.dart';
+export '../../widgets/app_path_node_widget.dart';
+export '../../widgets/app_streak_flame_widget.dart';
+export '../../widgets/app_xp_feedback.dart';
+export '../../widgets/app_answer_option_card.dart';
+export '../../widgets/app_reward_badge_celebration.dart';
+export '../../widgets/app_3d_badge_pill.dart';
+

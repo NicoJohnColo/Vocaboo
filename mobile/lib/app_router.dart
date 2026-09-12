@@ -8,14 +8,14 @@ import 'models/vocabulary_word_model.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_setup_screen.dart';
+import 'screens/grade_selection_screen.dart';
 import 'screens/pin_setup_screen.dart';
 import 'screens/language_preference_screen.dart';
+import 'screens/avatar_selection_screen.dart';
 import 'screens/success_screen.dart';
-import 'screens/home_screen.dart';
 import 'screens/lesson_path_screen.dart';
 import 'screens/vocabulary_introduction_screen.dart';
 import 'screens/cumulative_review_screen.dart';
-import 'screens/cumulative_review_summary_screen.dart';
 import 'screens/diagnostic_check_screen.dart';
 import 'screens/diagnostic_summary_screen.dart';
 import 'screens/round_one_completed_screen.dart';
@@ -24,14 +24,17 @@ import 'screens/sentence_building_screen.dart';
 import 'screens/confusable_words_distinction_screen.dart';
 import 'screens/mastery_result_screen.dart';
 import 'screens/sandbox_mode_screen.dart';
-import 'screens/user_dashboard_screen.dart';
+import 'screens/sandbox_history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/lesson_score_screen.dart';
 import 'screens/wrong_answers_screen.dart';
 import 'screens/progress_screen.dart';
-import 'screens/leaderboard_screen.dart';
 import 'screens/loading_screen.dart';
 import 'screens/motion_showcase_screen.dart';
+import 'screens/main_tab_shell_screen.dart';
+import 'screens/phonics_vowels_screen.dart';
+import 'screens/class_detail_screen.dart';
+import 'screens/categories_screen.dart';
 
 class _AuthListenable extends ChangeNotifier {
   final AuthProvider _auth;
@@ -59,8 +62,10 @@ class AppRouter {
       final isGoingToAuth = state.matchedLocation == '/' ||
           state.matchedLocation == '/login' ||
           state.matchedLocation == '/profile-setup' ||
+          state.matchedLocation == '/grade-selection' ||
           state.matchedLocation == '/pin-setup' ||
           state.matchedLocation == '/language-preference' ||
+          state.matchedLocation == '/avatar-selection' ||
           state.matchedLocation == '/success';
       if (isLoggedIn && (state.matchedLocation == '/' || state.matchedLocation == '/login')) {
         return '/home';
@@ -70,7 +75,32 @@ class AppRouter {
       }
       return null;
     },
+    errorBuilder: (context, state) {
+      if (state.uri.path == '/categories' || state.uri.toString().startsWith('/categories')) {
+        return CategoriesScreen(
+          classId: state.uri.queryParameters['classId'],
+          className: state.uri.queryParameters['className'] ?? state.uri.queryParameters['name'],
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('Page Not Found')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('No routes for location: ${state.uri}'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => context.go('/home'),
+                child: const Text('Home'),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
     routes: [
+      // ── Auth & Onboarding Flow (Full-Screen) ───────────────────────────────
       GoRoute(
         path: '/',
         pageBuilder: (c, s) => AppPageTransitions.page(
@@ -83,7 +113,8 @@ class AppRouter {
         path: '/login',
         pageBuilder: (c, s) => AppPageTransitions.page(
           key: s.pageKey,
-          type: AppMotionType.sharedAxisX,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
           child: const LoginScreen(),
         ),
       ),
@@ -91,15 +122,26 @@ class AppRouter {
         path: '/profile-setup',
         pageBuilder: (c, s) => AppPageTransitions.page(
           key: s.pageKey,
-          type: AppMotionType.sharedAxisX,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
           child: const ProfileSetupScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/grade-selection',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: GradeSelectionScreen(learnerData: s.extra as Map<String, dynamic>),
         ),
       ),
       GoRoute(
         path: '/pin-setup',
         pageBuilder: (c, s) => AppPageTransitions.page(
           key: s.pageKey,
-          type: AppMotionType.sharedAxisX,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
           child: PinSetupScreen(learnerData: s.extra as Map<String, dynamic>),
         ),
       ),
@@ -107,8 +149,18 @@ class AppRouter {
         path: '/language-preference',
         pageBuilder: (c, s) => AppPageTransitions.page(
           key: s.pageKey,
-          type: AppMotionType.sharedAxisX,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
           child: LanguagePreferenceScreen(learnerData: s.extra as Map<String, dynamic>?),
+        ),
+      ),
+      GoRoute(
+        path: '/avatar-selection',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const AvatarSelectionScreen(),
         ),
       ),
       GoRoute(
@@ -125,7 +177,7 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>?;
           final duration = e?['duration'] != null
               ? Duration(milliseconds: e!['duration'] as int)
-              : const Duration(seconds: 13);
+              : const Duration(seconds: 5);
           final redirectPath = e?['redirectPath'] as String? ?? '/home';
           final extraParams = Map<String, dynamic>.from(e ?? {});
           extraParams.remove('duration');
@@ -141,51 +193,164 @@ class AppRouter {
           );
         },
       ),
+
+      // ── Main Screens with Persistent 3D Bottom Bar & Flicker-Free PageView ───
       GoRoute(
         path: '/home',
         pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.fadeThrough,
-          child: const HomeScreen(),
+          key: const ValueKey('main_shell_tab_0'),
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const MainTabShellScreen(initialTab: 0),
         ),
       ),
       GoRoute(
-        path: '/motion-showcase',
+        path: '/categories',
         pageBuilder: (c, s) => AppPageTransitions.page(
           key: s.pageKey,
-          type: AppMotionType.sharedAxisZ,
-          child: const MotionShowcaseScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/leaderboard',
-        pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.fadeThrough,
-          child: const LeaderboardScreen(),
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: CategoriesScreen(
+            classId: s.uri.queryParameters['classId'],
+            className: s.uri.queryParameters['className'] ?? s.uri.queryParameters['name'],
+          ),
         ),
       ),
       GoRoute(
         path: '/category/:categoryId/lessons',
         pageBuilder: (c, s) => AppPageTransitions.page(
           key: s.pageKey,
-          type: AppMotionType.sharedAxisZ,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
           child: LessonPathScreen(
             categoryId: s.pathParameters['categoryId']!,
             categoryName: s.uri.queryParameters['name'] ?? 'Lessons',
+            classId: s.uri.queryParameters['classId'],
           ),
         ),
       ),
+      GoRoute(
+        path: '/sandbox',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: SandboxModeScreen(
+            initialSessionId: s.uri.queryParameters['sessionId'],
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/sandbox/history',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const SandboxHistoryScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/classes',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: const ValueKey('main_shell_tab_2'),
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const MainTabShellScreen(initialTab: 2),
+        ),
+      ),
+      GoRoute(
+        path: '/classes/:classId',
+        pageBuilder: (c, s) {
+          final classId = s.pathParameters['classId']!;
+          final className = s.uri.queryParameters['name'] ?? 'Class';
+          return AppPageTransitions.page(
+            key: s.pageKey,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
+            child: ClassDetailScreen(
+              classId: classId,
+              className: Uri.decodeComponent(className),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/dashboard',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: const ValueKey('main_shell_tab_3'),
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const MainTabShellScreen(initialTab: 3),
+        ),
+      ),
+      GoRoute(
+        path: '/leaderboard',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: const ValueKey('main_shell_tab_1'),
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const MainTabShellScreen(initialTab: 1),
+        ),
+      ),
+      GoRoute(
+        path: '/progress',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const ProgressScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/wrong-answers',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const WrongAnswersScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/vowels-phonics',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const PhonicsVowelsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const SettingsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/motion-showcase',
+        pageBuilder: (c, s) => AppPageTransitions.page(
+          key: s.pageKey,
+          name: s.matchedLocation,
+          type: AppMotionType.sideSlide,
+          child: const MotionShowcaseScreen(),
+        ),
+      ),
+
+      // ── Active Lesson Exercise Full-Screen Modals (Navbar Hidden) ──────────
       GoRoute(
         path: '/lesson/:lessonId/diagnostic',
         pageBuilder: (c, s) {
           final e = s.extra as Map<String, dynamic>?;
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisY,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: DiagnosticCheckScreen(
               lessonId: s.pathParameters['lessonId']!,
               categoryId: e?['categoryId']?.toString() ?? '',
+              lessonTitle: e?['lessonTitle'] as String?,
             ),
           );
         },
@@ -196,10 +361,12 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>? ?? {};
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.modalSheet,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: DiagnosticSummaryScreen(
               lessonId: s.pathParameters['lessonId']!,
               categoryId: e['categoryId']?.toString() ?? '',
+              lessonTitle: e['lessonTitle'] as String?,
               knownWords: (e['knownWords'] as List<dynamic>?)?.map((x) => Map<String, dynamic>.from(x as Map)).toList() ?? const [],
               unknownWords: (e['unknownWords'] as List<dynamic>?)?.map((x) => Map<String, dynamic>.from(x as Map)).toList() ?? const [],
               allWords: (e['allWords'] as List<dynamic>?)?.map((x) => Map<String, dynamic>.from(x as Map)).toList() ?? const [],
@@ -213,11 +380,13 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>? ?? {};
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisZ,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: VocabularyIntroductionScreen(
               sessionId: s.pathParameters['sessionId']!,
               lessonId: e['lessonId']?.toString() ?? '',
               categoryId: e['categoryId']?.toString() ?? '',
+              lessonTitle: e['lessonTitle'] as String?,
               knownWordIds: (e['knownWordIds'] as List<dynamic>?)?.map((x) => x.toString()).toList() ?? const [],
               unknownWordIds: (e['unknownWordIds'] as List<dynamic>?)?.map((x) => x.toString()).toList() ?? const [],
               allWords: (e['allWords'] as List<dynamic>?)?.map((x) => Map<String, dynamic>.from(x as Map)).toList() ?? const [],
@@ -233,7 +402,8 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>? ?? {};
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisZ,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: ActivePracticeScreen(
               sessionId: s.pathParameters['sessionId']!,
               lessonId: e['lessonId']?.toString() ?? '',
@@ -253,7 +423,8 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>;
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisZ,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: SentenceBuildingScreen(
               sessionId: s.pathParameters['sessionId']!,
               lessonId: e['lessonId'] as String,
@@ -262,6 +433,12 @@ class AppRouter {
               allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
               moduleNumber: 3,
               isSandbox: e['isSandbox'] as bool? ?? false,
+              module2CorrectCount: e['module2CorrectCount'] as int?,
+              module2TotalCount: e['module2TotalCount'] as int?,
+              module2WordWrongAttempts: e['module2WordWrongAttempts'] != null
+                  ? Map<String, int>.from(e['module2WordWrongAttempts'] as Map)
+                  : null,
+              module2Score: (e['module2Score'] as num?)?.toDouble(),
             ),
           );
         },
@@ -287,6 +464,8 @@ class AppRouter {
               masteredCount: e['masteredCount'] as int?,
               needsReviewWords: e['needsReviewWords'] != null ? List<String>.from(e['needsReviewWords']) : null,
               isPerfectFirstAttempt: e['isPerfectFirstAttempt'] as bool? ?? false,
+              classroomId: e['classroomId'] as String?,
+              className: e['className'] as String?,
             ),
           );
         },
@@ -297,7 +476,8 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>;
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisZ,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: ConfusableWordsDistinctionScreen(
               sessionId: s.pathParameters['sessionId']!,
               lessonId: e['lessonId'] as String,
@@ -333,7 +513,8 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>?;
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisZ,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: CumulativeReviewScreen(
               sessionId: s.pathParameters['sessionId']!,
               lessonIds: List<String>.from(e?['lessonIds'] ?? const []),
@@ -345,14 +526,31 @@ class AppRouter {
       GoRoute(
         path: '/session/:sessionId/cumulative-summary',
         pageBuilder: (c, s) {
-          final e = s.extra as Map<String, dynamic>;
+          final e = s.extra as Map<String, dynamic>? ?? {};
+          final total = (e['total'] as num?)?.toInt() ?? 0;
+          final correct = (e['correct'] as num?)?.toInt() ?? 0;
+          final score = (e['score'] as num?)?.toDouble();
+          final allWords = List<Map<String, dynamic>>.from(e['allWords'] ?? const []);
+          final wordBreakdown = List<Map<String, dynamic>>.from(e['wordBreakdown'] ?? const []);
+          final missedWordIds = (e['missedWordIds'] as List?)?.cast<String>() ??
+              wordBreakdown
+                  .where((w) => ((w['wrongAttempts'] as int?) ?? 0) > 0)
+                  .map((w) => (w['wordId'] ?? w['id'] ?? '').toString())
+                  .where((id) => id.isNotEmpty)
+                  .toList();
           return AppPageTransitions.page(
             key: s.pageKey,
             type: AppMotionType.modalSheet,
-            child: CumulativeReviewSummaryScreen(
+            child: MasteryResultScreen(
               sessionId: s.pathParameters['sessionId']!,
-              correct: e['correct'] as int,
-              total: e['total'] as int,
+              categoryId: e['categoryId']?.toString() ?? '',
+              isSandbox: e['isSandbox'] as bool? ?? false,
+              totalItems: total > 0 ? total : (allWords.isNotEmpty ? allWords.length : wordBreakdown.length),
+              masteredCount: correct > 0 ? correct : (total - missedWordIds.length),
+              missedWordIds: missedWordIds,
+              allWords: allWords,
+              masteryScore: score,
+              wordBreakdown: wordBreakdown,
             ),
           );
         },
@@ -363,7 +561,8 @@ class AppRouter {
           final e = s.extra as Map<String, dynamic>?;
           return AppPageTransitions.page(
             key: s.pageKey,
-            type: AppMotionType.sharedAxisZ,
+            name: s.matchedLocation,
+            type: AppMotionType.sideSlide,
             child: CumulativeReviewScreen(
               sessionId: e?['sessionId'] as String? ?? '',
               lessonId: e?['lessonId'] as String? ?? (e?['lesson_id'] as String?),
@@ -377,7 +576,18 @@ class AppRouter {
       GoRoute(
         path: '/session/:sessionId/mastery-result',
         pageBuilder: (c, s) {
-          final e = s.extra as Map<String, dynamic>;
+          final e = s.extra as Map<String, dynamic>? ?? {};
+          final total = (e['totalItems'] as num?)?.toInt() ?? (e['total'] as num?)?.toInt() ?? 0;
+          final correct = (e['masteredCount'] as num?)?.toInt() ?? (e['correct'] as num?)?.toInt() ?? 0;
+          final score = (e['masteryScore'] as num?)?.toDouble() ?? (e['score'] as num?)?.toDouble();
+          final allWords = List<Map<String, dynamic>>.from(e['allWords'] ?? const []);
+          final wordBreakdown = List<Map<String, dynamic>>.from(e['wordBreakdown'] ?? const []);
+          final missedWordIds = (e['missedWordIds'] as List?)?.cast<String>() ??
+              wordBreakdown
+                  .where((w) => ((w['wrongAttempts'] as int?) ?? 0) > 0)
+                  .map((w) => (w['wordId'] ?? w['id'] ?? '').toString())
+                  .where((id) => id.isNotEmpty)
+                  .toList();
           return AppPageTransitions.page(
             key: s.pageKey,
             type: AppMotionType.modalSheet,
@@ -385,52 +595,15 @@ class AppRouter {
               sessionId: s.pathParameters['sessionId']!,
               categoryId: e['categoryId']?.toString() ?? '',
               isSandbox: e['isSandbox'] as bool? ?? false,
-              totalItems: e['totalItems'] as int,
-              masteredCount: e['masteredCount'] as int,
-              allWords: List<Map<String, dynamic>>.from(e['allWords'] ?? const []),
+              totalItems: total > 0 ? total : (allWords.isNotEmpty ? allWords.length : wordBreakdown.length),
+              masteredCount: correct > 0 ? correct : (total - missedWordIds.length),
+              missedWordIds: missedWordIds,
+              allWords: allWords,
+              masteryScore: score,
+              wordBreakdown: wordBreakdown,
             ),
           );
         },
-      ),
-      GoRoute(
-        path: '/sandbox',
-        pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.sharedAxisZ,
-          child: const SandboxModeScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/dashboard',
-        pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.fadeThrough,
-          child: const UserDashboardScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/settings',
-        pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.fadeThrough,
-          child: const SettingsScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/wrong-answers',
-        pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.sharedAxisZ,
-          child: const WrongAnswersScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/progress',
-        pageBuilder: (c, s) => AppPageTransitions.page(
-          key: s.pageKey,
-          type: AppMotionType.fadeThrough,
-          child: const ProgressScreen(),
-        ),
       ),
     ],
   );

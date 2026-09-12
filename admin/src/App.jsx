@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import './index.css';
 
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
@@ -9,16 +9,20 @@ import DashboardPage from './pages/DashboardPage';
 import LeaderboardsPage from './pages/LeaderboardsPage';
 import LearnerManagementPage from './pages/LearnerManagementPage';
 import ClassManagementPage from './pages/ClassManagementPage';
+import TeacherClassManagementPage from './pages/TeacherClassManagementPage';
 import ReportsPage from './pages/ReportsPage';
 import LessonManagementPage from './pages/LessonManagementPage';
 import VocabularyListPage from './pages/VocabularyListPage';
-import BulkImportPage from './pages/BulkImportPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
 import AdminAccountsPage from './pages/AdminAccountsPage';
 import SystemLogsPage from './pages/SystemLogsPage';
-import ConfusablePairsPage from './pages/ConfusablePairsPage';
 import WrongAnswersAnalysisPage from './pages/WrongAnswersAnalysisPage';
 import ErrorBoundary from './components/ErrorBoundary';
+
+function RedirectToVocabularyWithModal({ modal }) {
+  const { lessonId } = useParams();
+  return <Navigate to={`/lessons/${lessonId}/vocabulary`} replace state={{ openModal: modal }} />;
+}
 
 export default function App() {
   return (
@@ -52,6 +56,11 @@ export default function App() {
 
           <Route
             path="/classes"
+            element={<ProtectedAdminRoute><TeacherClassManagementPage /></ProtectedAdminRoute>}
+          />
+
+          <Route
+            path="/sections"
             element={<ProtectedAdminRoute><ClassManagementPage /></ProtectedAdminRoute>}
           />
 
@@ -72,12 +81,12 @@ export default function App() {
 
           <Route
             path="/lessons/:lessonId/bulk-import"
-            element={<ProtectedAdminRoute><BulkImportPage /></ProtectedAdminRoute>}
+            element={<ProtectedAdminRoute><RedirectToVocabularyWithModal modal="bulk-import" /></ProtectedAdminRoute>}
           />
 
           <Route
             path="/lessons/:lessonId/confusable-pairs"
-            element={<ProtectedAdminRoute><ConfusablePairsPage /></ProtectedAdminRoute>}
+            element={<ProtectedAdminRoute><RedirectToVocabularyWithModal modal="confusable-pairs" /></ProtectedAdminRoute>}
           />
 
           <Route
@@ -92,12 +101,12 @@ export default function App() {
 
           <Route
             path="/accounts"
-            element={<ProtectedAdminRoute><AdminAccountsPage /></ProtectedAdminRoute>}
+            element={<ProtectedAdminRoute requiredRole="admin"><AdminAccountsPage /></ProtectedAdminRoute>}
           />
 
           <Route
             path="/logs"
-            element={<ProtectedAdminRoute><SystemLogsPage /></ProtectedAdminRoute>}
+            element={<ProtectedAdminRoute requiredRole="admin"><SystemLogsPage /></ProtectedAdminRoute>}
           />
 
           {/* Fallback redirects */}

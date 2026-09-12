@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../core/motion/motion.dart';
 import '../widgets/mascot_bubble.dart';
 
 class PinSetupScreen extends StatefulWidget {
@@ -51,7 +52,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
       return;
     }
 
-    if (!RegExp(r'^\d{4}$').hasMatch(pin) || !RegExp(r'^\d{4}$').hasMatch(confirmPin)) {
+    if (!RegExp(r'^\d{4}$').hasMatch(pin) ||
+        !RegExp(r'^\d{4}$').hasMatch(confirmPin)) {
       setState(() {
         _errorText = 'PIN must contain only numbers.';
       });
@@ -73,6 +75,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
       extra: {
         'displayName': widget.learnerData['displayName'],
         'age': widget.learnerData['age'],
+        'gradeLevel': widget.learnerData['gradeLevel'],
         'pin': pin,
       },
     );
@@ -90,8 +93,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Transparent but fully interactive TextField — captures keystrokes
-            // and shows the keyboard without rendering any visible text or cursor.
+            // Transparent but fully interactive TextField
             Opacity(
               opacity: 0.0,
               child: TextField(
@@ -111,8 +113,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                 ),
               ),
             ),
-            // Four circles drawn on top — IgnorePointer so taps fall through
-            // to the TextField above for proper focus + keyboard handling.
+            // Four circles drawn on top
             IgnorePointer(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -139,7 +140,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                             child: _isPinVisible
                                 ? Text(
                                     controller.text[index],
-                                    style: const TextStyle(
+                                    style: AppTypography.baloo2(
                                       color: Colors.white,
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -168,10 +169,13 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () => context.pop(),
         ),
+        title: const App3DProgressBar(value: 0.60, height: 18.0),
+        actions: const [SizedBox(width: 48)],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -179,20 +183,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Yellow progress bar at 50% (2/4 filled)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: const SizedBox(
-                  height: 8,
-                  child: LinearProgressIndicator(
-                    value: 0.50,
-                    backgroundColor: Color(0xFFE2E8F0),
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
+              const SizedBox(height: 8),
               // Mascot Bubble for Toti
               const MascotBubble(
                 mascotName: 'toti',
@@ -215,7 +206,10 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                       Expanded(
                         child: Text(
                           _errorText!,
-                          style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600),
+                          style: AppTypography.nunito(
+                            color: const Color(0xFFB91C1C),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -225,12 +219,12 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
               ],
 
               // ENTER PIN Circle visual representation
-              const Text(
+              Text(
                 'Enter PIN',
-                style: TextStyle(
+                style: AppTypography.baloo2(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF334155),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF334155),
                 ),
               ),
               const SizedBox(height: 12),
@@ -238,16 +232,19 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
               const SizedBox(height: 36),
 
               // CONFIRM PIN Circle visual representation
-              const Text(
+              Text(
                 'Confirm PIN',
-                style: TextStyle(
+                style: AppTypography.baloo2(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF334155),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF334155),
                 ),
               ),
               const SizedBox(height: 12),
-              _buildPinField(controller: _confirmPinController, focusNode: _confirmPinFocus),
+              _buildPinField(
+                controller: _confirmPinController,
+                focusNode: _confirmPinFocus,
+              ),
               const SizedBox(height: 12),
 
               // Show/Hide PIN visibility toggle Row
@@ -260,42 +257,30 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                     });
                   },
                   icon: Icon(
-                    _isPinVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                    _isPinVisible
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
                     color: const Color(0xFF64748B),
                     size: 20,
                   ),
                   label: Text(
                     _isPinVisible ? 'Hide PIN' : 'Show PIN',
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
+                    style: AppTypography.nunito(
+                      color: const Color(0xFF64748B),
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 32),
 
-              // NEXT button (black)
-              ElevatedButton(
+              // NEXT button (3D Primary)
+              App3DButton(
+                text: 'NEXT',
+                variant: App3DButtonVariant.primary,
+                height: 54,
                 onPressed: _validateAndProceed,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A), // Black
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'NEXT',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                  ),
-                ),
               ),
             ],
           ),

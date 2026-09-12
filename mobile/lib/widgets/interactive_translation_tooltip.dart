@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/motion/typography_tokens.dart';
 
 class InteractiveTranslationTooltip extends StatelessWidget {
   final String wordText;
@@ -60,21 +61,19 @@ class InteractiveTranslationTooltip extends StatelessWidget {
                   children: [
                     Text(
                       cleanWord,
-                      style: const TextStyle(
+                      style: AppTypography.nunito(
                         color: Colors.white70,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        fontFamily: 'Outfit',
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       displayTranslation,
-                      style: const TextStyle(
-                        color: Color(0xFF38BDF8),
-                        fontWeight: FontWeight.w900,
+                      style: AppTypography.baloo2(
+                        color: const Color(0xFF38BDF8),
+                        fontWeight: FontWeight.w800,
                         fontSize: 18,
-                        fontFamily: 'Outfit',
                       ),
                     ),
                   ],
@@ -156,7 +155,7 @@ class InteractiveTranslationTooltip extends StatelessWidget {
       onTap: () => _showTranslationDialog(context),
       child: Text(
         wordText,
-        style: textStyle ?? const TextStyle(fontFamily: 'Outfit'),
+        style: textStyle ?? AppTypography.nunito(),
       ),
     );
   }

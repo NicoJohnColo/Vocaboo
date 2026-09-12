@@ -28,30 +28,14 @@ public class AdminAccountController {
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listAdmins(
             @RequestParam(required = false) UUID school_id) {
-
-        List<Admin> admins = adminAccountService.listAllAdmins(school_id);
-        List<Map<String, Object>> response = admins.stream()
-                .map(a -> {
-                    Map<String, Object> map = new java.util.HashMap<>();
-                    map.put("admin_id", a.getAdminId());
-                    map.put("username", a.getUsername());
-                    map.put("email", a.getEmail());
-                    map.put("is_active", a.getIsActive());
-                    map.put("school_id", a.getSchoolId() != null ? a.getSchoolId() : "");
-                    map.put("created_at", a.getCreatedAt());
-                    map.put("last_login", a.getLastLoginAt() != null ? a.getLastLoginAt() : "");
-                    return map;
-                })
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(adminAccountService.listAllAccounts(school_id));
     }
 
     /**
      * POST /api/admin/accounts
-     * Create a new admin account (only existing admins can do this).
+     * Create a new account (Admin or Teacher).
      *
-     * Request: { "username": "...", "email": "...", "school_id": "uuid (optional)" }
+     * Request: { "username": "...", "email": "...", "role": "ADMIN|TEACHER", "school": "...", "firstname": "...", "lastname": "..." }
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> createAdmin(
@@ -61,16 +45,32 @@ public class AdminAccountController {
         UUID actingAdminId = UUID.fromString(auth.getName());
         String username = body.get("username");
         String email = body.get("email");
-        UUID schoolId = body.containsKey("school_id") && body.get("school_id") != null
-                ? UUID.fromString(body.get("school_id")) : null;
+        String role = body.getOrDefault("role", "ADMIN").trim().toUpperCase();
 
-        Admin created = adminAccountService.createAdminAccount(actingAdminId, username, email, schoolId);
-
-        return ResponseEntity.ok(Map.of(
-                "admin_id", created.getAdminId(),
-                "status",   "created",
-                "message",  "Temporary password sent to " + created.getEmail()
-        ));
+        if ("TEACHER".equals(role)) {
+            String school = body.get("school");
+            String firstname = body.get("firstname");
+            String lastname = body.get("lastname");
+            com.vocaboo.entity.Teacher teacher = adminAccountService.createTeacherAccount(actingAdminId, username, email, school, firstname, lastname);
+            return ResponseEntity.ok(Map.of(
+                    "admin_id", teacher.getTeacherId(),
+                    "account_id", teacher.getTeacherId(),
+                    "role", "TEACHER",
+                    "status", "created",
+                    "message", "Teacher account created. Temporary password sent to " + teacher.getEmail()
+            ));
+        } else {
+            UUID schoolId = body.containsKey("school_id") && body.get("school_id") != null && !body.get("school_id").isBlank()
+                    ? UUID.fromString(body.get("school_id")) : null;
+            Admin created = adminAccountService.createAdminAccount(actingAdminId, username, email, schoolId);
+            return ResponseEntity.ok(Map.of(
+                    "admin_id", created.getAdminId(),
+                    "account_id", created.getAdminId(),
+                    "role", "ADMIN",
+                    "status", "created",
+                    "message", "Admin account created. Temporary password sent to " + created.getEmail()
+            ));
+        }
     }
 
     /**

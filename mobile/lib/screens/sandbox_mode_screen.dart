@@ -1,17 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+
 import '../core/motion/motion.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
+import '../services/local_storage_service.dart';
 import '../services/localization_service.dart';
-import '../services/tts_service.dart';
 import '../widgets/mascot_bubble.dart';
-import 'vocabulary_introduction_screen.dart';
+import '../widgets/mascot_visual.dart';
 
 class SandboxModeScreen extends StatefulWidget {
-  const SandboxModeScreen({super.key});
+  final String? initialSessionId;
+
+  const SandboxModeScreen({
+    super.key,
+    this.initialSessionId,
+  });
 
   @override
   State<SandboxModeScreen> createState() => _SandboxModeScreenState();
@@ -22,43 +29,41 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
 
   bool _loading = false;
   String? _error;
-  Map<String, dynamic>? _session;
-  List<Map<String, dynamic>> _words = [];
-  bool _isOffline = false;
+  int _historyCount = 0;
 
   Timer? _shiftingTimer;
   int _currentBatchIndex = 0;
 
   static const List<List<Map<String, String>>> _topicBatches = [
     [
-      {'label': '🚀 Outer Space', 'value': 'Outer Space'},
-      {'label': '🍕 Food & Snacks', 'value': 'Food'},
-      {'label': '⚽ Sports & Games', 'value': 'Sports'},
-      {'label': '🦁 Wild Animals', 'value': 'Animals'},
+      {'label': '🚀 Astronaut', 'value': 'Astronaut'},
+      {'label': '🍕 Pizza', 'value': 'Pizza'},
+      {'label': '⚽ Football', 'value': 'Football'},
+      {'label': '🦁 Lion', 'value': 'Lion'},
     ],
     [
-      {'label': '🦖 Dinosaurs', 'value': 'Dinosaurs'},
-      {'label': '🎨 Colors & Art', 'value': 'Colors'},
-      {'label': '🏰 Castles & Knights', 'value': 'Castles'},
-      {'label': '🌊 Ocean Creatures', 'value': 'Ocean Animals'},
+      {'label': '🦖 Dinosaur', 'value': 'Dinosaur'},
+      {'label': '🎨 Color', 'value': 'Color'},
+      {'label': '🏰 Castle', 'value': 'Castle'},
+      {'label': '🌊 Ocean', 'value': 'Ocean'},
     ],
     [
-      {'label': '🚗 Fast Vehicles', 'value': 'Vehicles'},
-      {'label': '🎸 Music & Beats', 'value': 'Music'},
-      {'label': '🌦️ Sky & Weather', 'value': 'Weather'},
-      {'label': '🦸 Superheroes', 'value': 'Superheroes'},
+      {'label': '🚗 Vehicle', 'value': 'Vehicle'},
+      {'label': '🎸 Guitar', 'value': 'Guitar'},
+      {'label': '🌦️ Weather', 'value': 'Weather'},
+      {'label': '🦸 Superhero', 'value': 'Superhero'},
     ],
     [
-      {'label': '🍦 Sweet Desserts', 'value': 'Desserts'},
-      {'label': '🌳 Nature & Forest', 'value': 'Nature'},
-      {'label': '🤖 Robots & AI', 'value': 'Robots'},
-      {'label': '🐬 Sea Life', 'value': 'Sea Creatures'},
+      {'label': '🍦 Dessert', 'value': 'Dessert'},
+      {'label': '🌳 Forest', 'value': 'Forest'},
+      {'label': '🤖 Robot', 'value': 'Robot'},
+      {'label': '🐬 Dolphin', 'value': 'Dolphin'},
     ],
     [
-      {'label': '🎪 Circus & Magic', 'value': 'Circus'},
-      {'label': '🏕️ Camping & Woods', 'value': 'Camping'},
-      {'label': '🪐 Planets & Stars', 'value': 'Astronomy'},
-      {'label': '🚂 Trains & Trips', 'value': 'Trains'},
+      {'label': '🎪 Circus', 'value': 'Circus'},
+      {'label': '🏕️ Camping', 'value': 'Camping'},
+      {'label': '🪐 Planet', 'value': 'Planet'},
+      {'label': '🚂 Train', 'value': 'Train'},
     ],
   ];
 
@@ -66,6 +71,45 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
   void initState() {
     super.initState();
     _startShiftingTimer();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final history = await LocalStorageService.getSandboxSessions();
+    if (mounted) {
+      setState(() {
+        _historyCount = history.length;
+      });
+    }
+
+    // If initialSessionId is passed, immediately launch that session directly into Module 1
+    if (widget.initialSessionId != null && widget.initialSessionId!.isNotEmpty) {
+      final session = await LocalStorageService.getSandboxSession(widget.initialSessionId!);
+      if (session != null && mounted) {
+        final sessionId = session['sessionId']?.toString() ?? session['id']?.toString() ?? '';
+        final lessonId = 'sandbox_$sessionId';
+        final words = (session['words'] as List?)?.whereType<Map>().map((w) => Map<String, dynamic>.from(w)).toList() ?? [];
+
+        if (words.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            context.push(
+              '/loading',
+              extra: {
+                'duration': 5000,
+                'redirectPath': '/session/$sessionId/introduction',
+                'lessonId': lessonId,
+                'categoryId': '',
+                'knownWordIds': const <String>[],
+                'unknownWordIds': const <String>[],
+                'allWords': words,
+                'moduleNumber': 1,
+                'isSandbox': true,
+              },
+            );
+          });
+        }
+      }
+    }
   }
 
   void _startShiftingTimer() {
@@ -85,649 +129,421 @@ class _SandboxModeScreenState extends State<SandboxModeScreen> {
     super.dispose();
   }
 
-  Future<void> _generate() async {
-    final provider = Provider.of<LessonProvider>(context, listen: false);
-    final customWord = _customWordController.text.trim();
-
-    if (customWord.isEmpty) {
+  Future<void> _generateAndStartLesson() async {
+    final rawInput = _customWordController.text.trim();
+    if (rawInput.isEmpty) {
       setState(() {
-        _error = 'Please enter a topic, phrase, or word.';
+        _error = 'Please enter 1 word to practice.';
       });
       return;
     }
+
+    final tokens = rawInput.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    if (tokens.length > 1) {
+      setState(() {
+        _error = 'Please enter only 1 word at a time in Sandbox Mode.';
+      });
+      return;
+    }
+
+    final input = tokens.first;
 
     setState(() {
       _loading = true;
       _error = null;
     });
 
-    Map<String, dynamic>? result;
-    String? errorMessage;
-    bool isOfflineError = false;
-    
     try {
-      result = await provider.generateSandbox(customWord: customWord);
+      final provider = Provider.of<LessonProvider>(context, listen: false);
+      final sessionData = await provider.generateSandboxPathCurriculum(customInput: input);
+      final history = await LocalStorageService.getSandboxSessions();
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _historyCount = history.length;
+      });
+
+      final sessionId = sessionData['sessionId']?.toString() ?? '';
+      final lessonId = 'sandbox_$sessionId';
+      final words = (sessionData['words'] as List?)?.whereType<Map>().map((w) => Map<String, dynamic>.from(w)).toList() ?? [];
+
+      if (words.isNotEmpty) {
+        context.push(
+          '/loading',
+          extra: {
+            'duration': 5000,
+            'redirectPath': '/session/$sessionId/introduction',
+            'lessonId': lessonId,
+            'categoryId': '',
+            'knownWordIds': const <String>[],
+            'unknownWordIds': const <String>[],
+            'allWords': words,
+            'moduleNumber': 1,
+            'isSandbox': true,
+          },
+        );
+      }
     } catch (e) {
-      // Log error and capture the error message
-      debugPrint('Sandbox generation error (may have fallback): $e');
-      errorMessage = e.toString();
-      final msg = errorMessage.toLowerCase();
-      if (msg.contains('socketexception') ||
-          msg.contains('failed host lookup') ||
-          msg.contains('network is unreachable') ||
-          msg.contains('connection timed out') ||
-          msg.contains('connection refused') ||
-          msg.contains('httpclientexception') ||
-          msg.contains('handshake') ||
-          msg.contains('connection closed')) {
-        isOfflineError = true;
-      }
-    }
-
-    if (!mounted) return;
-
-    // Check if we have valid data (even if there was an error)
-    final sessionValue = result?['session'];
-    final wordsValue = result?['words'];
-    Map<String, dynamic>? session = sessionValue is Map ? Map<String, dynamic>.from(sessionValue) : null;
-    List<Map<String, dynamic>> words = wordsValue is List
-        ? wordsValue.whereType<Map>().map((word) => Map<String, dynamic>.from(word)).toList()
-        : <Map<String, dynamic>>[];
-    
-    debugPrint('After generate: session=${session != null}, words=${words.length}');
-    if (words.isNotEmpty) {
-      debugPrint('First word data: ${words[0]}');
-    }
-    
-    // Check if backend returned data but with missing/empty cebuanoMeaning
-    if (words.isNotEmpty) {
-      for (var word in words) {
-        final cebuanoMeaning = word['cebuanoMeaning']?.toString() ?? '';
-        if (cebuanoMeaning.isEmpty) {
-          debugPrint('WARNING: Backend returned empty cebuanoMeaning for word: ${word['englishWord']}');
-          debugPrint('Full word data: $word');
-        }
-      }
-    }
-    
-    setState(() {
-      _loading = false;
-      _session = session;
-      _words = words;
-      
-      if (isOfflineError) {
-        _isOffline = true;
-        _error = null;
-      } else {
-        // Only show error if we have no data at all
-        if (_session == null || _words.isEmpty) {
-          // Check if it's a rate limit error
-          if (errorMessage != null && 
-              (errorMessage.contains('429') || 
-               errorMessage.toLowerCase().contains('rate limit'))) {
+      debugPrint('Error generating sandbox lesson: $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          if (e.toString().contains('429') || e.toString().toLowerCase().contains('rate limit')) {
             _error = 'Rate limit reached. Please wait a moment and try again.';
           } else {
             _error = 'Could not generate lesson. Please try again.';
           }
-        } else {
-          _error = null;
-        }
-      }
-    });
-
-    // If we have data, proceed to lesson (even if Gemini failed but fallback worked)
-    if (_session != null && _words.isNotEmpty) {
-      final sessionId = _session!['sessionId']?.toString() ?? '';
-      final lessonId = _session!['lessonId']?.toString() ?? sessionId;
-
-      if (sessionId.isNotEmpty) {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (ctx) => VocabularyIntroductionScreen(
-            sessionId: sessionId,
-            lessonId: lessonId,
-            categoryId: '',
-            knownWordIds: <String>[],
-            unknownWordIds: <String>[],
-            allWords: _words,
-            moduleNumber: 1,
-            isSandbox: true,
-          ),
-        ));
+        });
       }
     }
   }
 
-  void _speakFirstWord() {
-    if (_words.isEmpty) return;
-    final word = _words.first['englishWord']?.toString() ?? '';
-    if (word.isNotEmpty) {
-      TTSService.speak(word);
+  void _openHistory() async {
+    await context.push('/sandbox/history');
+    if (mounted) {
+      _loadInitialData();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
-    final learner = auth.learner;
-    final pref = learner?.languagePreference;
-    final displayName = learner?.displayName;
-    final trimmedName = displayName?.trim();
-    final learnerName = (trimmedName != null && trimmedName.isNotEmpty)
-        ? trimmedName
-        : 'Friend';
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final pref = auth.learner?.languagePreference;
+    final batch = _topicBatches[_currentBatchIndex];
 
-    if (_isOffline) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
-            tooltip: 'Back',
-            onPressed: () {
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              } else {
-                context.go('/home');
-              }
-            },
-          ),
-          title: Text(
-            LocalizationService.translate(pref, 'sandbox_mode'),
-            style: const TextStyle(
-              fontFamily: 'Outfit',
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF06A6FF),
-            ),
-          ),
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Spacer(),
-                const Icon(
-                  Icons.wifi_off_rounded,
-                  size: 80,
-                  color: Color(0xFF94A3B8),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'You are offline',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                    fontFamily: 'Outfit',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Sandbox Mode requires an active internet connection to generate custom lessons using AI. Please check your connection and try again.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF64748B),
-                    height: 1.5,
-                  ),
-                ),
-                const Spacer(),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _isOffline = false;
-                      _error = null;
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF06A6FF),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'TRY AGAIN',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () {
-                    if (Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                    } else {
-                      context.go('/home');
-                    }
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF64748B),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text(
-                    'Back to Home',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_loading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
-            tooltip: 'Back',
-            onPressed: () {
-              setState(() {
-                _loading = false;
-              });
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              } else {
-                context.go('/home');
-              }
-            },
-          ),
-          title: Text(
-            LocalizationService.translate(pref, 'sandbox_mode'),
-            style: const TextStyle(
-              fontFamily: 'Outfit',
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF06A6FF),
-            ),
-          ),
-        ),
-        body: _buildLoadingView(pref),
-      );
-    }
-
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) context.go('/home');
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
-          tooltip: 'Back',
-          onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            } else {
-              context.go('/home');
-            }
-          },
+          onPressed: () => context.go('/home'),
         ),
-        title: Text(
-          LocalizationService.translate(pref, 'sandbox_mode'),
-          style: const TextStyle(
-            fontFamily: 'Outfit',
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF06A6FF),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0EA5E9).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF0EA5E9), size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                LocalizationService.translate(pref, 'sandbox_title'),
+                style: AppTypography.baloo2(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  color: const Color(0xFF06A6FF),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          // Past Sandbox Words history button with counter badge
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.history_rounded, color: Color(0xFF0F172A), size: 26),
+                  onPressed: _openHistory,
+                  tooltip: LocalizationService.translate(pref, 'sandbox_history_title'),
+                ),
+                if (_historyCount > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0EA5E9),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: Text(
+                        '$_historyCount',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Robi Greeting with Speech Bubble
-              MascotBubble(
-                mascotName: 'Robi',
-                speechText: "Hi, $learnerName! I'm Robi! 🤖 Type any topic or word you want to practice, and I'll generate a custom lesson for you!",
-                ttsText: "Hi $learnerName! I am Robi! Type any topic or word you want to practice, and I will create a custom lesson for you.",
-                avatarSize: 96,
-              ),
-              const SizedBox(height: 12),
-
-              // Shifting & Phasing Topic Suggestion Chips
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      const Text(
-                        'QUICK TOPIC IDEAS',
-                        style: TextStyle(
-                          fontFamily: 'Outfit',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF94A3B8),
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF06A6FF),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
+                  // Mascot Chat Bubble with Robi
+                  MascotBubble(
+                    mascotName: 'robi',
+                    speechText: LocalizationService.translate(pref, 'sandbox_input_prompt'),
+                    avatarSize: 76,
                   ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      setState(() {
-                        _currentBatchIndex = (_currentBatchIndex + 1) % _topicBatches.length;
-                      });
-                      _startShiftingTimer();
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      child: Row(
-                        children: [
-                          Icon(Icons.autorenew_rounded, size: 14, color: Color(0xFF06A6FF)),
-                          SizedBox(width: 4),
-                          Text(
-                            'Shuffle',
-                            style: TextStyle(
-                              fontFamily: 'Outfit',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF06A6FF),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 600),
-                switchInCurve: Curves.easeInOutCubic,
-                switchOutCurve: Curves.easeInOutCubic,
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  final fade = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
-                  final slide = Tween<Offset>(
-                    begin: const Offset(0.0, 0.15),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutBack));
-                  return FadeTransition(
-                    opacity: fade,
-                    child: SlideTransition(
-                      position: slide,
-                      child: child,
-                    ),
-                  );
-                },
-                child: KeyedSubtree(
-                  key: ValueKey<int>(_currentBatchIndex),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _topicBatches[_currentBatchIndex].map((t) {
-                      return _suggestionChip(t['label']!, t['value']!);
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
 
-              TextField(
-                controller: _customWordController,
-                decoration: const InputDecoration(
-                  labelText: 'Topic or Word',
-                  hintText: 'e.g., Space, Animals, Weather...',
-                ),
-              ),
-              const SizedBox(height: 16),
-              AppPressable(
-                onTap: _loading ? null : _generate,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _generate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF06A6FF),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 0,
-                  ),
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text(
-                          'GENERATE SANDBOX',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
-                ),
-              ],
-              if (_session != null) ...[
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Session: ${_session!['sessionId'] ?? ''}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _session!['customWord']?.toString() ?? 'Sandbox practice',
-                        style: const TextStyle(color: Color(0xFF64748B)),
-                      ),
-                      const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: _speakFirstWord,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF0F172A),
-                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: const Text('Hear generated word'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ..._words.map(
-                  (word) => Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
+                  const SizedBox(height: 24),
+
+                  // Main Input Card
+                  Container(
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          word['englishWord']?.toString() ?? '',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        const Text(
+                          'ENTER 1 WORD',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF64748B),
+                            letterSpacing: 1.1,
+                          ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          word['cebuanoMeaning']?.toString() ?? '',
-                          style: const TextStyle(color: Color(0xFF64748B)),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _customWordController,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _generateAndStartLesson(),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.deny(RegExp(r'\s')), // Enforce single word
+                          ],
+                          decoration: InputDecoration(
+                            hintText: LocalizationService.translate(pref, 'sandbox_input_hint'),
+                            hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF0EA5E9)),
+                            suffixIcon: _customWordController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear_rounded, color: Color(0xFF94A3B8)),
+                                    onPressed: () => setState(() => _customWordController.clear()),
+                                  )
+                                : null,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(color: Color(0xFF0EA5E9), width: 2),
+                            ),
+                          ),
+                          onChanged: (_) {
+                            if (_error != null) {
+                              setState(() => _error = null);
+                            } else {
+                              setState(() {});
+                            }
+                          },
                         ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              const Icon(Icons.info_outline_rounded, color: Colors.redAccent, size: 16),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _suggestionChip(String label, String value) {
-    return ActionChip(
-      label: Text(
-        label,
-        style: const TextStyle(
-          fontFamily: 'Outfit',
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF0369A1),
-        ),
-      ),
-      backgroundColor: const Color(0xFFE0F2FE),
-      side: const BorderSide(color: Color(0xFFBAE6FD), width: 1.2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      onPressed: () {
-        _customWordController.text = value;
-      },
-    );
-  }
+                  const SizedBox(height: 24),
 
-  Widget _buildLoadingView(String? pref) {
-    final topic = _customWordController.text.trim();
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFC),
-        image: DecorationImage(
-          image: AssetImage('assets/images/loadingscreen_background.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Robi GIF animation
-              SizedBox(
-                width: 180,
-                height: 180,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/images/gifs/robi.gif',
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => const Center(
-                      child: CircularProgressIndicator(color: Color(0xFF06A6FF)),
+                  // Shifting Topic Suggestions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'QUICK SUGGESTIONS',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF64748B),
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      Text(
+                        'Tap to choose',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    child: Wrap(
+                      key: ValueKey<int>(_currentBatchIndex),
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: batch.map((item) {
+                        final label = item['label']!;
+                        final val = item['value']!;
+                        final isSelected = _customWordController.text.trim().toLowerCase() == val.toLowerCase();
+
+                        return InkWell(
+                          onTap: () {
+                            setState(() {
+                              _customWordController.text = val;
+                              _error = null;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFFE0F2FE) : Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
+                                width: isSelected ? 2 : 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.02),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Start Lesson Button
+                  App3DButton.primary(
+                    onPressed: _loading ? null : _generateAndStartLesson,
+                    height: 54,
+                    depth: 4.5,
+                    isFullWidth: true,
+                    text: LocalizationService.translate(pref, 'start_lesson'),
+                    icon: Icons.play_arrow_rounded,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // History shortcut card
+                  if (_historyCount > 0)
+                    InkWell(
+                      onTap: _openHistory,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.history_rounded, color: Color(0xFF64748B), size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'View past custom words ($_historyCount saved)',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // Loading Overlay
+            if (_loading)
+              Container(
+                color: Colors.white.withValues(alpha: 0.92),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const MascotVisual(type: MascotType.starry, size: 100),
+                      const SizedBox(height: 24),
+                      const CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Preparing your custom lesson...',
+                        style: AppTypography.baloo2(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Generating word, Cebuano translation, and activities',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 36),
-
-              // Topic / Progress message card
-              Container(
-                width: 290,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 20,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      topic.isNotEmpty
-                          ? 'Creating lesson for "$topic"'
-                          : 'Creating your custom lesson...',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Robi is generating words & interactive activities!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 36),
-
-              // Animated progress bar
-              Container(
-                width: 130,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: const LinearProgressIndicator(
-                    backgroundColor: Color(0xFFE2E8F0),
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF06A6FF)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Loading text
-              const Text(
-                'Loading...',
-                style: TextStyle(
-                  fontFamily: 'Outfit',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import AssetUploadModal from './AssetUploadModal';
 
-const GRADE_LEVELS = ['GRADE_3_4', 'GRADE_5_6'];
+const GRADE_LEVELS = ['GRADE_4', 'GRADE_5', 'GRADE_6'];
 const POS_OPTIONS = ['NOUN', 'VERB', 'ADJECTIVE'];
 
 function emptyForm() {
@@ -9,16 +9,18 @@ function emptyForm() {
     english_word: '',
     cebuano_meaning: '',
     part_of_speech: 'NOUN',
-    grade_level: 'GRADE_3_4',
+    grade_level: 'GRADE_4',
     example_sentence_english: '',
     example_sentence_cebuano: '',
     audio_asset_path: '',
     image_asset_path: '',
-    eligible_activity_types: 'MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;TRUE_OR_FALSE',
+    eligible_activity_types: 'MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;TRUE_OR_FALSE;HINT_TO_WORD',
     distractor_pool: '',
     fill_blank_sentence: '',
     tile_sentence: '',
     explanation_text: '',
+    hint_definition: '',
+    hint_cebuano_sentence: '',
     audio_text_cebuano: '',
     audio_text_english: '',
     phonological_tip_key: '',
@@ -80,14 +82,14 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
           <div className="form-field">
             <label className="form-label">Grade Level *</label>
             <select className="form-select" {...f('grade_level')}>
-              {GRADE_LEVELS.map(g => <option key={g} value={g}>{g.replace('_', ' ')}</option>)}
+              {GRADE_LEVELS.map(g => <option key={g} value={g}>{g.replace('GRADE_', 'Grade ')}</option>)}
             </select>
           </div>
           <div className="form-field form-field--full">
             <label className="form-label">Eligible Activity Types (semicolon-separated)</label>
             <input className="form-input" {...f('eligible_activity_types')} placeholder="e.g. MULTIPLE_CHOICE;FILL_IN_BLANK" />
             <span style={{fontSize: '0.8rem', color: 'var(--color-text-dim)', marginTop: '4px'}}>
-              Available: MULTIPLE_CHOICE, FILL_IN_BLANK, MATCHING, WORD_SCRAMBLE, TRUE_OR_FALSE, IMAGE_LABELING, SENTENCE_ARRANGEMENT
+              Available: MULTIPLE_CHOICE, FILL_IN_BLANK, MATCHING, WORD_SCRAMBLE, TRUE_OR_FALSE, IMAGE_LABELING, SENTENCE_ARRANGEMENT, HINT_TO_WORD
             </span>
           </div>
 
@@ -97,7 +99,7 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
               <div className="form-field form-field--full">
                 <label className="form-label">Distractor Pool (comma-separated)</label>
                 <input className="form-input" {...f('distractor_pool')} placeholder="e.g. eraser,ruler,scissors" />
-                <span style={{fontSize: '0.8rem', color: 'var(--color-text-dim)', marginTop: '4px'}}>Wrong answer candidates for multiple choice.</span>
+                <span style={{fontSize: '0.8rem', color: 'var(--color-text-dim)', marginTop: '4px'}}>Wrong answers for multiple choice & wrong word for True/False sentences.</span>
               </div>
               <div className="form-field form-field--full">
                 <label className="form-label">Fill-in-the-Blank Sentence</label>
@@ -110,6 +112,14 @@ function VocabWordForm({ initial, title, submitLabel, onSubmit, onClose, submitt
               <div className="form-field form-field--full">
                 <label className="form-label">Explanation Text (Shown at LEARNING tier)</label>
                 <input className="form-input" {...f('explanation_text')} placeholder="e.g. It starts with p..." />
+              </div>
+              <div className="form-field form-field--full">
+                <label className="form-label">Hint Definition / Synonym Clue (For Hint-to-Word at FAMILIAR/PROFICIENT)</label>
+                <input className="form-input" {...f('hint_definition')} placeholder="e.g. a tool with graphite used for writing" />
+              </div>
+              <div className="form-field form-field--full">
+                <label className="form-label">Hint Cebuano Sentence Clue (For Hint-to-Word at LEARNING tier)</label>
+                <input className="form-input" {...f('hint_cebuano_sentence')} placeholder="e.g. Usa ka gamit nga may carbon para isulat" />
               </div>
               <div className="form-field">
                 <label className="form-label">Phonological Tip Key</label>

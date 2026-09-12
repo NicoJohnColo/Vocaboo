@@ -92,6 +92,8 @@ public class VocabularyManagementService {
                 .audioTextCebuano(req.getAudioTextCebuano())
                 .audioTextEnglish(req.getAudioTextEnglish())
                 .phonologicalTipKey(req.getPhonologicalTipKey())
+                .hintDefinition(req.getHintDefinition() != null ? req.getHintDefinition().trim() : null)
+                .hintCebuanoSentence(req.getHintCebuanoSentence() != null ? req.getHintCebuanoSentence().trim() : null)
                 .build();
 
         if (req.getEligibleActivityTypes() != null) {
@@ -159,6 +161,12 @@ public class VocabularyManagementService {
         }
         if (req.getIsConfusablePairMember() != null) {
             word.setIsConfusablePairMember(req.getIsConfusablePairMember());
+        }
+        if (req.getHintDefinition() != null) {
+            word.setHintDefinition(req.getHintDefinition().trim());
+        }
+        if (req.getHintCebuanoSentence() != null) {
+            word.setHintCebuanoSentence(req.getHintCebuanoSentence().trim());
         }
 
         return toAdminResponse(wordRepository.save(word));
@@ -229,6 +237,9 @@ public class VocabularyManagementService {
                 .explanationText(w.getExplanationText())
                 .audioTextCebuano(w.getAudioTextCebuano())
                 .audioTextEnglish(w.getAudioTextEnglish())
+                .hintDefinition(w.getHintDefinition())
+                .hintCebuanoSentence(w.getHintCebuanoSentence())
+                .eligibleActivityTypes(w.getEligibleActivityTypes())
                 .build();
     }
 }

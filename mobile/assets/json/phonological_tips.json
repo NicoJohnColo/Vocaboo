@@ -1,17 +1,17 @@
 {
   "v_sound": {
-    "CEBUANO_TO_ENGLISH": "Tip: The letter V makes a sound by touching your top teeth to your lower lip. Example: 'very' sounds like 'bery' but with teeth touching lip.",
-    "FULL_ENGLISH": "Tip: For the V sound, touch your upper teeth to your lower lip and push air out.",
-    "CEBUANO_ENGLISH_MIXED": "Tip (V): I-touch ang imong ngipon sa ubos nga ngabil. Example: 'very' dili 'bery'."
+    "CEBUANO_TO_ENGLISH": "Tip: Ang /v/ sound — i-touch ang ibabaw nga ngipon sa ubos nga ngabil ug pag-hum aron mag-vibrate. Ehemplo: 'stove' (dili 'stob'), 'vegetable'.",
+    "FULL_ENGLISH": "Tip: For the /v/ sound, touch your upper teeth to your lower lip and push air out while vibrating your voice.",
+    "CEBUANO_ENGLISH_MIXED": "Tip (V): Ang /v/ sound kay wala sa Cebuano (often masaypan og /b/). I-touch lang imong upper teeth sa lower lip unya i-vibrate imong voice. Like 'stove' dili 'stob'."
   },
   "f_sound": {
-    "CEBUANO_TO_ENGLISH": "Tip: Ang F sound — i-touch ang imong ngipon sa ubos nga ngabil ug hanginon. Dili sama sa P.",
-    "FULL_ENGLISH": "Tip: For the F sound, bite your lower lip gently and push air out. It is different from P.",
-    "CEBUANO_ENGLISH_MIXED": "Tip (F): Touch upper teeth to lower lip — mas lain kay sa P."
+    "CEBUANO_TO_ENGLISH": "Tip: Ang /f/ sound — i-touch ang imong ngipon sa ubos nga ngabil ug hanginon nga walay tingog. Dili sama sa P. Ehemplo: 'fork' (dili 'pork'), 'knife'.",
+    "FULL_ENGLISH": "Tip: For the /f/ sound, bite your lower lip gently and push air out without vocal vibration. It is different from P.",
+    "CEBUANO_ENGLISH_MIXED": "Tip (F): Ang /f/ sound kay dili /p/. I-rest lang imong upper teeth sa lower lip unya blow og air without voice. Example: 'fork' dili 'pork'."
   },
   "th_sound": {
-    "CEBUANO_TO_ENGLISH": "Tip: Ang TH sound — ibutang ang imong dila tali sa imong mga ngipon ug hanginon. Example: 'the' dili 'da'.",
-    "FULL_ENGLISH": "Tip: For the TH sound, place your tongue between your teeth and push air out.",
-    "CEBUANO_ENGLISH_MIXED": "Tip (TH): Ibutang ang dila tali sa mga ngipon. 'The' dili 'da'."
+    "CEBUANO_TO_ENGLISH": "Tip: Ang /θ/ (TH) sound — ibutang ang imong dila tali sa imong mga ngipon ug hanginon. Dili sama sa /t/. Ehemplo: 'teeth', 'mouth', 'think'.",
+    "FULL_ENGLISH": "Tip: For the /θ/ (TH) sound, place the tip of your tongue between your teeth and push air out smoothly.",
+    "CEBUANO_ENGLISH_MIXED": "Tip (TH): Ang /θ/ sound kay dili /t/. Ibutang gamay ang tip sa imong tongue between sa upper ug lower teeth unya blow og air smoothly. Example: 'teeth' dili 'tit'."
   }
 }

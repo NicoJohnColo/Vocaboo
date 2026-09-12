@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/typography_tokens.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
+import '../widgets/app_3d_button.dart';
 
 class DiagnosticSummaryScreen extends StatelessWidget {
   final String lessonId;
   final String categoryId;
+  final String? lessonTitle;
   final List<Map<String, dynamic>> knownWords;
   final List<Map<String, dynamic>> unknownWords;
   final List<Map<String, dynamic>> allWords;
@@ -16,6 +19,7 @@ class DiagnosticSummaryScreen extends StatelessWidget {
     super.key,
     required this.lessonId,
     required this.categoryId,
+    this.lessonTitle,
     required this.knownWords,
     required this.unknownWords,
     required this.allWords,
@@ -42,10 +46,10 @@ class DiagnosticSummaryScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
         title: Text(
           LocalizationService.translate(pref, 'diagnostic_summary'),
-          style: const TextStyle(
-            fontFamily: 'Outfit',
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
+          style: AppTypography.baloo2(
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            color: const Color(0xFF06A6FF),
           ),
         ),
       ),
@@ -81,10 +85,10 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                         ),
                         Text(
                           '${percentage.toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                          style: AppTypography.baloo2(
+                            fontWeight: FontWeight.w800,
                             fontSize: 18,
-                            color: Color(0xFF0F172A),
+                            color: const Color(0xFF0F172A),
                           ),
                         ),
                       ],
@@ -96,16 +100,16 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                         children: [
                           Text(
                             LocalizationService.translate(pref, 'diagnostic_complete'),
-                            style: const TextStyle(
+                            style: AppTypography.baloo2(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF0F172A),
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             LocalizationService.translate(pref, 'know_ratio', args: ['${knownWords.length}', '${allWords.length}']),
-                            style: const TextStyle(color: Color(0xFF64748B)),
+                            style: AppTypography.nunito(color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -133,10 +137,10 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                             ),
                             child: Text(
                               LocalizationService.translate(pref, 'i_know', args: ['${knownWords.length}']),
-                              style: const TextStyle(
-                                color: Color(0xFF10B981),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
+                              style: AppTypography.baloo2(
+                                color: const Color(0xFF10B981),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
                                 letterSpacing: 0.5,
                               ),
                               textAlign: TextAlign.center,
@@ -145,10 +149,10 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                           const SizedBox(height: 12),
                           Expanded(
                             child: knownWords.isEmpty
-                                ? const Center(
+                                ? Center(
                                     child: Text(
                                       'None',
-                                      style: TextStyle(color: Color(0xFF64748B)),
+                                      style: AppTypography.nunito(color: const Color(0xFF64748B)),
                                     ),
                                   )
                                 : ListView.builder(
@@ -164,9 +168,9 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                                         ),
                                         child: Text(
                                           knownWords[index]['englishWord'],
-                                          style: const TextStyle(
-                                            color: Color(0xFF0F172A),
-                                            fontWeight: FontWeight.w600,
+                                          style: AppTypography.nunito(
+                                            color: const Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w700,
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
@@ -192,10 +196,10 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                             ),
                             child: Text(
                               LocalizationService.translate(pref, 'to_learn', args: ['${unknownWords.length}']),
-                              style: const TextStyle(
-                                color: Color(0xFF0EA5E9),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
+                              style: AppTypography.baloo2(
+                                color: const Color(0xFF0EA5E9),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
                                 letterSpacing: 0.5,
                               ),
                               textAlign: TextAlign.center,
@@ -204,10 +208,10 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                           const SizedBox(height: 12),
                           Expanded(
                             child: unknownWords.isEmpty
-                                ? const Center(
+                                ? Center(
                                     child: Text(
                                       'None',
-                                      style: TextStyle(color: Color(0xFF64748B)),
+                                      style: AppTypography.nunito(color: const Color(0xFF64748B)),
                                     ),
                                   )
                                 : ListView.builder(
@@ -223,9 +227,9 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                                         ),
                                         child: Text(
                                           unknownWords[index]['englishWord'],
-                                          style: const TextStyle(
-                                            color: Color(0xFF0F172A),
-                                            fontWeight: FontWeight.w600,
+                                          style: AppTypography.nunito(
+                                            color: const Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w700,
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
@@ -241,7 +245,7 @@ class DiagnosticSummaryScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              ElevatedButton(
+              App3DButton(
                 onPressed: () async {
                   final auth = Provider.of<AuthProvider>(context, listen: false);
                   final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
@@ -275,13 +279,12 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                   final knownIds = knownWords.map((w) => w['wordId'] as String).toList();
                   final unknownIds = unknownWords.map((w) => w['wordId'] as String).toList();
 
-                  context.push(
-                    '/loading',
+                  context.pushReplacement(
+                    '/session/$sessionId/introduction',
                     extra: {
-                      'duration': 13000,
-                      'redirectPath': '/session/$sessionId/introduction',
                       'lessonId': lessonId,
                       'categoryId': categoryId,
+                      'lessonTitle': lessonTitle ?? (extra['lessonTitle'] as String?),
                       'knownWordIds': knownIds,
                       'unknownWordIds': unknownIds,
                       'allWords': enrichedAllWords,
@@ -289,23 +292,11 @@ class DiagnosticSummaryScreen extends StatelessWidget {
                     },
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: Text(
-                  LocalizationService.translate(pref, 'start_module_1'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                  ),
-                ),
+                variant: App3DButtonVariant.dark,
+                height: 54,
+                depth: 5.0,
+                isFullWidth: true,
+                text: LocalizationService.translate(pref, 'start_module_1'),
               ),
               const SizedBox(height: 16),
             ],

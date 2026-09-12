@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/motion/motion.dart';
 import 'mascot_visual.dart';
 import '../services/tts_service.dart';
 
@@ -44,7 +45,7 @@ class MascotBubble extends StatelessWidget {
       case 'toti':
         return const Color(0xFF10B981); // Emerald Green
       case 'sippy':
-        return const Color(0xFF6366F1); // Indigo Purple
+        return const Color(0xFF2563EB); // Royal Blue
       case 'starry':
         return const Color(0xFFF59E0B); // Amber Gold
       case 'robi':
@@ -84,6 +85,7 @@ class MascotBubble extends StatelessWidget {
                         size: mascotSize,
                         isCelebrating: isCelebrating,
                         isSad: isSad,
+                        enableIdleBob: false,
                       ),
                     ),
                   ),
@@ -98,9 +100,9 @@ class MascotBubble extends StatelessWidget {
                 ),
                 child: Text(
                   mascotName.toUpperCase(),
-                  style: const TextStyle(
+                  style: AppTypography.baloo2(
                     fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
                     letterSpacing: 0.5,
                   ),
@@ -146,10 +148,10 @@ class MascotBubble extends StatelessWidget {
                       Expanded(
                         child: Text(
                           speechText,
-                          style: const TextStyle(
+                          style: AppTypography.nunito(
                             fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1E293B),
                             height: 1.4,
                           ),
                         ),

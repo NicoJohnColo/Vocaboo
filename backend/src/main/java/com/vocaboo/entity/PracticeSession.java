@@ -40,6 +40,14 @@ public class PracticeSession {
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 
+    /**
+     * If the learner started this session from within a class context, this holds
+     * the classroom UUID. Null when the session is in GLOBAL (free-play) mode.
+     * Used to tag PointTransactions and SessionSummary with the correct context.
+     */
+    @Column(name = "classroom_context_id")
+    private UUID classroomContextId;
+
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
@@ -69,7 +77,10 @@ public class PracticeSession {
     public void setScore(BigDecimal score) { this.score = score; }
     public void setStarsEarned(Integer starsEarned) { this.starsEarned = starsEarned; }
     public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
+    public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
     public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public UUID getClassroomContextId() { return classroomContextId; }
+    public void setClassroomContextId(UUID classroomContextId) { this.classroomContextId = classroomContextId; }
 
     public static PracticeSessionBuilder builder() { return new PracticeSessionBuilder(); }
 
@@ -80,6 +91,10 @@ public class PracticeSession {
         private Integer moduleNumber;
         private BigDecimal score;
         private Integer starsEarned = 0;
+        private OffsetDateTime completedAt;
+        private UUID classroomContextId;
+        private OffsetDateTime createdAt;
+        private OffsetDateTime updatedAt;
 
         public PracticeSessionBuilder sessionId(UUID sessionId) { this.sessionId = sessionId; return this; }
         public PracticeSessionBuilder learner(Learner learner) { this.learner = learner; return this; }
@@ -87,8 +102,10 @@ public class PracticeSession {
         public PracticeSessionBuilder moduleNumber(Integer moduleNumber) { this.moduleNumber = moduleNumber; return this; }
         public PracticeSessionBuilder score(BigDecimal score) { this.score = score; return this; }
         public PracticeSessionBuilder starsEarned(Integer starsEarned) { this.starsEarned = starsEarned; return this; }
-        public PracticeSessionBuilder createdAt(OffsetDateTime createdAt) { return this; }
-        public PracticeSessionBuilder updatedAt(OffsetDateTime updatedAt) { return this; }
+        public PracticeSessionBuilder completedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; return this; }
+        public PracticeSessionBuilder classroomContextId(UUID classroomContextId) { this.classroomContextId = classroomContextId; return this; }
+        public PracticeSessionBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public PracticeSessionBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public PracticeSession build() {
             PracticeSession s = new PracticeSession();
@@ -98,8 +115,10 @@ public class PracticeSession {
             s.moduleNumber = this.moduleNumber;
             s.score = this.score;
             s.starsEarned = this.starsEarned;
-            s.createdAt = OffsetDateTime.now();
-            s.updatedAt = OffsetDateTime.now();
+            s.completedAt = this.completedAt;
+            s.classroomContextId = this.classroomContextId;
+            s.createdAt = this.createdAt != null ? this.createdAt : OffsetDateTime.now();
+            s.updatedAt = this.updatedAt != null ? this.updatedAt : OffsetDateTime.now();
             return s;
         }
     }

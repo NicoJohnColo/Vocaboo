@@ -13,6 +13,17 @@ class LessonModel {
   final List<String>? sourceLessonIds; // For composite review lessons
   final String? compositeReviewAfterLessonId; // Configurable node insertion position
   final String? contextParagraph;
+  final String? module2Activities;
+  final String? module3Activities;
+  final String? module4Activities;
+  final int? upgradeStreakRequired;
+  final int? demotionThreshold;
+  final int? reintroductionThreshold;
+  final int? module3UpgradeStreakRequired;
+  final int? module3DemotionThreshold;
+  final int? streakCelebrationThreshold;
+  final String? classId;
+  final String? className;
   final Map<String, int> posTotalWordCounts;
   final Map<String, int> posMasteredWordCounts;
 
@@ -31,6 +42,17 @@ class LessonModel {
     this.sourceLessonIds,
     this.compositeReviewAfterLessonId,
     this.contextParagraph,
+    this.module2Activities,
+    this.module3Activities,
+    this.module4Activities,
+    this.upgradeStreakRequired,
+    this.demotionThreshold,
+    this.reintroductionThreshold,
+    this.module3UpgradeStreakRequired,
+    this.module3DemotionThreshold,
+    this.streakCelebrationThreshold,
+    this.classId,
+    this.className,
     this.posTotalWordCounts = const {},
     this.posMasteredWordCounts = const {},
   });
@@ -52,6 +74,18 @@ class LessonModel {
           ? List<String>.from(json['sourceLessonIds']) 
           : null,
       compositeReviewAfterLessonId: json['compositeReviewAfterLessonId'],
+      contextParagraph: json['contextParagraph'],
+      module2Activities: json['module2Activities'] ?? json['module2_activities'],
+      module3Activities: json['module3Activities'] ?? json['module3_activities'],
+      module4Activities: json['module4Activities'] ?? json['module4_activities'],
+      upgradeStreakRequired: json['upgradeStreakRequired'] ?? json['upgrade_streak_required'],
+      demotionThreshold: json['demotionThreshold'] ?? json['demotion_threshold'],
+      reintroductionThreshold: json['reintroductionThreshold'] ?? json['reintroduction_threshold'],
+      module3UpgradeStreakRequired: json['module3UpgradeStreakRequired'] ?? json['module3_upgrade_streak_required'],
+      module3DemotionThreshold: json['module3DemotionThreshold'] ?? json['module3_demotion_threshold'],
+      streakCelebrationThreshold: json['streakCelebrationThreshold'] ?? json['streak_celebration_threshold'],
+      classId: json['classId'] ?? json['class_id'],
+      className: json['className'] ?? json['class_name'],
       posTotalWordCounts: json['posTotalWordCounts'] != null
           ? (json['posTotalWordCounts'] as Map).map((k, v) => MapEntry(k.toString().toUpperCase(), (v as num).toInt()))
           : const {},
@@ -77,6 +111,17 @@ class LessonModel {
       'sourceLessonIds': sourceLessonIds,
       'compositeReviewAfterLessonId': compositeReviewAfterLessonId,
       'contextParagraph': contextParagraph,
+      'module2Activities': module2Activities,
+      'module3Activities': module3Activities,
+      'module4Activities': module4Activities,
+      'upgradeStreakRequired': upgradeStreakRequired,
+      'demotionThreshold': demotionThreshold,
+      'reintroductionThreshold': reintroductionThreshold,
+      'module3UpgradeStreakRequired': module3UpgradeStreakRequired,
+      'module3DemotionThreshold': module3DemotionThreshold,
+      'streakCelebrationThreshold': streakCelebrationThreshold,
+      'classId': classId,
+      'className': className,
       'posTotalWordCounts': posTotalWordCounts,
       'posMasteredWordCounts': posMasteredWordCounts,
     };

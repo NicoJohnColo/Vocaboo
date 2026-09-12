@@ -294,6 +294,9 @@ public class AdminAnalyticsDashboardResponse {
         @JsonProperty("cumulative_summary")
         private CumulativeAnalyticsSummary cumulativeSummary;
 
+        @JsonProperty("pos_accuracy_breakdown")
+        private List<PosAccuracySummary> posAccuracyBreakdown;
+
         public static CurriculumAnalyticsBuilder builder() { return new CurriculumAnalyticsBuilder(); }
 
         public static class CurriculumAnalyticsBuilder {
@@ -301,11 +304,13 @@ public class AdminAnalyticsDashboardResponse {
             private List<FallbackWordSummary> fallbackFrequency;
             private List<LessonPassRateSummary> lessonPassRates;
             private CumulativeAnalyticsSummary cumulativeSummary;
+            private List<PosAccuracySummary> posAccuracyBreakdown;
 
             public CurriculumAnalyticsBuilder hardestWords(List<HardestWordSummary> hardestWords) { this.hardestWords = hardestWords; return this; }
             public CurriculumAnalyticsBuilder fallbackFrequency(List<FallbackWordSummary> fallbackFrequency) { this.fallbackFrequency = fallbackFrequency; return this; }
             public CurriculumAnalyticsBuilder lessonPassRates(List<LessonPassRateSummary> lessonPassRates) { this.lessonPassRates = lessonPassRates; return this; }
             public CurriculumAnalyticsBuilder cumulativeSummary(CumulativeAnalyticsSummary cumulativeSummary) { this.cumulativeSummary = cumulativeSummary; return this; }
+            public CurriculumAnalyticsBuilder posAccuracyBreakdown(List<PosAccuracySummary> posAccuracyBreakdown) { this.posAccuracyBreakdown = posAccuracyBreakdown; return this; }
 
             public CurriculumAnalytics build() {
                 CurriculumAnalytics c = new CurriculumAnalytics();
@@ -313,6 +318,7 @@ public class AdminAnalyticsDashboardResponse {
                 c.fallbackFrequency = this.fallbackFrequency;
                 c.lessonPassRates = this.lessonPassRates;
                 c.cumulativeSummary = this.cumulativeSummary;
+                c.posAccuracyBreakdown = this.posAccuracyBreakdown;
                 return c;
             }
         }
@@ -387,6 +393,9 @@ public class AdminAnalyticsDashboardResponse {
         @JsonProperty("cebuano_meaning")
         private String cebuanoMeaning;
 
+        @JsonProperty("part_of_speech")
+        private String partOfSpeech;
+
         @JsonProperty("lesson_title")
         private String lessonTitle;
 
@@ -432,6 +441,7 @@ public class AdminAnalyticsDashboardResponse {
             private UUID wordId;
             private String englishWord;
             private String cebuanoMeaning;
+            private String partOfSpeech;
             private String lessonTitle;
             private Double avgDemerits;
             private Integer totalDemerits;
@@ -445,6 +455,7 @@ public class AdminAnalyticsDashboardResponse {
             public HardestWordSummaryBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
             public HardestWordSummaryBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
             public HardestWordSummaryBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+            public HardestWordSummaryBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
             public HardestWordSummaryBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
             public HardestWordSummaryBuilder avgDemerits(Double avgDemerits) { this.avgDemerits = avgDemerits; return this; }
             public HardestWordSummaryBuilder totalDemerits(Integer totalDemerits) { this.totalDemerits = totalDemerits; return this; }
@@ -460,6 +471,7 @@ public class AdminAnalyticsDashboardResponse {
                 h.wordId = this.wordId;
                 h.englishWord = this.englishWord;
                 h.cebuanoMeaning = this.cebuanoMeaning;
+                h.partOfSpeech = this.partOfSpeech;
                 h.lessonTitle = this.lessonTitle;
                 h.avgDemerits = this.avgDemerits;
                 h.totalDemerits = this.totalDemerits;
@@ -550,6 +562,15 @@ public class AdminAnalyticsDashboardResponse {
         @JsonProperty("total_completions")
         private Long totalCompletions;
 
+        @JsonProperty("class_id")
+        private UUID classId;
+
+        @JsonProperty("class_name")
+        private String className;
+
+        @JsonProperty("is_class_lesson")
+        private Boolean isClassLesson;
+
         public BigDecimal getCompletionRate() {
             return completionRate;
         }
@@ -563,6 +584,9 @@ public class AdminAnalyticsDashboardResponse {
             private BigDecimal completionRate;
             private BigDecimal avgScore;
             private Long totalCompletions;
+            private UUID classId;
+            private String className;
+            private Boolean isClassLesson;
 
             public LessonPassRateSummaryBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
             public LessonPassRateSummaryBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
@@ -570,6 +594,9 @@ public class AdminAnalyticsDashboardResponse {
             public LessonPassRateSummaryBuilder completionRate(BigDecimal completionRate) { this.completionRate = completionRate; return this; }
             public LessonPassRateSummaryBuilder avgScore(BigDecimal avgScore) { this.avgScore = avgScore; return this; }
             public LessonPassRateSummaryBuilder totalCompletions(Long totalCompletions) { this.totalCompletions = totalCompletions; return this; }
+            public LessonPassRateSummaryBuilder classId(UUID classId) { this.classId = classId; return this; }
+            public LessonPassRateSummaryBuilder className(String className) { this.className = className; return this; }
+            public LessonPassRateSummaryBuilder isClassLesson(Boolean isClassLesson) { this.isClassLesson = isClassLesson; return this; }
 
             public LessonPassRateSummary build() {
                 LessonPassRateSummary s = new LessonPassRateSummary();
@@ -579,6 +606,9 @@ public class AdminAnalyticsDashboardResponse {
                 s.completionRate = this.completionRate;
                 s.avgScore = this.avgScore;
                 s.totalCompletions = this.totalCompletions;
+                s.classId = this.classId;
+                s.className = this.className;
+                s.isClassLesson = this.isClassLesson;
                 return s;
             }
         }
@@ -607,6 +637,66 @@ public class AdminAnalyticsDashboardResponse {
             r.topPerformers = this.topPerformers;
             r.curriculumAnalytics = this.curriculumAnalytics;
             return r;
+        }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PosAccuracySummary {
+        @JsonProperty("part_of_speech")
+        private String partOfSpeech;
+
+        @JsonProperty("total_words")
+        private Integer totalWords;
+
+        @JsonProperty("total_attempts")
+        private Integer totalAttempts;
+
+        @JsonProperty("correct_count")
+        private Integer correctCount;
+
+        @JsonProperty("accuracy")
+        private BigDecimal accuracy;
+
+        public String getPartOfSpeech() { return partOfSpeech; }
+        public Integer getTotalWords() { return totalWords; }
+        public Integer getTotalAttempts() { return totalAttempts; }
+        public Integer getCorrectCount() { return correctCount; }
+        public BigDecimal getAccuracy() { return accuracy; }
+
+        public void setPartOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; }
+        public void setTotalWords(Integer totalWords) { this.totalWords = totalWords; }
+        public void setTotalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; }
+        public void setCorrectCount(Integer correctCount) { this.correctCount = correctCount; }
+        public void setAccuracy(BigDecimal accuracy) { this.accuracy = accuracy; }
+
+        public static PosAccuracySummaryBuilder builder() { return new PosAccuracySummaryBuilder(); }
+
+        public static class PosAccuracySummaryBuilder {
+            private String partOfSpeech;
+            private Integer totalWords;
+            private Integer totalAttempts;
+            private Integer correctCount;
+            private BigDecimal accuracy;
+
+            public PosAccuracySummaryBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
+            public PosAccuracySummaryBuilder totalWords(Integer totalWords) { this.totalWords = totalWords; return this; }
+            public PosAccuracySummaryBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
+            public PosAccuracySummaryBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
+            public PosAccuracySummaryBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+
+            public PosAccuracySummary build() {
+                PosAccuracySummary p = new PosAccuracySummary();
+                p.partOfSpeech = this.partOfSpeech;
+                p.totalWords = this.totalWords != null ? this.totalWords : 0;
+                p.totalAttempts = this.totalAttempts != null ? this.totalAttempts : 0;
+                p.correctCount = this.correctCount != null ? this.correctCount : 0;
+                p.accuracy = this.accuracy != null ? this.accuracy : BigDecimal.ZERO;
+                return p;
+            }
         }
     }
 }

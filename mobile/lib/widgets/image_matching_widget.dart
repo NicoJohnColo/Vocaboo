@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/local_storage_service.dart';
+import '../services/tts_service.dart';
 import 'custom_image_viewer.dart';
 
 class ImageMatchingWidget extends StatelessWidget {
@@ -64,7 +65,29 @@ class ImageMatchingWidget extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: isSelected ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0), width: 1.5),
                 ),
-                child: Text(option, style: const TextStyle(fontWeight: FontWeight.w600)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(option, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                    ),
+                    Material(
+                      color: Colors.transparent,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => TTSService.speakEnglish(option),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: Icon(
+                            Icons.volume_up_rounded,
+                            color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );

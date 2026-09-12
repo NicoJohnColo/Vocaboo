@@ -5,67 +5,35 @@ import com.vocaboo.dto.response.LearnerWrongAnswersResponse.WrongWordDetail;
 import com.vocaboo.dto.response.WrongAnswerAnalysisResponse;
 import com.vocaboo.dto.response.WrongAnswerAnalysisResponse.ConfusedPairDetail;
 import com.vocaboo.dto.response.WrongAnswerAnalysisResponse.CurriculumGapDetail;
+import com.vocaboo.dto.response.WrongAnswerAnalysisResponse.ProblemWordDetail;
 import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Computes wrong-answer reports without any new database tables.
+ * Computes wrong-answer reports based on unified WordPerformance metrics
+ * across all active learners in the curriculum.
  *
- * Learner report  — groups all incorrect ReviewItem entries and PronunciationAttempt entries
- *                   for the learner by word, counts errors, determines whether the latest attempt
- *                   was correct, and calculates demerit points (2 × total errors).
- *
- * Admin report    — class-wide aggregation of incorrect items and pronunciation attempts,
- *                   cross-referenced with ConfusableWordPair entries to surface confusion
- *                   pair statistics and lesson-level curriculum gaps.
+ * WordPerformance is the single source of truth for learner accuracy, struggle demerits,
+ * and error counts across all lesson modules (Module 1, 2, 3, Diagnostic, and Sandbox).
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class WrongAnswerReportingService {
 
-    private static final int DEMERIT_MULTIPLIER = 2;
-
+    private final WordPerformanceRepository wordPerformanceRepository;
     private final ReviewItemRepository reviewItemRepository;
     private final ConfusableWordPairRepository confusableWordPairRepository;
-    private final WordProgressRepository wordProgressRepository;
     private final PronunciationAttemptRepository pronunciationAttemptRepository;
-
-    private static class CombinedAttempt {
-        private final VocabularyWord word;
-        private final boolean isCorrect;
-        private final OffsetDateTime timestamp;
-
-        public CombinedAttempt(VocabularyWord word, boolean isCorrect, OffsetDateTime timestamp) {
-            this.word = word;
-            this.isCorrect = isCorrect;
-            this.timestamp = timestamp;
-        }
-
-        public VocabularyWord getWord() { return word; }
-        public boolean getIsCorrect() { return isCorrect; }
-        public OffsetDateTime getTimestamp() { return timestamp; }
-    }
-
-    private static class ClassWideError {
-        private final UUID learnerId;
-        private final VocabularyWord word;
-
-        public ClassWideError(UUID learnerId, VocabularyWord word) {
-            this.learnerId = learnerId;
-            this.word = word;
-        }
-
-        public UUID getLearnerId() { return learnerId; }
-        public VocabularyWord getWord() { return word; }
-    }
+    private final LearnerRepository learnerRepository;
+    private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Learner endpoint
@@ -73,121 +41,49 @@ public class WrongAnswerReportingService {
 
     /**
      * Returns a summary of words the learner has answered incorrectly, sorted by
-     * error frequency (most errors first), together with their total demerit points.
+     * struggle severity (demerits first), together with their total demerit points.
      */
     public LearnerWrongAnswersResponse getLearnerWrongAnswers(UUID learnerId) {
-        List<ReviewItem> reviewItems =
-                reviewItemRepository.findAllByLearnerIdOrderByCreatedAtAsc(learnerId);
-
-        List<PronunciationAttempt> pronAttempts =
-                pronunciationAttemptRepository.findByLearnerLearnerIdOrderByRecordedAtAsc(learnerId);
-
-        // Map both types of attempts to a unified representation
-        List<CombinedAttempt> attemptsList = new ArrayList<>();
-        for (ReviewItem item : reviewItems) {
-            attemptsList.add(new CombinedAttempt(
-                    item.getWord(),
-                    Boolean.TRUE.equals(item.getIsCorrect()),
-                    item.getCreatedAt()
-            ));
-        }
-        for (PronunciationAttempt attempt : pronAttempts) {
-            // Include only non-inconclusive attempts in wrong-answers demerit aggregation
-            if (attempt.getIsCorrect() != null && !Boolean.TRUE.equals(attempt.getIsInconclusive())) {
-                attemptsList.add(new CombinedAttempt(
-                        attempt.getWord(),
-                        Boolean.TRUE.equals(attempt.getIsCorrect()),
-                        attempt.getRecordedAt()
-                ));
-            }
-        }
-
-        // Sort chronologically ascending so the latest attempt is last in list
-        attemptsList.sort(Comparator.comparing(CombinedAttempt::getTimestamp));
-
-        // Build: wordId → chronologically ordered list of attempts
-        Map<UUID, List<CombinedAttempt>> attemptsByWord = new LinkedHashMap<>();
-        for (CombinedAttempt attempt : attemptsList) {
-            UUID wordId = attempt.getWord().getWordId();
-            attemptsByWord.computeIfAbsent(wordId, k -> new ArrayList<>()).add(attempt);
-        }
+        List<WordPerformance> wordPerformances = wordPerformanceRepository.findByLearnerLearnerId(learnerId);
 
         Map<UUID, WrongWordDetail> detailsMap = new LinkedHashMap<>();
-        int totalErrors = 0;
+        int totalDemeritsAccumulated = 0;
 
-        for (Map.Entry<UUID, List<CombinedAttempt>> entry : attemptsByWord.entrySet()) {
-            List<CombinedAttempt> items = entry.getValue();
+        for (WordPerformance wp : wordPerformances) {
+            if (wp.getWord() == null) continue;
+            UUID wordId = wp.getWord().getWordId();
 
-            long errorCount = items.stream()
-                    .filter(i -> !i.getIsCorrect())
-                    .count();
+            int demerits = wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0;
+            if (demerits <= 0) {
+                continue; // only include active struggling words with demerits
+            }
 
-            if (errorCount == 0) continue; // never answered wrong — skip
+            totalDemeritsAccumulated += demerits;
 
-            totalErrors += (int) errorCount;
+            boolean currentlyCorrect = wp.getAccuracy() != null && wp.getAccuracy().compareTo(BigDecimal.valueOf(70.0)) >= 0;
 
-            // The most-recent attempt determines the "currently correct" badge
-            CombinedAttempt latest = items.get(items.size() - 1);
-            boolean currentlyCorrect = latest.getIsCorrect();
-
-            VocabularyWord word = items.get(0).getWord();
+            VocabularyWord word = wp.getWord();
             String lessonTitle = word.getLesson() != null ? word.getLesson().getLessonTitle() : "";
             String categoryName = (word.getLesson() != null && word.getLesson().getCategory() != null)
                     ? word.getLesson().getCategory().getCategoryName() : "";
 
-            detailsMap.put(word.getWordId(), WrongWordDetail.builder()
-                    .wordId(word.getWordId())
+            detailsMap.put(wordId, WrongWordDetail.builder()
+                    .wordId(wordId)
                     .englishWord(word.getEnglishWord())
                     .cebuanoMeaning(word.getCebuanoMeaning())
                     .partOfSpeech(word.getPartOfSpeech())
                     .lessonTitle(lessonTitle)
                     .categoryName(categoryName)
-                    .errorCount((int) errorCount)
+                    .errorCount(demerits)
                     .currentlyCorrect(currentlyCorrect)
                     .build());
         }
 
-        // Incorporate words that are unmastered or need review in WordProgress
-        List<WordProgress> progressList = wordProgressRepository.findByLearnerLearnerId(learnerId);
-        for (WordProgress progress : progressList) {
-            if (progress.getStatus() != WordStatus.MASTERED) {
-                VocabularyWord word = progress.getWord();
-                UUID wordId = word.getWordId();
-
-                if (!detailsMap.containsKey(wordId)) {
-                    String lessonTitle = word.getLesson() != null ? word.getLesson().getLessonTitle() : "";
-                    String categoryName = (word.getLesson() != null && word.getLesson().getCategory() != null)
-                            ? word.getLesson().getCategory().getCategoryName() : "";
-
-                    // Since it is unmastered / needs practice, set errorCount to 1, currentlyCorrect = false
-                    totalErrors += 1;
-
-                    detailsMap.put(wordId, WrongWordDetail.builder()
-                            .wordId(wordId)
-                            .englishWord(word.getEnglishWord())
-                            .cebuanoMeaning(word.getCebuanoMeaning())
-                            .partOfSpeech(word.getPartOfSpeech())
-                            .lessonTitle(lessonTitle)
-                            .categoryName(categoryName)
-                            .errorCount(1)
-                            .currentlyCorrect(false)
-                            .build());
-                } else {
-                    // Force currentlyCorrect to false if it is still unmastered
-                    detailsMap.get(wordId).setCurrentlyCorrect(false);
-                }
-            }
-        }
-
         List<WrongWordDetail> wrongWords = new ArrayList<>(detailsMap.values());
-
-        // Sort: most errors first
         wrongWords.sort(Comparator.comparingInt(WrongWordDetail::getErrorCount).reversed());
 
-        int demeritPoints = totalErrors * DEMERIT_MULTIPLIER;
-
         return LearnerWrongAnswersResponse.builder()
-                .demeritPoints(demeritPoints)
+                .demeritPoints(totalDemeritsAccumulated)
                 .words(wrongWords)
                 .build();
     }
@@ -198,127 +94,233 @@ public class WrongAnswerReportingService {
 
     /**
      * Returns class-wide wrong-answer analysis: confused word pair statistics and
-     * lesson-level curriculum gaps, based on all review item and pronunciation attempt records.
+     * lesson-level curriculum gaps, based on unified WordPerformance records across
+     * all active learners in the selected cohort.
      */
     public WrongAnswerAnalysisResponse getClassWideWrongAnswerAnalysis() {
-        List<ReviewItem> allReviewItems = reviewItemRepository.findAllOrderByCreatedAtAsc();
-        List<PronunciationAttempt> allPronAttempts = pronunciationAttemptRepository.findAll();
+        return getClassWideWrongAnswerAnalysis(null, null, null, null);
+    }
 
-        List<ClassWideError> incorrectAttempts = new ArrayList<>();
-        for (ReviewItem item : allReviewItems) {
-            if (Boolean.FALSE.equals(item.getIsCorrect())) {
-                incorrectAttempts.add(new ClassWideError(
-                        item.getSession().getLearner().getLearnerId(),
-                        item.getWord()
-                ));
+    public WrongAnswerAnalysisResponse getClassWideWrongAnswerAnalysis(UUID sectionId, GradeLevel gradeLevel, String cohortType) {
+        return getClassWideWrongAnswerAnalysis(sectionId, gradeLevel, cohortType, null);
+    }
+
+    public WrongAnswerAnalysisResponse getClassWideWrongAnswerAnalysis(UUID sectionId, GradeLevel gradeLevel, String cohortType, UUID teacherId) {
+        // 1. Resolve filtered active learners
+        List<Learner> learners;
+        if (sectionId != null) {
+            List<UUID> classEnrolledIds = classEnrollmentRepository.findEnrolledLearnerIdsByClassId(sectionId);
+            if (!classEnrolledIds.isEmpty()) {
+                learners = learnerRepository.findAllById(classEnrolledIds).stream()
+                        .filter(Learner::getIsActive)
+                        .collect(Collectors.toList());
+            } else {
+                learners = learnerRepository.findBySectionSectionIdAndIsActiveTrue(sectionId);
             }
-        }
-        for (PronunciationAttempt attempt : allPronAttempts) {
-            if (Boolean.FALSE.equals(attempt.getIsCorrect()) && !Boolean.TRUE.equals(attempt.getIsInconclusive())) {
-                incorrectAttempts.add(new ClassWideError(
-                        attempt.getLearner().getLearnerId(),
-                        attempt.getWord()
-                ));
-            }
+        } else if ("INDEPENDENT".equalsIgnoreCase(cohortType) && teacherId == null) {
+            learners = learnerRepository.findBySectionIsNullAndIsActiveTrue();
+        } else if ("ENROLLED".equalsIgnoreCase(cohortType) && teacherId == null) {
+            learners = learnerRepository.findBySectionIsNotNullAndIsActiveTrue();
+        } else {
+            learners = learnerRepository.findByIsActiveTrue();
         }
 
-        int totalClassErrors = incorrectAttempts.size();
+        if (teacherId != null) {
+            List<UUID> teacherEnrolledIds = classEnrollmentRepository.findEnrolledLearnerIdsByTeacherId(teacherId);
+            learners = learners.stream()
+                    .filter(l -> teacherEnrolledIds.contains(l.getLearnerId()))
+                    .collect(Collectors.toList());
+        }
 
-        // Distinct learner count with at least one error
-        long learnersWithErrors = incorrectAttempts.stream()
-                .map(ClassWideError::getLearnerId)
-                .distinct()
-                .count();
+        if (gradeLevel != null) {
+            learners = learners.stream()
+                    .filter(l -> l.getGradeLevel() == gradeLevel)
+                    .collect(Collectors.toList());
+        }
 
-        // ── Confused Pair Analysis ─────────────────────────────────────────
-        // Build set of word IDs that appear in incorrect attempts
-        Set<UUID> incorrectWordIds = incorrectAttempts.stream()
-                .map(i -> i.getWord().getWordId())
+        Set<UUID> cohortLearnerIds = learners.stream()
+                .map(Learner::getLearnerId)
                 .collect(Collectors.toSet());
 
-        // Fetch all confusable pairs and intersect
-        List<ConfusableWordPair> allPairs = confusableWordPairRepository.findAll();
+        // 2. Fetch all WordPerformance records for cohort learners (single source of truth)
+        List<WordPerformance> allPerformances = wordPerformanceRepository.findAll();
+        List<WordPerformance> cohortPerformances = allPerformances.stream()
+                .filter(wp -> wp.getLearner() != null && cohortLearnerIds.contains(wp.getLearner().getLearnerId()))
+                .collect(Collectors.toList());
 
+        // Build per-learner, per-word struggle tracking: Map<WordId, Map<LearnerId, Integer>>
+        Map<UUID, Map<UUID, Integer>> errorsByWordAndLearner = new HashMap<>();
+        Map<UUID, VocabularyWord> wordEntityMap = new HashMap<>();
+
+        for (WordPerformance wp : cohortPerformances) {
+            if (wp.getWord() == null || wp.getLearner() == null) continue;
+            UUID wordId = wp.getWord().getWordId();
+            UUID learnerId = wp.getLearner().getLearnerId();
+            wordEntityMap.put(wordId, wp.getWord());
+
+            int demerits = wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0;
+            if (demerits > 0) {
+                errorsByWordAndLearner.computeIfAbsent(wordId, k -> new HashMap<>())
+                        .put(learnerId, demerits);
+            }
+        }
+
+        // 3. Compute class-wide totals
+        int totalClassErrors = 0;
+        Set<UUID> learnersWithErrorsSet = new HashSet<>();
+
+        for (Map<UUID, Integer> learnerErrors : errorsByWordAndLearner.values()) {
+            for (Map.Entry<UUID, Integer> entry : learnerErrors.entrySet()) {
+                totalClassErrors += entry.getValue();
+                learnersWithErrorsSet.add(entry.getKey());
+            }
+        }
+
+        // ── Confused Pair Analysis (strictly scoped) ───────────────────────
+        List<ConfusableWordPair> allPairs = confusableWordPairRepository.findAll();
         List<ConfusedPairDetail> confusedPairs = new ArrayList<>();
 
         for (ConfusableWordPair pair : allPairs) {
+            if (pair.getWordA() == null || pair.getWordB() == null) continue;
+            Lesson l = pair.getLesson();
+            if (teacherId != null) {
+                if (l == null || l.getClassroom() == null) continue;
+                if (l.getClassroom().getTeacher() != null && !teacherId.equals(l.getClassroom().getTeacher().getTeacherId())) continue;
+                if (sectionId != null && !sectionId.equals(l.getClassroom().getClassId())) continue;
+            } else if (sectionId != null) {
+                if (l == null || l.getClassroom() == null || !sectionId.equals(l.getClassroom().getClassId())) continue;
+            }
+
             UUID wordAId = pair.getWordA().getWordId();
             UUID wordBId = pair.getWordB().getWordId();
 
-            boolean wordAInErrors = incorrectWordIds.contains(wordAId);
-            boolean wordBInErrors = incorrectWordIds.contains(wordBId);
+            Map<UUID, Integer> errorsA = errorsByWordAndLearner.getOrDefault(wordAId, Map.of());
+            Map<UUID, Integer> errorsB = errorsByWordAndLearner.getOrDefault(wordBId, Map.of());
 
-            if (!wordAInErrors && !wordBInErrors) continue;
+            int totalPairErrors = errorsA.values().stream().mapToInt(Integer::intValue).sum()
+                    + errorsB.values().stream().mapToInt(Integer::intValue).sum();
 
-            // Count errors for either word in this pair
-            long pairErrors = incorrectAttempts.stream()
-                    .filter(i -> i.getWord().getWordId().equals(wordAId)
-                            || i.getWord().getWordId().equals(wordBId))
-                    .count();
-
-            long affectedLearners = incorrectAttempts.stream()
-                    .filter(i -> i.getWord().getWordId().equals(wordAId)
-                            || i.getWord().getWordId().equals(wordBId))
-                    .map(ClassWideError::getLearnerId)
-                    .distinct()
-                    .count();
+            Set<UUID> affectedLearners = new HashSet<>();
+            affectedLearners.addAll(errorsA.keySet());
+            affectedLearners.addAll(errorsB.keySet());
 
             String lessonTitle = pair.getLesson() != null ? pair.getLesson().getLessonTitle() : "";
 
-            confusedPairs.add(ConfusedPairDetail.builder()
-                    .wordAId(wordAId)
-                    .wordAEnglish(pair.getWordA().getEnglishWord())
-                    .wordACebuano(pair.getWordA().getCebuanoMeaning())
-                    .wordBId(wordBId)
-                    .wordBEnglish(pair.getWordB().getEnglishWord())
-                    .wordBCebuano(pair.getWordB().getCebuanoMeaning())
-                    .lessonTitle(lessonTitle)
-                    .affectedLearners((int) affectedLearners)
-                    .totalErrors((int) pairErrors)
-                    .build());
+            if (totalPairErrors > 0) {
+                confusedPairs.add(ConfusedPairDetail.builder()
+                        .wordAId(wordAId)
+                        .wordAEnglish(pair.getWordA().getEnglishWord())
+                        .wordACebuano(pair.getWordA().getCebuanoMeaning())
+                        .wordBId(wordBId)
+                        .wordBEnglish(pair.getWordB().getEnglishWord())
+                        .wordBCebuano(pair.getWordB().getCebuanoMeaning())
+                        .lessonTitle(lessonTitle)
+                        .affectedLearners(affectedLearners.size())
+                        .totalErrors(totalPairErrors)
+                        .build());
+            }
         }
 
-        // Sort: most errors first
         confusedPairs.sort(Comparator.comparingInt(ConfusedPairDetail::getTotalErrors).reversed());
 
-        // ── Curriculum Gap Analysis ────────────────────────────────────────
-        // Group incorrect attempts by lesson
-        Map<UUID, List<ClassWideError>> errorsByLesson = incorrectAttempts.stream()
-                .filter(i -> i.getWord().getLesson() != null)
-                .collect(Collectors.groupingBy(i -> i.getWord().getLesson().getLessonId()));
+        // Group words with active demerits by their lesson (strictly scoped to class/teacher)
+        Map<UUID, List<UUID>> wordsByLesson = new HashMap<>();
+        for (UUID wordId : errorsByWordAndLearner.keySet()) {
+            VocabularyWord word = wordEntityMap.get(wordId);
+            if (word != null && word.getLesson() != null && word.getLesson().getLessonId() != null) {
+                Lesson l = word.getLesson();
+                if (teacherId != null) {
+                    if (l.getClassroom() == null) {
+                        continue; // Skip global lessons in teacher POV
+                    }
+                    if (l.getClassroom().getTeacher() != null && !teacherId.equals(l.getClassroom().getTeacher().getTeacherId())) {
+                        continue; // Skip lessons from other teachers
+                    }
+                    if (sectionId != null && !sectionId.equals(l.getClassroom().getClassId())) {
+                        continue; // Skip lessons from other classes
+                    }
+                } else if (sectionId != null) {
+                    if (l.getClassroom() == null || !sectionId.equals(l.getClassroom().getClassId())) {
+                        continue; // Skip lessons from other classes or global when section is specified
+                    }
+                }
+                wordsByLesson.computeIfAbsent(l.getLessonId(), k -> new ArrayList<>()).add(wordId);
+            }
+        }
 
-        List<CurriculumGapDetail> curriculumGaps = errorsByLesson.entrySet().stream()
-                .map(entry -> {
-                    List<ClassWideError> lessonErrors = entry.getValue();
-                    var lesson = lessonErrors.get(0).getWord().getLesson();
+        List<CurriculumGapDetail> curriculumGaps = new ArrayList<>();
 
-                    long lessonAffectedLearners = lessonErrors.stream()
-                            .map(ClassWideError::getLearnerId)
-                            .distinct()
-                            .count();
+        for (Map.Entry<UUID, List<UUID>> entry : wordsByLesson.entrySet()) {
+            UUID lessonId = entry.getKey();
+            List<UUID> lessonWordIds = entry.getValue();
 
-                    String categoryName = lesson.getCategory() != null
-                            ? lesson.getCategory().getCategoryName() : "";
+            int lessonTotalErrors = 0;
+            Set<UUID> lessonAffectedLearners = new HashSet<>();
+            List<ProblemWordDetail> problemWords = new ArrayList<>();
+            Lesson lesson = null;
 
-                    String recommendation = String.format(
-                            "Review \"%s\" vocabulary — %d learner(s) made errors here.",
-                            lesson.getLessonTitle(), lessonAffectedLearners);
+            for (UUID wid : lessonWordIds) {
+                VocabularyWord word = wordEntityMap.get(wid);
+                if (word == null) continue;
+                if (lesson == null) lesson = word.getLesson();
 
-                    return CurriculumGapDetail.builder()
-                            .lessonId(lesson.getLessonId())
-                            .lessonTitle(lesson.getLessonTitle())
-                            .categoryName(categoryName)
-                            .affectedLearners((int) lessonAffectedLearners)
-                            .totalErrors(lessonErrors.size())
-                            .recommendation(recommendation)
-                            .build();
-                })
-                .sorted(Comparator.comparingInt(CurriculumGapDetail::getTotalErrors).reversed())
-                .collect(Collectors.toList());
+                Map<UUID, Integer> wordErrors = errorsByWordAndLearner.getOrDefault(wid, Map.of());
+                int wordDemerits = wordErrors.values().stream().mapToInt(Integer::intValue).sum();
+                int wordLearnerCount = wordErrors.size();
+
+                if (wordDemerits > 0) {
+                    lessonTotalErrors += wordDemerits;
+                    lessonAffectedLearners.addAll(wordErrors.keySet());
+
+                    int wordMistakes = Math.max(1, wordDemerits / 2);
+                    problemWords.add(ProblemWordDetail.builder()
+                            .wordId(wid)
+                            .englishWord(word.getEnglishWord())
+                            .cebuanoMeaning(word.getCebuanoMeaning())
+                            .errorCount(wordDemerits)
+                            .demeritPoints(wordDemerits)
+                            .mistakeCount(wordMistakes)
+                            .affectedLearners(wordLearnerCount)
+                            .build());
+                }
+            }
+
+            if (lessonTotalErrors > 0 && lesson != null) {
+                problemWords.sort(Comparator.comparingInt(ProblemWordDetail::getErrorCount).reversed());
+
+                String categoryName = lesson.getCategory() != null ? lesson.getCategory().getCategoryName() : "";
+                String recommendation;
+                if (lessonTotalErrors >= 30) {
+                    recommendation = String.format(
+                            "High Error Density: Review \"%s\" core vocabulary and contextual usage — %d learner(s) made %d demerit error points.",
+                            lesson.getLessonTitle(), lessonAffectedLearners.size(), lessonTotalErrors);
+                } else if (lessonTotalErrors >= 10) {
+                    recommendation = String.format(
+                            "Moderate Errors: Reinforce \"%s\" vocabulary distinction — %d learner(s) made %d demerit error points.",
+                            lesson.getLessonTitle(), lessonAffectedLearners.size(), lessonTotalErrors);
+                } else {
+                    recommendation = String.format(
+                            "Review \"%s\" vocabulary — %d learner(s) had struggle signals here.",
+                            lesson.getLessonTitle(), lessonAffectedLearners.size());
+                }
+
+                curriculumGaps.add(CurriculumGapDetail.builder()
+                        .lessonId(lessonId)
+                        .lessonTitle(lesson.getLessonTitle())
+                        .categoryName(categoryName)
+                        .problemWords(problemWords)
+                        .affectedLearners(lessonAffectedLearners.size())
+                        .totalErrors(lessonTotalErrors)
+                        .recommendation(recommendation)
+                        .build());
+            }
+        }
+
+        curriculumGaps.sort(Comparator.comparingInt(CurriculumGapDetail::getTotalErrors).reversed());
 
         return WrongAnswerAnalysisResponse.builder()
                 .totalClassErrors(totalClassErrors)
-                .learnersWithErrors((int) learnersWithErrors)
+                .learnersWithErrors(learnersWithErrorsSet.size())
                 .confusedPairs(confusedPairs)
                 .curriculumGaps(curriculumGaps)
                 .build();

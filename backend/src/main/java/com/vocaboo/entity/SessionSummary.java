@@ -57,11 +57,28 @@ public class SessionSummary {
     @Builder.Default
     private Integer starsEarned = 0;
 
+    /**
+     * Context in which this session was completed:
+     * "GLOBAL" — free/personal app usage (default).
+     * "CLASS"  — launched from within a class context; classroom will be set.
+     */
+    @Column(name = "context_type", nullable = false, length = 10)
+    @Builder.Default
+    private String contextType = "GLOBAL";
+
+    /**
+     * The classroom linked to this session when context_type = "CLASS". Null otherwise.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "classroom_id")
+    private Classroom classroom;
+
     @Column(name = "completed_at", updatable = false)
     @Builder.Default
     private OffsetDateTime completedAt = OffsetDateTime.now();
 
     public UUID getSummaryId() { return summaryId; }
+    public Learner getLearner() { return learner; }
     public UUID getSessionId() { return sessionId; }
     public Lesson getLesson() { return lesson; }
     public Integer getTotalWordsReviewed() { return totalWordsReviewed; }
@@ -69,8 +86,10 @@ public class SessionSummary {
     public Integer getIncorrectPronunciations() { return incorrectPronunciations; }
     public Integer getDemeritPoints() { return demeritPoints; }
     public Integer getPointsEarned() { return pointsEarned; }
+    public Integer getStarsEarned() { return starsEarned; }
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public BigDecimal getAccuracyRate() { return accuracyRate; }
+    public BigDecimal getScore() { return accuracyRate != null ? accuracyRate : BigDecimal.ZERO; }
     public Integer getTotalAttempts() { return totalAttempts; }
 
     public void setTotalWordsReviewed(Integer totalWordsReviewed) { this.totalWordsReviewed = totalWordsReviewed; }
@@ -82,6 +101,10 @@ public class SessionSummary {
     public void setPointsEarned(Integer pointsEarned) { this.pointsEarned = pointsEarned; }
     public void setDemeritPoints(Integer demeritPoints) { this.demeritPoints = demeritPoints; }
     public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
+    public String getContextType() { return contextType; }
+    public Classroom getClassroom() { return classroom; }
+    public void setContextType(String contextType) { this.contextType = contextType; }
+    public void setClassroom(Classroom classroom) { this.classroom = classroom; }
 
     public static SessionSummaryBuilder builder() { return new SessionSummaryBuilder(); }
 
@@ -97,6 +120,8 @@ public class SessionSummary {
         private Integer demeritPoints = 0;
         private Integer pointsEarned = 0;
         private Integer starsEarned = 0;
+        private String contextType = "GLOBAL";
+        private Classroom classroom;
 
         public SessionSummaryBuilder learner(Learner learner) { this.learner = learner; return this; }
         public SessionSummaryBuilder sessionId(UUID sessionId) { this.sessionId = sessionId; return this; }
@@ -109,6 +134,8 @@ public class SessionSummary {
         public SessionSummaryBuilder demeritPoints(Integer demeritPoints) { this.demeritPoints = demeritPoints; return this; }
         public SessionSummaryBuilder pointsEarned(Integer pointsEarned) { this.pointsEarned = pointsEarned; return this; }
         public SessionSummaryBuilder starsEarned(Integer starsEarned) { this.starsEarned = starsEarned; return this; }
+        public SessionSummaryBuilder contextType(String contextType) { this.contextType = contextType; return this; }
+        public SessionSummaryBuilder classroom(Classroom classroom) { this.classroom = classroom; return this; }
 
         public SessionSummary build() {
             SessionSummary s = new SessionSummary();
@@ -123,6 +150,8 @@ public class SessionSummary {
             s.demeritPoints = this.demeritPoints;
             s.pointsEarned = this.pointsEarned;
             s.starsEarned = this.starsEarned;
+            s.contextType = this.contextType != null ? this.contextType : "GLOBAL";
+            s.classroom = this.classroom;
             s.completedAt = OffsetDateTime.now();
             return s;
         }

@@ -52,19 +52,30 @@ public class DashboardService {
             List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lesson.getLessonId());
             int totalLessonAttempts = 0;
             int totalLessonCorrect = 0;
+            double wordAccSum = 0.0;
+            int wordsWithAcc = 0;
             for (VocabularyWord lw : lessonWords) {
                 WordPerformance wp = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, lw.getWordId()).orElse(null);
                 if (wp != null && wp.getTotalAttempts() > 0) {
                     totalLessonAttempts += wp.getTotalAttempts();
                     totalLessonCorrect += wp.getCorrectCount();
+                    if (wp.getAccuracy() != null) {
+                        wordAccSum += wp.getAccuracy().doubleValue();
+                        wordsWithAcc++;
+                    }
                 }
             }
 
             BigDecimal score = null;
-            if (totalLessonAttempts > 0) {
-                score = BigDecimal.valueOf(totalLessonCorrect * 100.0 / totalLessonAttempts).setScale(2, java.math.RoundingMode.HALF_UP);
+            if (wordsWithAcc > 0) {
+                double wholeLessonAvg = wordAccSum / wordsWithAcc;
+                score = BigDecimal.valueOf(wholeLessonAvg).setScale(2, java.math.RoundingMode.HALF_UP);
             } else if (s != null && s.getMasteryScore() != null) {
                 score = s.getMasteryScore();
+            } else if (wordsWithAcc > 0) {
+                score = BigDecimal.valueOf(wordAccSum / wordsWithAcc).setScale(2, java.math.RoundingMode.HALF_UP);
+            } else if (totalLessonAttempts > 0) {
+                score = BigDecimal.valueOf(totalLessonCorrect * 100.0 / totalLessonAttempts).setScale(2, java.math.RoundingMode.HALF_UP);
             } else {
                 List<LessonModuleScore> lmsList = moduleScoreMap.getOrDefault(lesson.getLessonId(), List.of());
                 if (!lmsList.isEmpty()) {
@@ -108,7 +119,12 @@ public class DashboardService {
         }
 
         long totalLessons = allLessons.size();
-        double averageScore = scoredLessonCount > 0 ? (scoreSum / scoredLessonCount) : 0.0;
+        List<WordPerformance> allPerformances = performanceRepository.findByLearnerLearnerId(learnerId);
+        int totalLifetimeQuestions = allPerformances.stream().mapToInt(WordPerformance::getTotalAttempts).sum();
+        int totalLifetimeCorrect = allPerformances.stream().mapToInt(WordPerformance::getCorrectCount).sum();
+        double averageScore = totalLifetimeQuestions > 0
+                ? (totalLifetimeCorrect * 100.0 / totalLifetimeQuestions)
+                : (scoredLessonCount > 0 ? (scoreSum / scoredLessonCount) : 0.0);
 
         // ── Pronunciation stats ────────────────────────────────────────────────
         int totalPronunciations = (int) pronunciationAttemptRepository.countByLearnerLearnerId(learnerId);

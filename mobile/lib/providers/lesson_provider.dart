@@ -11,8 +11,10 @@ import '../models/learner_progress_model.dart';
 import '../models/learner_lesson_progress_model.dart';
 import '../models/learner_category_progress_model.dart';
 import '../models/recent_word_progress_model.dart';
+import '../models/learner_activity_stats_model.dart';
 import '../services/scoring_service.dart';
 import '../services/local_storage_service.dart';
+import 'package:uuid/uuid.dart';
 import 'package:mobile/config/app_config.dart';
 
 const double lessonWeight = ScoringService.lessonWeight;
@@ -28,14 +30,35 @@ class LessonProvider with ChangeNotifier {
   List<VocabularyWordModel> _words = [];
   bool _isLoading = false;
   String? _error;
+  String? _categoriesError;
+  String? _lessonsError;
 
   List<CategoryModel> get categories => _categories;
   List<LessonModel> get lessons => _lessons;
   List<VocabularyWordModel> get words => _words;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get categoriesError => _categoriesError;
+  String? get lessonsError => _lessonsError;
 
-  LessonProvider(this._auth);
+  String? _activeClassroomId;
+  String? _activeClassName;
+  String? get activeClassroomId => _activeClassroomId;
+  String? get activeClassName => _activeClassName;
+
+  void setActiveClassroom(String? id, String? name) {
+    _activeClassroomId = id;
+    _activeClassName = name;
+    notifyListeners();
+  }
+
+  void clearActiveClassroom() {
+    _activeClassroomId = null;
+    _activeClassName = null;
+    notifyListeners();
+  }
+
+  LessonProvider([this._auth]);
 
   void updateAuth(AuthProvider? auth) {
     _auth = auth;
@@ -51,11 +74,14 @@ class LessonProvider with ChangeNotifier {
 
   void clearError() {
     _error = null;
+    _categoriesError = null;
+    _lessonsError = null;
     notifyListeners();
   }
 
   Future<void> loadCategories() async {
     _isLoading = true;
+    _categoriesError = null;
     _error = null;
     notifyListeners();
 
@@ -71,10 +97,12 @@ class LessonProvider with ChangeNotifier {
       } else if (response.statusCode == 401) {
         _auth?.logout();
       } else {
-        _error = 'Failed to load categories';
+        _categoriesError = 'Failed to load categories';
+        _error = _categoriesError;
       }
     } catch (e) {
-      _error = 'Network error. Please check your connection.';
+      _categoriesError = 'Network error. Please check your connection.';
+      _error = _categoriesError;
     }
 
     _isLoading = false;
@@ -83,6 +111,7 @@ class LessonProvider with ChangeNotifier {
 
   Future<void> loadLessons(String categoryId) async {
     _isLoading = true;
+    _lessonsError = null;
     _error = null;
     notifyListeners();
 
@@ -99,10 +128,47 @@ class LessonProvider with ChangeNotifier {
       } else if (response.statusCode == 401) {
         _auth?.logout();
       } else {
-        _error = 'Failed to load lessons';
+        _lessonsError = 'Failed to load lessons';
+        _error = _lessonsError;
       }
     } catch (e) {
-      _error = 'Network error. Please check your connection.';
+      _lessonsError = 'Network error. Please check your connection.';
+      _error = _lessonsError;
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> loadClassLessons(String classId, {String? categoryId}) async {
+    _isLoading = true;
+    _lessonsError = null;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final uri = categoryId != null && categoryId.isNotEmpty
+          ? Uri.parse('$baseUrl/learner/classes/$classId/lessons?categoryId=$categoryId')
+          : Uri.parse('$baseUrl/learner/classes/$classId/lessons');
+
+      final response = await http.get(
+        uri,
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        _lessons = data.map((les) => LessonModel.fromJson(les)).toList()
+          ..sort((a, b) => a.lessonOrder.compareTo(b.lessonOrder));
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      } else {
+        _lessonsError = 'Failed to load class lessons';
+        _error = _lessonsError;
+      }
+    } catch (e) {
+      _lessonsError = 'Network error. Please check your connection.';
+      _error = _lessonsError;
     }
 
     _isLoading = false;
@@ -269,7 +335,19 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
-  Future<String?> startPracticeSession(String lessonId, {int moduleNumber = 2}) async {
+  /// Starts a practice session.
+  ///
+  /// Pass [classroomId] when launching from a class context (e.g. class detail
+  /// screen lessons tab). The backend will tag all resulting point transactions
+  /// and session summaries as CLASS context, enabling the separate class score.
+  /// When [classroomId] is null, the active classroom context is reused when
+  /// available; otherwise the session runs in global (GLOBAL) context.
+  Future<String?> startPracticeSession(String lessonId,
+      {int moduleNumber = 2, String? classroomId}) async {
+    final effectiveClassroomId = classroomId ?? _activeClassroomId;
+    if (effectiveClassroomId != null) {
+      _activeClassroomId = effectiveClassroomId;
+    }
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/practice-sessions'),
@@ -278,6 +356,7 @@ class LessonProvider with ChangeNotifier {
           'learnerId': _auth?.learner?.learnerId,
           'lessonId': lessonId,
           'moduleNumber': moduleNumber,
+          'classroomContextId': ?effectiveClassroomId,
         }),
       );
       if (response.statusCode == 200) {
@@ -287,9 +366,26 @@ class LessonProvider with ChangeNotifier {
         _auth?.logout();
       }
     } catch (e) {
-      debugPrint('Error starting practice session: $e');
+      debugPrint('Error starting practice session: \$e');
     }
     return null;
+  }
+
+  Future<bool> endPracticeSession(String sessionId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/practice-sessions/$sessionId/end'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('Error ending practice session: $e');
+    }
+    return false;
   }
 
   Future<void> updateWordProgress(
@@ -346,6 +442,7 @@ class LessonProvider with ChangeNotifier {
         headers: _headers,
         body: json.encode({
           'wordId': wordId,
+          'correct': isCorrect,
           'isCorrect': isCorrect,
           if (activityType != null) 'activityType': activityType,
           if (attemptNumber != null) 'attemptNumber': attemptNumber,
@@ -585,11 +682,12 @@ class LessonProvider with ChangeNotifier {
     int? moduleNumber,
     int correctCount,
     int totalCount, {
+    double? customScore,
     bool isSandbox = false,
     String? sessionId,
     int? timeSeconds,
   }) async {
-    final score = ScoringService.computeLessonScore(correctCount, totalCount);
+    final score = customScore ?? ScoringService.computeLessonScore(correctCount, totalCount);
     try {
       Future<http.Response> doPost() {
         if (isSandbox) {
@@ -602,7 +700,7 @@ class LessonProvider with ChangeNotifier {
               'correctCount': correctCount,
               'totalCount': totalCount,
               'score': score,
-              if (timeSeconds != null) 'timeSeconds': timeSeconds,
+              'timeSeconds': ?timeSeconds,
             }),
           );
         } else {
@@ -615,7 +713,7 @@ class LessonProvider with ChangeNotifier {
               'correctCount': correctCount,
               'totalCount': totalCount,
               'score': score,
-              if (timeSeconds != null) 'timeSeconds': timeSeconds,
+              'timeSeconds': ?timeSeconds,
             }),
           );
         }
@@ -644,7 +742,6 @@ class LessonProvider with ChangeNotifier {
     final localModuleNumber = moduleNumber ?? 1;
     try {
       await LocalStorageService.saveModuleScore(lessonId, localModuleNumber, correctCount, totalCount);
-      await LocalStorageService.saveLessonScore(lessonId, score);
     } catch (_) {
       // Don't let local storage failures block the app; just log silently.
       debugPrint('LessonProvider.persistModuleScore: failed to save locally');
@@ -720,7 +817,7 @@ class LessonProvider with ChangeNotifier {
         headers: _headers,
         body: json.encode({
           'action': 'DIAGNOSTIC_BOOST',
-          if (activityType != null) 'activityType': activityType,
+          'activityType': ?activityType,
         }),
       );
     } catch (e) {
@@ -736,7 +833,7 @@ class LessonProvider with ChangeNotifier {
         headers: _headers,
         body: json.encode({
           'action': 'DIAGNOSTIC_FAIL',
-          if (activityType != null) 'activityType': activityType,
+          'activityType': ?activityType,
         }),
       );
     } catch (e) {
@@ -817,7 +914,7 @@ class LessonProvider with ChangeNotifier {
         headers: _headers,
         body: json.encode({
           'correct': isCorrect,
-          if (activityType != null) 'activityType': activityType,
+          'activityType': ?activityType,
         }),
       );
       if (response.statusCode == 200) {
@@ -892,10 +989,13 @@ class LessonProvider with ChangeNotifier {
   }
 
   /// Fetches word mastery summary for a lesson score screen.
-  Future<List<Map<String, dynamic>>> fetchWordMasterySummary(String lessonId) async {
+  Future<List<Map<String, dynamic>>> fetchWordMasterySummary(String lessonId, {String? sessionId}) async {
     try {
+      final uri = (sessionId != null && sessionId.isNotEmpty)
+          ? Uri.parse('$baseUrl/lessons/$lessonId/word-mastery-summary?sessionId=${Uri.encodeComponent(sessionId)}')
+          : Uri.parse('$baseUrl/lessons/$lessonId/word-mastery-summary');
       final response = await http.get(
-        Uri.parse('$baseUrl/lessons/$lessonId/word-mastery-summary'),
+        uri,
         headers: _headers,
       );
       if (response.statusCode == 200) {
@@ -1043,6 +1143,79 @@ class LessonProvider with ChangeNotifier {
       debugPrint('LessonProvider.completeSandbox error: $e');
       rethrow;
     }
+  }
+
+  /// Generates or builds a structured multi-word Sandbox Learning Path from topic or word input.
+  Future<Map<String, dynamic>> generateSandboxPathCurriculum({
+    required String customInput,
+  }) async {
+    final rawResult = await generateSandbox(customWord: customInput);
+    final sessionMap = rawResult?['session'] is Map ? Map<String, dynamic>.from(rawResult!['session']) : <String, dynamic>{};
+    final sessionId = sessionMap['sessionId']?.toString() ?? const Uuid().v4();
+    final customWord = sessionMap['customWord']?.toString() ?? customInput;
+
+    List<Map<String, dynamic>> wordsList = [];
+    if (rawResult?['words'] is List) {
+      wordsList = (rawResult!['words'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+
+    final List<Map<String, dynamic>> processedWords = [];
+    if (wordsList.isNotEmpty) {
+      final w = Map<String, dynamic>.from(wordsList.first);
+      w['wordId'] ??= const Uuid().v4();
+      w['wordOrder'] = 1;
+      processedWords.add(w);
+    }
+
+    if (processedWords.isEmpty) {
+      processedWords.add({
+        'wordId': const Uuid().v4(),
+        'englishWord': customWord,
+        'cebuanoMeaning': customWord,
+        'exampleSentenceEnglish': 'I like $customWord.',
+        'exampleSentenceCebuano': 'Ganahan ko sa $customWord.',
+        'wordOrder': 1,
+      });
+    }
+
+    final List<Map<String, dynamic>> pathNodes = [
+      {
+        'lessonId': 'sandbox_${sessionId}_n1',
+        'lessonNumber': 1,
+        'lessonTitle': '$customWord Vocabulary',
+        'lessonDescription': 'Practice and master $customWord',
+        'words': processedWords,
+        'totalWordCount': processedWords.length,
+        'status': 'UNLOCKED',
+      }
+    ];
+
+    final fullSessionData = {
+      'sessionId': sessionId,
+      'customWord': customWord,
+      'topic': customWord,
+      'createdAt': DateTime.now().toIso8601String(),
+      'words': processedWords,
+      'pathNodes': pathNodes,
+      'totalCount': processedWords.length,
+      'masteredCount': 0,
+      'nodeProgress': {},
+    };
+
+    await LocalStorageService.saveSandboxSession(fullSessionData);
+    notifyListeners();
+    return fullSessionData;
+  }
+
+  /// Loads sandbox history list.
+  Future<List<Map<String, dynamic>>> getSandboxHistory() async {
+    return await LocalStorageService.getSandboxSessions();
+  }
+
+  /// Deletes a sandbox session from history.
+  Future<void> deleteSandboxSession(String sessionId) async {
+    await LocalStorageService.deleteSandboxSession(sessionId);
+    notifyListeners();
   }
 
   /// Completes a cumulative review session and records the history on backend.
@@ -1329,7 +1502,7 @@ class LessonProvider with ChangeNotifier {
     return null;
   }
 
-  /// Retrieves all earned badges for a learner.
+  /// Retrieves all earned badges for a learner from backend RewardData.
   Future<List<Map<String, dynamic>>> fetchLearnerBadges(String learnerId) async {
     try {
       final response = await http.get(
@@ -1346,6 +1519,164 @@ class LessonProvider with ChangeNotifier {
       debugPrint('LessonProvider.fetchLearnerBadges error: $e');
     }
     return [];
+  }
+
+  /// Fetches consolidated badges across backend RewardData, Dashboard category breakdowns,
+  /// live per-lesson progress, and local storage scores to ensure zero missed badges and live accuracy.
+  Future<List<Map<String, dynamic>>> loadConsolidatedBadges(String? learnerId) async {
+    final Map<String, Map<String, dynamic>> badgeByLessonId = {};
+
+    // 1. Fetch live per-lesson progress (contains real-time, up-to-date accuracy from word performances)
+    if (learnerId != null && learnerId.isNotEmpty) {
+      try {
+        final lessonProgressList = await fetchLearnerLessonProgress(learnerId);
+        for (final lp in lessonProgressList) {
+          final id = lp.lessonId;
+          if (id.isNotEmpty && (lp.accuracyRate > 0 || lp.status == 'COMPLETED' || lp.totalAttempts > 0)) {
+            final acc = lp.accuracyRate;
+            final tier = acc >= 90.0 ? 'GOLD' : (acc >= 75.0 ? 'SILVER' : 'BRONZE');
+            badgeByLessonId[id] = {
+              'lessonId': id,
+              'lessonTitle': lp.lessonTitle.isNotEmpty ? lp.lessonTitle : 'Lesson',
+              'categoryName': lp.categoryName,
+              'badgeType': tier,
+              'score': acc,
+              'hasLiveAccuracy': true,
+            };
+            // Keep local storage synchronized with the actual live lesson accuracy
+            LocalStorageService.saveLessonScore(id, acc, force: true);
+          }
+        }
+      } catch (e) {
+        debugPrint('loadConsolidatedBadges fetchLearnerLessonProgress error: $e');
+      }
+    }
+
+    // 2. Fetch backend RewardData badges
+    if (learnerId != null && learnerId.isNotEmpty) {
+      try {
+        final backendBadges = await fetchLearnerBadges(learnerId);
+        for (final b in backendBadges) {
+          final id = (b['lessonId'] ?? '').toString();
+          if (id.isNotEmpty) {
+            if (!badgeByLessonId.containsKey(id)) {
+              final rScore = (b['score'] as num?)?.toDouble();
+              final bType = (b['badgeType'] ?? '').toString().toUpperCase();
+              final tier = (rScore != null && rScore > 0)
+                  ? (rScore >= 90.0 ? 'GOLD' : (rScore >= 75.0 ? 'SILVER' : 'BRONZE'))
+                  : (bType.isNotEmpty ? bType : 'BRONZE');
+              badgeByLessonId[id] = {
+                ...Map<String, dynamic>.from(b),
+                'badgeType': tier,
+                'score': ?rScore,
+              };
+            } else {
+              final existing = badgeByLessonId[id]!;
+              if ((existing['categoryName'] == null || existing['categoryName'].toString().isEmpty) && b['categoryName'] != null) {
+                existing['categoryName'] = b['categoryName'];
+              }
+              // Only apply backend score/tier if live progress did not already supply an accurate score
+              if (existing['hasLiveAccuracy'] != true) {
+                final rScore = (b['score'] as num?)?.toDouble();
+                if (rScore != null && rScore > 0) {
+                  existing['score'] = rScore;
+                  existing['badgeType'] = rScore >= 90.0 ? 'GOLD' : (rScore >= 75.0 ? 'SILVER' : 'BRONZE');
+                } else if (b['badgeType'] != null) {
+                  existing['badgeType'] = b['badgeType'];
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('loadConsolidatedBadges fetchLearnerBadges error: $e');
+      }
+    }
+
+    // 3. Augment with backend dashboard category breakdowns
+    try {
+      final dash = await fetchDashboardProgress();
+      if (dash != null) {
+        final breakdowns = List<Map<String, dynamic>>.from(dash['categoryBreakdowns'] ?? []);
+        for (final cat in breakdowns) {
+          final catName = (cat['categoryName'] ?? '').toString();
+          final catLessons = List<Map<String, dynamic>>.from(cat['lessons'] ?? []);
+          for (final l in catLessons) {
+            final lessonId = (l['lessonId'] ?? '').toString();
+            final lessonTitle = (l['lessonTitle'] ?? 'Lesson').toString();
+            final acc = (l['lessonAccuracy'] as num?)?.toDouble();
+            if (lessonId.isNotEmpty) {
+              if (!badgeByLessonId.containsKey(lessonId)) {
+                if (acc != null && acc > 0) {
+                  final tier = acc >= 90.0 ? 'GOLD' : (acc >= 75.0 ? 'SILVER' : 'BRONZE');
+                  badgeByLessonId[lessonId] = {
+                    'lessonId': lessonId,
+                    'lessonTitle': lessonTitle,
+                    'categoryName': catName,
+                    'badgeType': tier,
+                    'score': acc,
+                  };
+                }
+              } else {
+                final existing = badgeByLessonId[lessonId]!;
+                if ((existing['categoryName'] == null || existing['categoryName'].toString().isEmpty) && catName.isNotEmpty) {
+                  existing['categoryName'] = catName;
+                }
+                // Do not override live progress accuracy with dashboard category breakdown
+                if (existing['hasLiveAccuracy'] != true && acc != null && acc > 0) {
+                  existing['score'] = acc;
+                  existing['badgeType'] = acc >= 90.0 ? 'GOLD' : (acc >= 75.0 ? 'SILVER' : 'BRONZE');
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('loadConsolidatedBadges dashboard error: $e');
+    }
+
+    // 4. Augment with local storage scores & lesson model masteryScores only for lessons not yet recorded
+    for (final lesson in lessons) {
+      try {
+        if (!badgeByLessonId.containsKey(lesson.lessonId)) {
+          final localScore = await LocalStorageService.getLessonScore(lesson.lessonId);
+          final backendMasteryScore = lesson.masteryScore;
+          final double? effectiveScore = (backendMasteryScore != null && backendMasteryScore > 0)
+              ? (localScore != null && localScore > backendMasteryScore ? localScore : backendMasteryScore)
+              : localScore;
+
+          if (effectiveScore != null && effectiveScore > 0) {
+            final tier = effectiveScore >= 90.0 ? 'GOLD' : (effectiveScore >= 75.0 ? 'SILVER' : 'BRONZE');
+            badgeByLessonId[lesson.lessonId] = {
+              'lessonId': lesson.lessonId,
+              'lessonTitle': lesson.lessonTitle,
+              'badgeType': tier,
+              'score': effectiveScore,
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 5. Strictly enforce score-based tiers so Gold is ONLY given for >= 90%
+    for (final entry in badgeByLessonId.values) {
+      final scoreVal = (entry['score'] as num?)?.toDouble();
+      if (scoreVal != null && scoreVal > 0) {
+        entry['badgeType'] = scoreVal >= 90.0
+            ? 'GOLD'
+            : (scoreVal >= 75.0 ? 'SILVER' : 'BRONZE');
+      }
+    }
+
+    final sortedList = badgeByLessonId.values.toList();
+    sortedList.sort((a, b) {
+      final titleA = (a['lessonTitle'] ?? '').toString();
+      final titleB = (b['lessonTitle'] ?? '').toString();
+      return titleA.compareTo(titleB);
+    });
+
+    return sortedList;
   }
 
   /// Retrieves full progress details for a learner.
@@ -1421,5 +1752,24 @@ class LessonProvider with ChangeNotifier {
       debugPrint('LessonProvider.fetchLearnerRecentWords error: $e');
     }
     return [];
+  }
+
+  /// Retrieves accurate user-specific active activity dates and streak statistics.
+  Future<LearnerActivityStatsModel?> fetchLearnerActivityStats(String learnerId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/learners/$learnerId/activity-dates'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return LearnerActivityStatsModel.fromJson(data as Map<String, dynamic>);
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLearnerActivityStats error: $e');
+    }
+    return null;
   }
 }

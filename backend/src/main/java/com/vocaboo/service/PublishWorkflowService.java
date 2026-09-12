@@ -31,6 +31,20 @@ public class PublishWorkflowService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + newStatus);
         }
 
+        boolean isTeacherLesson = lesson.getClassroom() != null
+                || (lesson.getCategory() != null && lesson.getCategory().getTeacher() != null);
+        if (isTeacherLesson) {
+            UUID ownerTeacherId = lesson.getClassroom() != null && lesson.getClassroom().getTeacher() != null
+                    ? lesson.getClassroom().getTeacher().getTeacherId()
+                    : (lesson.getCategory() != null && lesson.getCategory().getTeacher() != null
+                        ? lesson.getCategory().getTeacher().getTeacherId()
+                        : null);
+            if (adminId == null || !adminId.equals(ownerTeacherId)) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Main admin cannot modify the publish status of teacher-authored classroom lessons.");
+            }
+        }
+
         // Validate before publishing
         if ("PUBLISHED".equals(newStatus)) {
             Map<String, Object> report = buildValidationReport(lessonId, lesson);

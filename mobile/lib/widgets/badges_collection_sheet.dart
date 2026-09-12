@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/motion.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
@@ -21,8 +22,7 @@ class BadgesCollectionSheet extends StatefulWidget {
 }
 
 class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
-  Future<List<Map<String, dynamic>>>? _badgesFuture;
-  Future<Map<String, dynamic>?>? _dashboardFuture;
+  Future<_BadgesSheetData>? _dataFuture;
 
   @override
   void initState() {
@@ -30,14 +30,64 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final provider = Provider.of<LessonProvider>(context, listen: false);
-      final learnerId = auth.learner?.learnerId;
-      if (learnerId != null) {
-        setState(() {
-          _badgesFuture = provider.fetchLearnerBadges(learnerId);
-          _dashboardFuture = provider.fetchDashboardProgress();
-        });
-      }
+      setState(() {
+        _dataFuture = _loadData(provider, auth.learner?.learnerId);
+      });
     });
+  }
+
+  Future<_BadgesSheetData> _loadData(LessonProvider provider, String? learnerId) async {
+    final dashData = await provider.fetchDashboardProgress();
+    final lessonBadges = await provider.loadConsolidatedBadges(learnerId);
+    final categoryBreakdowns = List<Map<String, dynamic>>.from(dashData?['categoryBreakdowns'] ?? []);
+    final cumulativeHistory = List<Map<String, dynamic>>.from(dashData?['cumulativeReviewHistory'] ?? []);
+
+    int perfectGold = 0;
+    int gold = 0;
+    int silver = 0;
+    int bronze = 0;
+
+    // Count lesson badges
+    for (final b in lessonBadges) {
+      final type = (b['badgeType'] ?? '').toString().toUpperCase();
+      if (type.contains('PERFECT')) {
+        perfectGold++;
+      } else if (type.contains('GOLD')) {
+        gold++;
+      } else if (type.contains('SILVER')) {
+        silver++;
+      } else {
+        bronze++;
+      }
+    }
+
+    // Count cumulative review medals
+    for (final cat in categoryBreakdowns) {
+      final cumAcc = (cat['cumulativeAccuracy'] as num?)?.toDouble();
+      final bestBadge = (cat['bestCumulativeBadge'] as String?)?.toUpperCase();
+      if (bestBadge == 'PERFECT_GOLD' || (cumAcc != null && cumAcc >= 100)) {
+        perfectGold++;
+      } else if (bestBadge == 'GOLD' || (cumAcc != null && cumAcc >= 90)) {
+        gold++;
+      } else if (bestBadge == 'SILVER' || (cumAcc != null && cumAcc >= 75)) {
+        silver++;
+      } else if (bestBadge != null || (cumAcc != null && cumAcc > 0)) {
+        bronze++;
+      }
+    }
+
+    final total = perfectGold + gold + silver + bronze;
+
+    return _BadgesSheetData(
+      totalBadges: total,
+      perfectGoldCount: perfectGold,
+      goldCount: gold,
+      silverCount: silver,
+      bronzeCount: bronze,
+      lessonBadges: lessonBadges,
+      categoryBreakdowns: categoryBreakdowns,
+      cumulativeHistory: cumulativeHistory,
+    );
   }
 
   @override
@@ -48,7 +98,7 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.80,
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       decoration: const BoxDecoration(
         color: Color(0xFFF8FAFC),
@@ -78,15 +128,15 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
               children: [
                 Row(
                   children: [
-                    const Text('🏆', style: TextStyle(fontSize: 22)),
-                    const SizedBox(width: 8),
+                    const App3DMiniBadgeDisc(tier: AppBadgeTier.gold, size: 26),
+                    const SizedBox(width: 10),
                     Text(
                       LocalizationService.translate(pref, 'lesson_badges'),
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF06A6FF),
+                      style: AppTypography.baloo2(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF06A6FF),
+                        letterSpacing: -0.3,
                       ),
                     ),
                   ],
@@ -98,420 +148,386 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
-          // Content
-          Flexible(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _badgesFuture,
-              builder: (context, badgeSnap) {
-                if (badgeSnap.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                  );
+          Expanded(
+            child: FutureBuilder<_BadgesSheetData>(
+              future: _dataFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
 
-                final badges = badgeSnap.data ?? [];
-
-                // Count by tier
-                int perfectGold = 0, gold = 0, silver = 0, bronze = 0;
-                for (final b in badges) {
-                  switch (b['badgeType']) {
-                    case 'PERFECT_GOLD':
-                      perfectGold++;
-                      break;
-                    case 'GOLD':
-                      gold++;
-                      break;
-                    case 'SILVER':
-                      silver++;
-                      break;
-                    default:
-                      bronze++;
-                  }
-                }
-
-                final totalBadges = badges.length;
+                final data = snapshot.data ??
+                    _BadgesSheetData(
+                      totalBadges: 0,
+                      perfectGoldCount: 0,
+                      goldCount: 0,
+                      silverCount: 0,
+                      bronzeCount: 0,
+                      lessonBadges: [],
+                      categoryBreakdowns: [],
+                      cumulativeHistory: [],
+                    );
 
                 return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Gold Collection Banner
+                      // Banner Card
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFFFEF08A), Color(0xFFFDE047)],
+                            colors: [Color(0xFFFEF9C3), Color(0xFFFEF08A)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(22),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFFDE047), width: 1.5),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFFDE047).withValues(alpha: 0.35),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
+                              color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+                              offset: const Offset(0, 4),
+                              blurRadius: 0,
                             ),
                           ],
                         ),
                         child: Row(
                           children: [
                             Container(
-                              width: 56,
-                              height: 56,
-                              decoration: const BoxDecoration(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
                                 color: Colors.white,
-                                shape: BoxShape.circle,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFCA8A04).withValues(alpha: 0.2),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
                               child: const Center(
-                                child: Text('🥇', style: TextStyle(fontSize: 30)),
+                                child: App3DMiniBadgeDisc(tier: AppBadgeTier.gold, size: 36),
                               ),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Gold Collection',
-                                    style: TextStyle(
-                                      fontFamily: 'Outfit',
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF854D0E),
-                                    ),
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Gold Collection',
+                                  style: AppTypography.baloo2(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF854D0E),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    totalBadges > 0
-                                        ? 'You have collected $totalBadges mastery badges!'
-                                        : 'Complete Cumulative Reviews to earn gold badges!',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFFA16207),
-                                    ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  (data.goldCount + data.perfectGoldCount) > 0
+                                      ? 'You have collected ${data.goldCount + data.perfectGoldCount} gold ${(data.goldCount + data.perfectGoldCount) == 1 ? 'badge' : 'badges'}!'
+                                      : (data.totalBadges > 0
+                                          ? 'You have collected ${data.totalBadges} mastery badges! Reach 90%+ for Gold!'
+                                          : 'Complete lessons with 90%+ score to earn gold badges!'),
+                                  style: AppTypography.nunito(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFFA16207),
                                   ),
-                                ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Badge Tier Counts Grid
+                    Text(
+                      'BADGE TIERS',
+                      style: AppTypography.baloo2(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF94A3B8),
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _badgeTierCard(
+                            tier: AppBadgeTier.gold,
+                            title: 'Perfect Gold',
+                            count: data.perfectGoldCount,
+                            color: const Color(0xFFCA8A04),
+                            bg: const Color(0xFFFEF9C3),
+                            border: const Color(0xFFFDE047),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _badgeTierCard(
+                            tier: AppBadgeTier.gold,
+                            title: 'Gold (90%+)',
+                            count: data.goldCount,
+                            color: const Color(0xFFD97706),
+                            bg: const Color(0xFFFFFBEB),
+                            border: const Color(0xFFFCD34D),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _badgeTierCard(
+                            tier: AppBadgeTier.silver,
+                            title: 'Silver (75-89%)',
+                            count: data.silverCount,
+                            color: const Color(0xFF475569),
+                            bg: const Color(0xFFF1F5F9),
+                            border: const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _badgeTierCard(
+                            tier: AppBadgeTier.bronze,
+                            title: 'Bronze (<75%)',
+                            count: data.bronzeCount,
+                            color: const Color(0xFF92400E),
+                            bg: const Color(0xFFFFF7ED),
+                            border: const Color(0xFFFED7AA),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // ── Earned Lesson Badges List ──────────────────────────
+                    if (data.lessonBadges.isNotEmpty) ...[
+                      Text(
+                        'EARNED LESSON BADGES (${data.lessonBadges.length})',
+                        style: AppTypography.baloo2(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF94A3B8),
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ...data.lessonBadges.map((badge) {
+                        final title = (badge['lessonTitle'] ?? 'Lesson').toString();
+                        final type = (badge['badgeType'] ?? 'BRONZE').toString().toUpperCase();
+                        final score = (badge['score'] as num?)?.toDouble();
+                        final category = (badge['categoryName'] ?? '').toString();
+
+                        final tier = type.contains('GOLD')
+                            ? AppBadgeTier.gold
+                            : (type.contains('SILVER') ? AppBadgeTier.silver : AppBadgeTier.bronze);
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                offset: const Offset(0, 3),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              App3DMiniBadgeDisc(tier: tier, size: 38),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title,
+                                      style: AppTypography.baloo2(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      score != null
+                                          ? 'Accuracy: ${score.toStringAsFixed(0)}%${category.isNotEmpty ? ' • $category' : ''}'
+                                          : (category.isNotEmpty ? category : 'Mastered'),
+                                      style: AppTypography.nunito(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              App3DBadgePill(
+                                tier: tier,
+                                count: 1,
+                                customLabel: tier == AppBadgeTier.gold ? 'GOLD' : (tier == AppBadgeTier.silver ? 'SILVER' : 'BRONZE'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── Cumulative Review Medals ───────────────────────────
+                    if (data.categoryBreakdowns.isNotEmpty) ...[
+                      Text(
+                        'CUMULATIVE REVIEW MEDALS',
+                        style: AppTypography.baloo2(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF94A3B8),
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ...data.categoryBreakdowns.map((cat) {
+                        final name = cat['categoryName'] ?? 'Category';
+                        final cumAcc = (cat['cumulativeAccuracy'] as num?)?.toDouble();
+                        final bestBadge = (cat['bestCumulativeBadge'] as String?)?.toUpperCase();
+                        final cumCompleted = cumAcc != null || bestBadge != null;
+
+                        final tier = (bestBadge == 'PERFECT_GOLD' || (cumAcc != null && cumAcc >= 90))
+                            ? AppBadgeTier.gold
+                            : ((bestBadge == 'SILVER' || (cumAcc != null && cumAcc >= 75))
+                                ? AppBadgeTier.silver
+                                : AppBadgeTier.bronze);
+
+                        final scoreStr = cumAcc != null ? '${cumAcc.round()}%' : (cumCompleted ? 'Completed' : 'Pending');
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              App3DMiniBadgeDisc(tier: tier, size: 36),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: AppTypography.baloo2(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      cumCompleted ? 'Cumulative Review Completed' : 'Cumulative Review Pending',
+                                      style: AppTypography.nunito(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: cumCompleted ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  scoreStr,
+                                  style: AppTypography.baloo2(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: cumCompleted ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+
+                    // Empty state when no badges at all
+                    if (data.totalBadges == 0) ...[
+                      const SizedBox(height: 20),
+                      Center(
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.emoji_events_outlined, size: 48, color: Color(0xFF94A3B8)),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No Badges Earned Yet',
+                              style: AppTypography.baloo2(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Complete lessons with 90%+ score to earn your first Gold Badge!',
+                              textAlign: TextAlign.center,
+                              style: AppTypography.nunito(
+                                fontSize: 13,
+                                color: const Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
                       ),
-
-                      const SizedBox(height: 20),
-
-                      // Badge Tier Counts Grid
-                      const Text(
-                        'BADGE TIERS',
-                        style: TextStyle(
-                          fontFamily: 'Outfit',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF94A3B8),
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _badgeTierCard(
-                              emoji: '🏆',
-                              title: 'Perfect Gold',
-                              count: perfectGold,
-                              color: const Color(0xFFCA8A04),
-                              bg: const Color(0xFFFEF9C3),
-                              border: const Color(0xFFFDE047),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _badgeTierCard(
-                              emoji: '🥇',
-                              title: 'Gold',
-                              count: gold,
-                              color: const Color(0xFFD97706),
-                              bg: const Color(0xFFFFFBEB),
-                              border: const Color(0xFFFCD34D),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _badgeTierCard(
-                              emoji: '🥈',
-                              title: 'Silver',
-                              count: silver,
-                              color: const Color(0xFF475569),
-                              bg: const Color(0xFFF1F5F9),
-                              border: const Color(0xFFCBD5E1),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _badgeTierCard(
-                              emoji: '🥉',
-                              title: 'Bronze',
-                              count: bronze,
-                              color: const Color(0xFF92400E),
-                              bg: const Color(0xFFFFF7ED),
-                              border: const Color(0xFFFED7AA),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Cumulative Review Badges & Categories List
-                      FutureBuilder<Map<String, dynamic>?>(
-                        future: _dashboardFuture,
-                        builder: (context, dashSnap) {
-                          final dashData = dashSnap.data;
-                          final categoryBreakdowns = (dashData?['categoryBreakdowns'] as List<dynamic>?) ?? [];
-                          final cumulativeHistory = (dashData?['cumulativeReviewHistory'] as List<dynamic>?) ?? [];
-
-                          if (categoryBreakdowns.isEmpty && cumulativeHistory.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (categoryBreakdowns.isNotEmpty) ...[
-                                const Text(
-                                  'CUMULATIVE REVIEW MEDALS',
-                                  style: TextStyle(
-                                    fontFamily: 'Outfit',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF94A3B8),
-                                    letterSpacing: 1.1,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                ...categoryBreakdowns.map((cat) {
-                                  final name = cat['categoryName'] ?? 'Category';
-                                  final cumAcc = (cat['cumulativeAccuracy'] as num?)?.toDouble();
-                                  final bestBadge = cat['bestCumulativeBadge'] as String?;
-                                  final cumCompleted = cumAcc != null || bestBadge != null;
-
-                                  String medal = '🎖️';
-                                  Color medalBg = const Color(0xFFF8FAFC);
-                                  String scoreStr = 'Incomplete';
-
-                                  if (cumCompleted) {
-                                    final accVal = cumAcc != null ? '${cumAcc.round()}%' : 'Completed';
-                                    if (bestBadge == 'PERFECT_GOLD' || (cumAcc != null && cumAcc >= 100)) {
-                                      medal = '🏆';
-                                      medalBg = const Color(0xFFFEF9C3);
-                                      scoreStr = '$accVal 🏆';
-                                    } else if (bestBadge == 'GOLD' || (cumAcc != null && cumAcc >= 90)) {
-                                      medal = '🥇';
-                                      medalBg = const Color(0xFFFFFBEB);
-                                      scoreStr = '$accVal 🥇';
-                                    } else if (bestBadge == 'SILVER' || (cumAcc != null && cumAcc >= 80)) {
-                                      medal = '🥈';
-                                      medalBg = const Color(0xFFF1F5F9);
-                                      scoreStr = '$accVal 🥈';
-                                    } else {
-                                      medal = '🥉';
-                                      medalBg = const Color(0xFFFFF7ED);
-                                      scoreStr = '$accVal 🥉';
-                                    }
-                                  }
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            color: medalBg,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Center(
-                                            child: Text(medal, style: const TextStyle(fontSize: 20)),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                name,
-                                                style: const TextStyle(
-                                                  fontFamily: 'Outfit',
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: Color(0xFF0F172A),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                cumCompleted
-                                                    ? 'Cumulative Review Completed'
-                                                    : 'Cumulative Review Pending',
-                                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                          decoration: BoxDecoration(
-                                            color: cumCompleted ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            scoreStr,
-                                            style: TextStyle(
-                                              fontFamily: 'Outfit',
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w800,
-                                              color: cumCompleted ? const Color(0xFF059669) : const Color(0xFF94A3B8),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                              ],
-                              if (cumulativeHistory.isNotEmpty) ...[
-                                const SizedBox(height: 16),
-                                const Text(
-                                  'PAST REVIEW SESSIONS',
-                                  style: TextStyle(
-                                    fontFamily: 'Outfit',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF94A3B8),
-                                    letterSpacing: 1.1,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                ...cumulativeHistory.map((s) {
-                                  final acc = (s['accuracyPercent'] as num?)?.toDouble();
-                                  final badge = s['badgeAwarded'] as String?;
-                                  final points = s['pointsEarned'] as int? ?? 0;
-
-                                  String badgeEmoji = '🥇';
-                                  Color medalBg = const Color(0xFFFFFBEB);
-                                  if (badge == 'PERFECT_GOLD' || (acc != null && acc >= 100)) {
-                                    badgeEmoji = '🏆';
-                                    medalBg = const Color(0xFFFEF9C3);
-                                  } else if (badge == 'GOLD' || (acc != null && acc >= 90)) {
-                                    badgeEmoji = '🥇';
-                                    medalBg = const Color(0xFFFFFBEB);
-                                  } else if (badge == 'SILVER' || (acc != null && acc >= 80)) {
-                                    badgeEmoji = '🥈';
-                                    medalBg = const Color(0xFFF1F5F9);
-                                  } else if (badge == 'BRONZE') {
-                                    badgeEmoji = '🥉';
-                                    medalBg = const Color(0xFFFFF7ED);
-                                  }
-
-                                  final scoreDisplay = acc != null ? '${acc.round()}%' : 'Completed';
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            color: medalBg,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Center(
-                                            child: Text(badgeEmoji, style: const TextStyle(fontSize: 20)),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Cumulative Review',
-                                                style: TextStyle(
-                                                  fontFamily: 'Outfit',
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: Color(0xFF0F172A),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                points > 0 ? '$points XP Earned' : 'Session Finished',
-                                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFECFDF5),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            '$scoreDisplay $badgeEmoji',
-                                            style: const TextStyle(
-                                              fontFamily: 'Outfit',
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w800,
-                                              color: Color(0xFF059669),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ],
-                          );
-                        },
-                      ),
                     ],
-                  ),
-                );
-              },
-            ),
+                  ],
+                ),
+              );
+            },
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _badgeTierCard({
-    required String emoji,
+    required AppBadgeTier tier,
     required String title,
     required int count,
     required Color color,
@@ -519,24 +535,30 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
     required Color border,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border, width: 1.2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: tier.primaryColor.withValues(alpha: 0.15),
+            offset: const Offset(0, 3),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 24)),
-          const SizedBox(width: 10),
+          App3DMiniBadgeDisc(tier: tier, size: 34),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
+                  style: AppTypography.nunito(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: color,
@@ -545,10 +567,9 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
                 const SizedBox(height: 2),
                 Text(
                   '$count',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                  style: AppTypography.baloo2(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
                     color: color,
                   ),
                 ),
@@ -560,3 +581,26 @@ class _BadgesCollectionSheetState extends State<BadgesCollectionSheet> {
     );
   }
 }
+
+class _BadgesSheetData {
+  final int totalBadges;
+  final int perfectGoldCount;
+  final int goldCount;
+  final int silverCount;
+  final int bronzeCount;
+  final List<Map<String, dynamic>> lessonBadges;
+  final List<Map<String, dynamic>> categoryBreakdowns;
+  final List<Map<String, dynamic>> cumulativeHistory;
+
+  const _BadgesSheetData({
+    required this.totalBadges,
+    required this.perfectGoldCount,
+    required this.goldCount,
+    required this.silverCount,
+    required this.bronzeCount,
+    required this.lessonBadges,
+    required this.categoryBreakdowns,
+    required this.cumulativeHistory,
+  });
+}
+

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -33,6 +34,10 @@ public class PracticeSessionService {
     private final ReviewItemRepository reviewItemRepository;
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final LessonModuleScoreRepository lessonModuleScoreRepository;
+    private final CumulativeReviewSessionRepository cumulativeReviewSessionRepository;
+    private final ClassEnrollmentRepository classEnrollmentRepository;
+    private final ClassPerformanceService classPerformanceService;
+    private final com.vocaboo.repository.ClassroomRepository classroomRepository;
 
     // Activities excluded from all scoring (no pts, no accuracy count)
     private static final java.util.Set<String> SCORING_EXCLUDED = java.util.Set.of(
@@ -45,16 +50,41 @@ public class PracticeSessionService {
 
     @Transactional
     public PracticeSessionResponse start(UUID learnerId, UUID lessonId, int moduleNumber) {
+        return start(learnerId, lessonId, moduleNumber, null);
+    }
+
+    @Transactional
+    public PracticeSessionResponse start(UUID learnerId, UUID lessonId, int moduleNumber, UUID classroomContextId) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
+
+        // A classroom lesson is always recorded in that classroom context. The
+        // client may omit the optional context after a route refresh, but that
+        // must not turn classroom activity into global activity.
+        UUID effectiveClassroomContextId = lesson.getClassroom() != null
+            ? lesson.getClassroom().getClassId()
+            : classroomContextId;
+
+        if (Boolean.TRUE.equals(lesson.getIsDeleted()) || !"PUBLISHED".equalsIgnoreCase(lesson.getContentStatus())) {
+            throw new IllegalArgumentException("Lesson is not available.");
+        }
+
+        if (lesson.getClassroom() != null) {
+            boolean isEnrolled = classEnrollmentRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(
+                    lesson.getClassroom().getClassId(), learnerId, "ACTIVE");
+            if (!isEnrolled) {
+                throw new org.springframework.security.access.AccessDeniedException("You must be enrolled in this class to access its lessons.");
+            }
+        }
 
         PracticeSession session = PracticeSession.builder()
                 .sessionId(UUID.randomUUID())
                 .learner(learner)
                 .lesson(lesson)
                 .moduleNumber(moduleNumber)
+                .classroomContextId(effectiveClassroomContextId)
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .build();
@@ -161,15 +191,34 @@ public class PracticeSessionService {
         result = resultRepository.save(result);
 
         if (isCorrect && pointsEarned > 0) {
+            // Determine class context (from session's stored classroomContextId)
+            String contextType = "GLOBAL";
+            com.vocaboo.entity.Classroom classroomEntity = null;
+            UUID ctxId = session.getClassroomContextId();
+            if (ctxId != null) {
+                contextType = "CLASS";
+                classroomEntity = classroomRepository.findById(ctxId).orElse(null);
+            }
+
             PointTransaction transaction = PointTransaction.builder()
                     .learner(session.getLearner())
                     .actionType(PointActionType.CORRECT_ANSWER)
                     .pointsAwarded(pointsEarned)
                     .relatedSessionId(sessionId)
                     .relatedWord(word)
+                    .contextType(contextType)
+                    .classroom(classroomEntity)
                     .createdAt(OffsetDateTime.now())
                     .build();
             pointTransactionRepository.save(transaction);
+
+            }
+
+            // Class accuracy counts every scored answer, including correct answers
+            // that award zero points because of the activity's scoring rules.
+            if (session.getClassroomContextId() != null) {
+                classPerformanceService.updateAfterAnswer(session.getLearner().getLearnerId(),
+                    session.getClassroomContextId(), pointsEarned, isCorrect, 1);
         }
 
         // Only advance tier state via API call since DifficultyAdjustmentService handles the gate rules.
@@ -201,9 +250,9 @@ public class PracticeSessionService {
             performance.setIncorrectCount(performance.getIncorrectCount() + 1);
         }
 
-        BigDecimal accuracy = BigDecimal.valueOf(performance.getCorrectCount() * 100.0 / performance.getTotalAttempts())
+        BigDecimal cumulativeAcc = BigDecimal.valueOf(performance.getCorrectCount() * 100.0 / performance.getTotalAttempts())
                 .setScale(2, RoundingMode.HALF_UP);
-        performance.setAccuracy(accuracy);
+        performance.setAccuracy(cumulativeAcc);
         performance.setDemeritPoints(performance.getIncorrectCount() * 2);
         performance.setLastPracticedAt(OffsetDateTime.now());
         performance.setUpdatedAt(OffsetDateTime.now());
@@ -259,6 +308,36 @@ public class PracticeSessionService {
         session.setUpdatedAt(OffsetDateTime.now());
         session = sessionRepository.save(session);
 
+        // Update per-word accuracy for words practiced in this session (high-score rule: override if higher)
+        List<PracticeResult> sessionResults = resultRepository.findBySessionSessionId(sessionId);
+        if (sessionResults != null && !sessionResults.isEmpty()) {
+            Map<UUID, List<PracticeResult>> byWord = sessionResults.stream()
+                    .filter(pr -> pr.getWord() != null)
+                    .collect(Collectors.groupingBy(pr -> pr.getWord().getWordId()));
+            for (Map.Entry<UUID, List<PracticeResult>> entry : byWord.entrySet()) {
+                UUID wId = entry.getKey();
+                List<PracticeResult> wResults = entry.getValue();
+                long wTotal = wResults.size();
+                long wCorrect = wResults.stream().filter(pr -> Boolean.TRUE.equals(pr.getIsCorrect())).count();
+                if (wTotal > 0) {
+                    double sessionAcc = (double) wCorrect / wTotal * 100.0;
+                    BigDecimal sessionAccBD = BigDecimal.valueOf(sessionAcc).setScale(2, RoundingMode.HALF_UP);
+                    WordPerformance wp = performanceRepository.findByLearnerLearnerIdAndWordWordId(learner.getLearnerId(), wId)
+                            .orElse(null);
+                    if (wp != null) {
+                        if (wp.getTotalAttempts() != null && wp.getTotalAttempts() > 0) {
+                            BigDecimal cumulativeAcc = BigDecimal.valueOf(wp.getCorrectCount() * 100.0 / wp.getTotalAttempts())
+                                    .setScale(2, RoundingMode.HALF_UP);
+                            wp.setAccuracy(cumulativeAcc);
+                        } else {
+                            wp.setAccuracy(sessionAccBD);
+                        }
+                        performanceRepository.save(wp);
+                    }
+                }
+            }
+        }
+
         // Update LearnerMastery sessions played and mastered count
         LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(learner.getLearnerId())
                 .orElseGet(() -> LearnerMastery.builder()
@@ -290,6 +369,12 @@ public class PracticeSessionService {
         mastery.setMasteryLevel(calculateMasteryLevel(mastery.getOverallAccuracy()));
         mastery.setUpdatedAt(OffsetDateTime.now());
         masteryRepository.save(mastery);
+
+        // Increment class-session counter if this was a class-context session
+        UUID ctxId = session.getClassroomContextId();
+        if (ctxId != null) {
+            classPerformanceService.incrementSessionCount(session.getLearner().getLearnerId(), ctxId);
+        }
 
         return toSessionResponse(session);
     }
@@ -349,14 +434,23 @@ public class PracticeSessionService {
                 long correctCount = items.stream().filter(i -> Boolean.TRUE.equals(i.getIsCorrect())).count();
                 long totalCount = items.size();
 
-                if (perf.getCorrectCount() < (int) correctCount) {
+                if (totalCount > 0) {
+                    double attemptAcc = (double) correctCount / totalCount * 100.0;
+                    BigDecimal newAttemptAcc = BigDecimal.valueOf(attemptAcc).setScale(2, RoundingMode.HALF_UP);
+
                     int maxTotal = Math.max(perf.getTotalAttempts(), (int) totalCount);
                     int maxCorrect = Math.max(perf.getCorrectCount(), (int) correctCount);
                     perf.setTotalAttempts(maxTotal);
                     perf.setCorrectCount(maxCorrect);
                     perf.setIncorrectCount(Math.max(0, maxTotal - maxCorrect));
-                    double wordAcc = (double) maxCorrect / maxTotal * 100.0;
-                    perf.setAccuracy(BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP));
+
+                    if (maxTotal > 0) {
+                        BigDecimal cumulativeAcc = BigDecimal.valueOf(maxCorrect * 100.0 / maxTotal)
+                                .setScale(2, RoundingMode.HALF_UP);
+                        perf.setAccuracy(cumulativeAcc);
+                    } else {
+                        perf.setAccuracy(newAttemptAcc);
+                    }
                     perf.setLastPracticedAt(OffsetDateTime.now());
                     performanceRepository.save(perf);
                 }
@@ -390,18 +484,32 @@ public class PracticeSessionService {
         }).count();
 
         List<PracticeSession> sessions = sessionRepository.findByLearnerLearnerId(learnerId);
-        long completedSessions = sessions.stream().filter(s -> s.getCompletedAt() != null).count();
+        int practiceSessionsCount = sessions != null ? sessions.size() : 0;
+        List<CumulativeReviewSession> cumSessions = cumulativeReviewSessionRepository != null
+                ? cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId)
+                : Collections.emptyList();
+        int cumSessionsCount = cumSessions != null ? cumSessions.size() : 0;
+        int summaryCount = summaryRepository != null
+                ? summaryRepository.findByLearnerLearnerId(learnerId).size()
+                : 0;
+        int recordedTotalSessions = practiceSessionsCount + cumSessionsCount + summaryCount;
 
         LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(learnerId)
                 .orElseGet(() -> LearnerMastery.builder()
                         .learner(learner)
                         .build());
 
+        int currentMasterySessions = mastery.getTotalSessionsPlayed() != null ? mastery.getTotalSessionsPlayed() : 0;
+        int resolvedSessions = Math.max(currentMasterySessions, recordedTotalSessions);
+        if (resolvedSessions == 0 && (totalQuestions > 0 || masteredCount > 0)) {
+            resolvedSessions = 1;
+        }
+
         mastery.setTotalQuestionsAnswered(totalQuestions);
         mastery.setTotalCorrectAnswers(totalCorrect);
         mastery.setOverallAccuracy(overallAccuracy);
         mastery.setWordsMasteredCount((int) masteredCount);
-        mastery.setTotalSessionsPlayed((int) completedSessions);
+        mastery.setTotalSessionsPlayed(resolvedSessions);
         mastery.setMasteryLevel(calculateMasteryLevel(overallAccuracy));
         mastery.setUpdatedAt(OffsetDateTime.now());
 
@@ -438,10 +546,29 @@ public class PracticeSessionService {
 
         long masteredCount = difficultyProgressRepository.countTotalMasteredWordsByLearner(learnerId);
 
+        // Dynamically compute total sessions played across all session types
+        List<PracticeSession> practiceSessions = sessionRepository.findByLearnerLearnerId(learnerId);
+        int practiceSessionCount = practiceSessions != null ? practiceSessions.size() : 0;
+        List<CumulativeReviewSession> cumSessions = cumulativeReviewSessionRepository != null
+                ? cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId)
+                : Collections.emptyList();
+        int cumSessionCount = cumSessions != null ? cumSessions.size() : 0;
+        int summaryCount = summaryRepository != null
+                ? summaryRepository.findByLearnerLearnerId(learnerId).size()
+                : 0;
+
+        int recordedTotalSessions = practiceSessionCount + cumSessionCount + summaryCount;
+        int currentMasterySessions = mastery.getTotalSessionsPlayed() != null ? mastery.getTotalSessionsPlayed() : 0;
+        int resolvedSessions = Math.max(currentMasterySessions, recordedTotalSessions);
+        if (resolvedSessions == 0 && (totalQuestions > 0 || masteredCount > 0)) {
+            resolvedSessions = 1;
+        }
+
         mastery.setTotalQuestionsAnswered(totalQuestions);
         mastery.setTotalCorrectAnswers(totalCorrect);
         mastery.setOverallAccuracy(overallAccuracy);
         mastery.setWordsMasteredCount((int) masteredCount);
+        mastery.setTotalSessionsPlayed(resolvedSessions);
         mastery.setMasteryLevel(calculateMasteryLevel(overallAccuracy));
         masteryRepository.save(mastery);
 
@@ -501,7 +628,17 @@ public class PracticeSessionService {
 
     @Transactional(readOnly = true)
     public List<LearnerLessonProgressResponse> getLessonProgress(UUID learnerId) {
-        List<Lesson> lessons = lessonRepository.findAll();
+        final Set<UUID> enrolledClassIds = (learnerId != null)
+                ? classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learnerId, "ACTIVE").stream()
+                        .map(e -> e.getClassroom().getClassId())
+                        .collect(Collectors.toSet())
+                : Collections.emptySet();
+
+        List<Lesson> lessons = lessonRepository.findAll().stream()
+                .filter(l -> !Boolean.TRUE.equals(l.getIsDeleted()))
+                .filter(l -> "PUBLISHED".equalsIgnoreCase(l.getContentStatus()))
+                .filter(l -> l.getClassroom() == null || enrolledClassIds.contains(l.getClassroom().getClassId()))
+                .collect(Collectors.toList());
         List<SessionSummary> summaries = summaryRepository.findByLearnerLearnerId(learnerId);
         List<LearnerLessonStatus> lessonStatuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
         List<LessonModuleScore> moduleScores = lessonModuleScoreRepository.findByLearnerLearnerId(learnerId);
@@ -530,41 +667,26 @@ public class PracticeSessionService {
             List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lesson.getLessonId());
             int totalLessonAttempts = 0;
             int totalLessonCorrect = 0;
+            double wordAccSum = 0.0;
             for (VocabularyWord lw : lessonWords) {
                 WordPerformance wp = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, lw.getWordId()).orElse(null);
                 if (wp != null && wp.getTotalAttempts() > 0) {
                     totalLessonAttempts += wp.getTotalAttempts();
                     totalLessonCorrect += wp.getCorrectCount();
-                }
-            }
-
-            BigDecimal accuracy = null;
-            if (totalLessonAttempts > 0) {
-                accuracy = BigDecimal.valueOf(totalLessonCorrect * 100.0 / totalLessonAttempts).setScale(2, RoundingMode.HALF_UP);
-            } else if (lls != null && lls.getMasteryScore() != null) {
-                accuracy = lls.getMasteryScore();
-            } else if (summary != null && summary.getAccuracyRate() != null) {
-                accuracy = summary.getAccuracyRate();
-            }
-
-            if (accuracy == null) {
-                if (!lmsList.isEmpty()) {
-                    double avg = lmsList.stream()
-                            .filter(m -> m.getScore() != null)
-                            .mapToDouble(m -> m.getScore().doubleValue())
-                            .average()
-                            .orElse(0.0);
-                    if (avg > 0.0) {
-                        accuracy = BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP);
+                    if (wp.getAccuracy() != null) {
+                        wordAccSum += wp.getAccuracy().doubleValue();
                     }
                 }
             }
-            if (accuracy == null) {
-                accuracy = BigDecimal.ZERO;
-            }
+
+            // Lifetime accuracy of the lesson across all attempts
+                double lifetimeLessonRatio = totalLessonAttempts > 0
+                    ? ((double) totalLessonCorrect / totalLessonAttempts * 100.0)
+                    : 0.0;
+            BigDecimal accuracy = BigDecimal.valueOf(lifetimeLessonRatio).setScale(2, RoundingMode.HALF_UP);
 
             int stars = calculateStars(accuracy);
-            int totalAttempts = summary != null ? summary.getTotalAttempts() : (lls != null && lls.getAttempts() != null ? lls.getAttempts() : totalLessonAttempts);
+            int totalAttempts = totalLessonAttempts > 0 ? totalLessonAttempts : (summary != null ? summary.getTotalAttempts() : (lls != null && lls.getAttempts() != null ? lls.getAttempts() : 0));
             OffsetDateTime completedAt = summary != null ? summary.getCompletedAt() : (lls != null ? lls.getUpdatedAt() : null);
             
             long masteredInLesson = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lesson.getLessonId());
@@ -590,6 +712,8 @@ public class PracticeSessionService {
                     .totalAttempts(totalAttempts)
                     .completedAt(completedAt)
                     .status(status)
+                    .classId(lesson.getClassroom() != null ? lesson.getClassroom().getClassId() : null)
+                    .className(lesson.getClassroom() != null ? lesson.getClassroom().getName() : null)
                     .build());
         }
 
@@ -609,6 +733,9 @@ public class PracticeSessionService {
         for (VocabularyCategory category : categories) {
             List<LearnerLessonProgressResponse> cLessons = lessonsByCategory.getOrDefault(category.getCategoryId(), Collections.emptyList());
             int total = cLessons.size();
+            if (total == 0) {
+                continue;
+            }
             int completed = (int) cLessons.stream().filter(l -> "COMPLETED".equals(l.getStatus())).count();
 
             double avgAcc = cLessons.stream()
@@ -631,7 +758,7 @@ public class PracticeSessionService {
 
     @Transactional(readOnly = true)
     public List<RecentWordProgressResponse> getRecentWords(UUID learnerId, int limit) {
-        Pageable pageable = PageRequest.of(0, limit);
+        Pageable pageable = PageRequest.of(0, Math.max(limit, 500));
         List<WordPerformance> performances = performanceRepository.findByLearnerLearnerIdOrderByLastPracticedAtDesc(learnerId, pageable);
 
         List<RecentWordProgressResponse> list = new ArrayList<>();
@@ -640,19 +767,132 @@ public class PracticeSessionService {
             Optional<DifficultyProgress> dpOpt = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, wp.getWord().getWordId(), modNum);
             DifficultyLevel currentLevel = dpOpt.map(DifficultyProgress::getCurrentLevel)
                     .orElse(DifficultyLevel.LEARNING);
-            String level = dpOpt.isPresent() ? dpOpt.get().getCurrentLevel().name() : calculateMasteryLevel(wp.getAccuracy());
+
+            int wordTotal = wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0;
+            int wordCorrect = wp.getCorrectCount() != null ? wp.getCorrectCount() : 0;
+            int wordMistakes = Math.max(0, wordTotal - wordCorrect);
+            BigDecimal lifetimeAcc = wordTotal > 0
+                    ? BigDecimal.valueOf(wordCorrect * 100.0 / wordTotal).setScale(2, RoundingMode.HALF_UP)
+                    : (wp.getAccuracy() != null ? wp.getAccuracy() : BigDecimal.ZERO);
+
+            String level = calculateMasteryLevel(lifetimeAcc);
 
             list.add(RecentWordProgressResponse.builder()
                     .wordId(wp.getWord().getWordId())
                     .englishWord(wp.getWord().getEnglishWord())
                     .cebuanoMeaning(wp.getWord().getCebuanoMeaning())
-                    .accuracy(wp.getAccuracy())
+                    .accuracy(lifetimeAcc)
                     .currentLevel(level)
                     .partOfSpeech(wp.getWord().getPartOfSpeech())
                     .lastPracticedAt(wp.getLastPracticedAt())
+                    .totalAttempts(wordTotal)
+                    .correctCount(wordCorrect)
+                    .incorrectCount(wordMistakes)
                     .build());
         }
         return list;
+    }
+
+    @Transactional(readOnly = true)
+    public LearnerActivityStatsResponse getActivityStats(UUID learnerId) {
+        Set<LocalDate> activeDatesSet = new TreeSet<>();
+
+        // 1. Practice sessions
+        List<PracticeSession> sessions = sessionRepository.findByLearnerLearnerId(learnerId);
+        for (PracticeSession s : sessions) {
+            if (s.getCreatedAt() != null) {
+                activeDatesSet.add(s.getCreatedAt().toLocalDate());
+            }
+            if (s.getCompletedAt() != null) {
+                activeDatesSet.add(s.getCompletedAt().toLocalDate());
+            }
+        }
+
+        // 2. Lesson statuses
+        List<LearnerLessonStatus> statuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
+        for (LearnerLessonStatus status : statuses) {
+            if (status.getUpdatedAt() != null) {
+                activeDatesSet.add(status.getUpdatedAt().toLocalDate());
+            }
+            if (status.getCreatedAt() != null) {
+                activeDatesSet.add(status.getCreatedAt().toLocalDate());
+            }
+        }
+
+        // 3. Cumulative review sessions
+        List<CumulativeReviewSession> crSessions = cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId);
+        for (CumulativeReviewSession cr : crSessions) {
+            if (cr.getStartTime() != null) {
+                activeDatesSet.add(cr.getStartTime().toLocalDate());
+            }
+            if (cr.getEndTime() != null) {
+                activeDatesSet.add(cr.getEndTime().toLocalDate());
+            }
+        }
+
+        // 4. Session summaries
+        List<SessionSummary> summaries = summaryRepository.findByLearnerLearnerId(learnerId);
+        for (SessionSummary sum : summaries) {
+            if (sum.getCompletedAt() != null) {
+                activeDatesSet.add(sum.getCompletedAt().toLocalDate());
+            }
+        }
+
+        List<LocalDate> sortedDates = new ArrayList<>(activeDatesSet);
+        Collections.sort(sortedDates);
+
+        int totalActiveDays = sortedDates.size();
+
+        // Calculate current streak
+        int currentStreak = 0;
+        LocalDate today = LocalDate.now();
+        LocalDate yesterday = today.minusDays(1);
+
+        LocalDate checkDate = null;
+        if (activeDatesSet.contains(today)) {
+            checkDate = today;
+        } else if (activeDatesSet.contains(yesterday)) {
+            checkDate = yesterday;
+        }
+
+        if (checkDate != null) {
+            currentStreak = 1;
+            LocalDate prev = checkDate.minusDays(1);
+            while (activeDatesSet.contains(prev)) {
+                currentStreak++;
+                prev = prev.minusDays(1);
+            }
+        }
+
+        // Calculate longest streak
+        int longestStreak = 0;
+        int runningStreak = 0;
+        LocalDate lastDate = null;
+        for (LocalDate d : sortedDates) {
+            if (lastDate == null) {
+                runningStreak = 1;
+            } else if (d.equals(lastDate.plusDays(1))) {
+                runningStreak++;
+            } else if (!d.equals(lastDate)) {
+                runningStreak = 1;
+            }
+            if (runningStreak > longestStreak) {
+                longestStreak = runningStreak;
+            }
+            lastDate = d;
+        }
+
+        List<String> activeDateStrings = sortedDates.stream()
+                .map(LocalDate::toString)
+                .collect(Collectors.toList());
+
+        return LearnerActivityStatsResponse.builder()
+                .learnerId(learnerId)
+                .currentStreak(currentStreak)
+                .longestStreak(longestStreak)
+                .totalActiveDays(totalActiveDays)
+                .activeDates(activeDateStrings)
+                .build();
     }
 
     private LearnerProgressResponse toProgressResponse(LearnerMastery mastery) {

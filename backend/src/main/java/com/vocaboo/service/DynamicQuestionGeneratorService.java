@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DynamicQuestionGeneratorService {
 
-    private static final String DEFAULT_ELIGIBLE_FORMATS = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+    private static final String DEFAULT_ELIGIBLE_FORMATS = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD";
 
     private final DifficultyAdjustmentService difficultyService;
     private final VocabularyWordRepository wordRepository;
@@ -47,18 +47,54 @@ public class DynamicQuestionGeneratorService {
             } else {
                 eligible = eligible.toUpperCase();
             }
-            String[] types = eligible.split(";");
-            activityType = types[new java.util.Random().nextInt(types.length)];
+            List<String> typesList = new java.util.ArrayList<>(java.util.Arrays.asList(eligible.split(";")));
+            if (word.getLesson() != null && word.getLesson().getModule2Activities() != null && !word.getLesson().getModule2Activities().isBlank()) {
+                List<String> lessonFormats = java.util.Arrays.asList(word.getLesson().getModule2Activities().toUpperCase().split(";"));
+                List<String> filtered = typesList.stream().filter(f -> lessonFormats.contains(f.trim().toUpperCase())).collect(java.util.stream.Collectors.toList());
+                if (!filtered.isEmpty()) {
+                    typesList = filtered;
+                }
+            }
+            activityType = typesList.get(new java.util.Random().nextInt(typesList.size()));
         }
         activityType = activityType.toUpperCase();
 
         // Get the learner's current difficulty tier for THIS word (or use levelOverride if specified)
         DifficultyLevel level = (levelOverride != null) ? levelOverride : difficultyService.getCurrentLevel(learnerId, word.getWordId(), null);
+        // Proficient is the highest question difficulty; Mastered is the achieved completion state
+        if (level == DifficultyLevel.MASTERED) {
+            level = DifficultyLevel.PROFICIENT;
+        }
 
         // Tier-based parameters
         int optionCount   = getOptionCountForLevel(learnerId, level);
         int timerLimit    = getTimerLimitForLevel(learnerId, level);
-        boolean showExplanations = (level == DifficultyLevel.LEARNING);
+        boolean showExplanations = (level != DifficultyLevel.PROFICIENT);
+
+        // Hint language: derived from learner's language preference + tier
+        // LEARNING: Cebuano / Bisaya hints (unless FULL_ENGLISH explicitly requested)
+        // FAMILIAR: English hints (contextual English explanation / example)
+        // PROFICIENT: NONE (no hints)
+        String hintLanguage;
+        try {
+            Learner hintLearner = learnerRepository.findById(learnerId).orElse(null);
+            com.vocaboo.entity.LanguageMedium langPref = hintLearner != null ? hintLearner.getLanguagePreference() : null;
+            if (level == DifficultyLevel.PROFICIENT) {
+                hintLanguage = "NONE";
+            } else if (level == DifficultyLevel.FAMILIAR) {
+                hintLanguage = "ENGLISH";
+            } else { // LEARNING
+                if (langPref == com.vocaboo.entity.LanguageMedium.FULL_ENGLISH) {
+                    hintLanguage = "ENGLISH";
+                } else if (langPref == com.vocaboo.entity.LanguageMedium.CEBUANO_ENGLISH_MIXED) {
+                    hintLanguage = "CEBUANO_ENGLISH";
+                } else {
+                    hintLanguage = "CEBUANO";
+                }
+            }
+        } catch (Exception e) {
+            hintLanguage = (level == DifficultyLevel.LEARNING) ? "CEBUANO" : (level == DifficultyLevel.FAMILIAR ? "ENGLISH" : "NONE");
+        }
 
         Map<String, Object> q = new HashMap<>();
         q.put("wordId",          word.getWordId().toString());
@@ -68,10 +104,25 @@ public class DynamicQuestionGeneratorService {
         q.put("difficultyLevel", level.name());
         q.put("timeLimitSeconds", timerLimit);
         q.put("showExplanations",       showExplanations);
+        q.put("hintLanguage",    hintLanguage);
         // Cebuano meaning MUST always be exposed because it serves as the prompt for Multiple Choice
         // and other activities, regardless of difficulty tier.
         q.put("cebuanoMeaning",  word.getCebuanoMeaning());
-        q.put("imageAssetPath",  word.getImageAssetPath());
+        q.put("hintDefinition",         word.getHintDefinition());
+        q.put("hintCebuanoSentence",    word.getHintCebuanoSentence());
+        String hintText = null;
+        if (showExplanations) {
+            if ("CEBUANO".equals(hintLanguage)) {
+                hintText = (word.getHintCebuanoSentence() != null && !word.getHintCebuanoSentence().isBlank())
+                        ? word.getHintCebuanoSentence()
+                        : word.getExplanationText();
+            } else if ("ENGLISH".equals(hintLanguage)) {
+                hintText = (word.getHintDefinition() != null && !word.getHintDefinition().isBlank())
+                        ? word.getHintDefinition()
+                        : word.getExplanationText();
+            }
+        }
+        q.put("hintText",               hintText);
         q.put("explanationText",        showExplanations ? word.getExplanationText() : null);
         q.put("exampleSentenceEnglish", word.getExampleSentenceEnglish());
         q.put("exampleSentenceCebuano", (word.getExampleSentenceCebuano() != null && !word.getExampleSentenceCebuano().isBlank()) ? word.getExampleSentenceCebuano() : word.getCebuanoMeaning());
@@ -87,6 +138,7 @@ public class DynamicQuestionGeneratorService {
                 generateFillInBlank(q, word, learnerId, level, optionCount);
                 break;
             case "MATCHING":
+            case "SENTENCE_MATCHING":
                 generateMatching(q, word, learnerId, level);
                 break;
             case "SENTENCE_ARRANGEMENT":
@@ -96,7 +148,7 @@ public class DynamicQuestionGeneratorService {
                 generateTypeWhatYouHear(q, word);
                 break;
             case "TRANSLATION_RECALL":
-                generateTranslationRecall(q, word);
+                generateTranslationRecall(q, word, level);
                 break;
             case "WORD_SCRAMBLE":
                 generateWordScramble(q, word, level);
@@ -106,6 +158,9 @@ public class DynamicQuestionGeneratorService {
                 break;
             case "TRUE_OR_FALSE":
                 generateTrueOrFalse(q, word, learnerId, level);
+                break;
+            case "HINT_TO_WORD":
+                generateHintToWord(q, word, learnerId, level, optionCount);
                 break;
             case "PRONUNCIATION_FEEDBACK":
                 generatePronunciationFeedback(q, word);
@@ -146,24 +201,44 @@ public class DynamicQuestionGeneratorService {
                 });
     }
 
-    // ---  Activity generators with 4-tier logic  ---
+    // ---  Activity generators with 3-tier adaptive logic  ---
 
     private void generateMultipleChoice(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level, int count) {
         // Tier behaviour:
-        // LEARNING  — 3 options, cebuano meaning shown (set in generateQuestion)
-        // FAMILIAR  — 4 options, no cebuano hint
-        // PROFICIENT — 5 options, no hint, harder distractors
-        q.put("questionText", "What is the English word for this?");
-        q.put("word", word.getEnglishWord());
-        q.put("correctAnswer", word.getEnglishWord());
+        // LEARNING   — 3 options, prompt = Cebuano meaning, target = English word
+        // FAMILIAR   — 4 options, INTERTWINED TRANSLATION: prompt = English word, target = Cebuano meaning
+        // PROFICIENT — 5 options, prompt = Cebuano meaning, target = English word (phonetically close distractors, NO HINT)
+        if (level == DifficultyLevel.FAMILIAR) {
+            q.put("questionText", "Select the correct Cebuano word for the English word below.");
+            q.put("word", word.getEnglishWord());
+            q.put("displayWord", word.getEnglishWord());
+            q.put("correctAnswer", word.getCebuanoMeaning());
 
-        List<String> options = new ArrayList<>();
-        options.add(word.getEnglishWord());
+            List<String> options = new ArrayList<>();
+            options.add(word.getCebuanoMeaning());
 
-        List<String> distractors = fetchWeightedEnglishDistractors(learnerId, word, level, count - 1);
-        options.addAll(distractors);
-        Collections.shuffle(options);
-        q.put("options", options);
+            List<String> distractors = fetchWeightedCebuanoDistractors(learnerId, word, level, count - 1);
+            options.addAll(distractors);
+            Collections.shuffle(options);
+            q.put("options", options);
+            q.put("showCebuanoContext", false);
+            q.put("intertwinedTranslation", true);
+        } else {
+            q.put("questionText", "Select the correct English word for the Cebuano word below.");
+            q.put("word", word.getEnglishWord());
+            q.put("displayWord", word.getCebuanoMeaning());
+            q.put("correctAnswer", word.getEnglishWord());
+
+            List<String> options = new ArrayList<>();
+            options.add(word.getEnglishWord());
+
+            List<String> distractors = fetchWeightedEnglishDistractors(learnerId, word, level, count - 1);
+            options.addAll(distractors);
+            Collections.shuffle(options);
+            q.put("options", options);
+            q.put("showCebuanoContext", level == DifficultyLevel.LEARNING);
+            q.put("intertwinedTranslation", false);
+        }
     }
 
     private void generateFillInBlank(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level, int count) {
@@ -190,7 +265,7 @@ public class DynamicQuestionGeneratorService {
             default:         distractorCount = 1; timeLimitSeconds = 0;  break;
         }
 
-        int radius = 99; // Ensure full sentence context at all times
+        int radius = 99;
         int start = Math.max(0, blankPos - radius);
         int end   = Math.min(tokens.length - 1, blankPos + radius);
         StringBuilder sb = new StringBuilder();
@@ -206,8 +281,24 @@ public class DynamicQuestionGeneratorService {
         q.put("fitbSentence", fitbSentence.isEmpty() ? "_______" : fitbSentence);
         q.put("fitbAnswer",   target);
         q.put("correctAnswer", target);
-        q.put("requiresTyping", false); // Never require typing
+        q.put("requiresTyping", false);
         q.put("timeLimitSeconds", timeLimitSeconds);
+
+        // NEW DIMENSION — Cebuano sentence context visibility:
+        // LEARNING:    show full Cebuano sentence translation below the blank
+        // FAMILIAR:    show only first 3 words of Cebuano sentence  
+        // PROFICIENT:  no Cebuano context at all
+        String cebuanoCtx = word.getExampleSentenceCebuano() != null && !word.getExampleSentenceCebuano().isBlank()
+                ? word.getExampleSentenceCebuano() : word.getCebuanoMeaning();
+        if (level == DifficultyLevel.LEARNING) {
+            q.put("fitbCebuanoContext", cebuanoCtx);
+        } else if (level == DifficultyLevel.FAMILIAR) {
+            String[] cebWords = cebuanoCtx.split("\\s+");
+            String partial = String.join(" ", java.util.Arrays.copyOfRange(cebWords, 0, Math.min(3, cebWords.length))) + "...";
+            q.put("fitbCebuanoContext", partial);
+        } else {
+            q.put("fitbCebuanoContext", null); // No context at PROFICIENT
+        }
 
         List<String> options = new ArrayList<>();
         options.add(target);
@@ -218,9 +309,12 @@ public class DynamicQuestionGeneratorService {
 
     private void generateMatching(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level) {
         // Tier pair counts:
-        // LEARNING: 2 pairs
-        // FAMILIAR & PROFICIENT: 3 pairs (aligned with 3 target POS words per lesson)
-        int pairCount = (level == DifficultyLevel.LEARNING) ? 2 : 3;
+        // LEARNING:              2 pairs (same-POS encountered words)
+        // FAMILIAR:              3 pairs (same-POS, full lesson pool)
+        // PROFICIENT:            4 pairs (full lesson pool regardless of POS — higher working-memory load)
+        int pairCount = (level == DifficultyLevel.LEARNING) ? 2
+                      : (level == DifficultyLevel.FAMILIAR)  ? 3
+                      : 4; // PROFICIENT
 
         q.put("questionText", "Match each English word with its Cebuano meaning.");
 
@@ -291,6 +385,8 @@ public class DynamicQuestionGeneratorService {
             pairs.add(pair);
         }
         q.put("matchingPairs", pairs);
+        // NEW DIMENSION — at PROFICIENT, signal that pool was drawn from full lesson (not POS-filtered)
+        q.put("matchingFullLesson", level == DifficultyLevel.PROFICIENT);
     }
 
     private void generateSentenceArrangement(Map<String, Object> q, VocabularyWord word, DifficultyLevel level) {
@@ -314,11 +410,17 @@ public class DynamicQuestionGeneratorService {
         if (targetIdx == -1 && tokensArr.length > 0) targetIdx = 0;
 
         // Tier distractor-tile counts:
-        // LEARNING: 2 distractors
-        // FAMILIAR: 3 distractors
-        // PROFICIENT: 4 distractors
+        // LEARNING: 2 distractors + first word pre-placed (anchor assist)
+        // FAMILIAR: 3 distractors, no anchor
+        // PROFICIENT: 4 distractors, no anchor
         List<String> tileBank = new ArrayList<>(allTokens);
         String anchoredWord = null;
+
+        // NEW DIMENSION — Anchor assist at LEARNING: pre-place the first token
+        if (level == DifficultyLevel.LEARNING && !allTokens.isEmpty()) {
+            anchoredWord = allTokens.get(0);
+            tileBank.remove(0); // Remove from scramble pool; it will be pre-placed
+        }
 
         int distractorCount = (level == DifficultyLevel.LEARNING) ? 2
                             : (level == DifficultyLevel.FAMILIAR)  ? 3
@@ -340,7 +442,7 @@ public class DynamicQuestionGeneratorService {
         }
 
         q.put("scrambledTokens", tileBank);
-        q.put("anchoredWord",    anchoredWord);   // null means no pre-placed tile
+        q.put("anchoredWord",    anchoredWord);   // non-null at LEARNING = first word pre-placed
         q.put("correctTokens",  allTokens);
         q.put("sentenceArrangementTokens", tileBank);
     }
@@ -366,11 +468,24 @@ public class DynamicQuestionGeneratorService {
         }
 
         missingCount = Math.min(missingCount, targetLetters.size());
-        
-        List<Integer> allIndices = new ArrayList<>();
-        for (int i = 0; i < targetLetters.size(); i++) allIndices.add(i);
-        Collections.shuffle(allIndices);
-        List<Integer> missingIndices = allIndices.subList(0, missingCount);
+
+        // NEW DIMENSION — First-letter reveal gating:
+        // LEARNING:   first letter is ALWAYS revealed (never in the missing set)
+        // FAMILIAR:   first letter is hidden 50% of the time
+        // PROFICIENT: first letter is ALWAYS hidden (included in missing set)
+        Random revealRand = new Random();
+        boolean revealFirstLetter = (level == DifficultyLevel.LEARNING) ||
+                                    (level == DifficultyLevel.FAMILIAR && revealRand.nextBoolean());
+        // build missing index selection — exclude index 0 if first letter should be revealed
+        List<Integer> candidateIndices = new ArrayList<>();
+        for (int i = 0; i < targetLetters.size(); i++) {
+            if (revealFirstLetter && i == 0) continue; // skip first index if revealed
+            candidateIndices.add(i);
+        }
+        Collections.shuffle(candidateIndices);
+        List<Integer> missingIndices = candidateIndices.subList(0, Math.min(missingCount, candidateIndices.size()));
+
+        q.put("firstLetterRevealed", revealFirstLetter);
 
         List<String> tileBank = new ArrayList<>();
         List<String> anchoredPattern = new ArrayList<>();
@@ -447,11 +562,20 @@ public class DynamicQuestionGeneratorService {
     }
 
     private void generateImageLabeling(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level, int count) {
-        // Tiers: identical option behavior to MULTIPLE_CHOICE, but UI puts image first
-        // Note: active_practice_screen logic handles gracefully degrading if imageAssetPath is missing.
+        // Tiers: identical option behaviour to MULTIPLE_CHOICE, but UI puts image first.
+        // NEW DIMENSION — Audio TTS gating:
+        // LEARNING:   Cebuano TTS auto-plays (signal: autoPlayAudio=true, audioLanguage=CEBUANO)
+        // FAMILIAR:   tap-to-play audio only (autoPlayAudio=false)
+        // PROFICIENT: no audio cue at all (audioCueEnabled=false)
         q.put("questionText", "What is the correct English word for this image?");
         q.put("word", word.getEnglishWord());
         q.put("correctAnswer", word.getEnglishWord());
+
+        boolean audioCueEnabled = (level != DifficultyLevel.PROFICIENT);
+        boolean autoPlayAudio   = (level == DifficultyLevel.LEARNING);
+        q.put("audioCueEnabled", audioCueEnabled);
+        q.put("autoPlayAudio",   autoPlayAudio);
+        q.put("audioLanguage",   "CEBUANO");
 
         List<String> options = new ArrayList<>();
         options.add(word.getEnglishWord());
@@ -463,10 +587,12 @@ public class DynamicQuestionGeneratorService {
     }
 
     private void generateTrueOrFalse(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level) {
-        // Tiers determine the probability of a correct pair vs incorrect pair, and how hard the incorrect pair is.
-        // LEARNING: 80% correct
-        // FAMILIAR: 50% correct
-        // PROFICIENT: 40% correct
+        // Correct-pair probability:
+        // LEARNING: 80% correct  |  FAMILIAR: 50%  |  PROFICIENT: 40%
+        // NEW DIMENSION — Cebuano visibility per tier:
+        // LEARNING:   full example sentence shown with word bolded
+        // FAMILIAR:   Cebuano meaning only
+        // PROFICIENT: English word only (no Cebuano at all)
         Random rand = new Random();
         double roll = rand.nextDouble();
         boolean isCorrectPair;
@@ -479,25 +605,36 @@ public class DynamicQuestionGeneratorService {
             isCorrectPair = roll < 0.40;
         }
 
+        // Build the Cebuano display string depending on tier
+        String cebuanoDisplay;
+        if (level == DifficultyLevel.LEARNING) {
+            // Show the full example Cebuano sentence if available
+            String exCeb = word.getExampleSentenceCebuano();
+            cebuanoDisplay = (exCeb != null && !exCeb.isBlank()) ? exCeb : word.getCebuanoMeaning();
+        } else if (level == DifficultyLevel.FAMILIAR) {
+            cebuanoDisplay = word.getCebuanoMeaning(); // meaning only
+        } else {
+            cebuanoDisplay = null; // PROFICIENT: no Cebuano shown
+        }
+
         q.put("questionText", "Is this the correct English meaning?");
+        q.put("tofCebuanoDisplay", cebuanoDisplay);
+        q.put("tofShowCebuano", cebuanoDisplay != null);
         
         if (isCorrectPair) {
             q.put("word", word.getEnglishWord());
-            q.put("displayWord", word.getEnglishWord()); // New field
+            q.put("displayWord", word.getEnglishWord());
             q.put("cebuanoMeaning", word.getCebuanoMeaning());
             q.put("correctAnswer", "True");
         } else {
-            // Fetch 1 distractor
             List<String> distractors = fetchWeightedEnglishDistractors(learnerId, word, level, 1);
             String wrongEnglish = distractors.isEmpty() ? "unknown" : distractors.get(0);
-            
             q.put("word", wrongEnglish);
-            q.put("displayWord", wrongEnglish); // New field for frontend T/F display
-            q.put("cebuanoMeaning", word.getCebuanoMeaning()); // Keep Cebuano meaning fixed, show wrong English
+            q.put("displayWord", wrongEnglish);
+            q.put("cebuanoMeaning", word.getCebuanoMeaning());
             q.put("correctAnswer", "False");
         }
 
-        // Options are always True / False
         List<String> options = Arrays.asList("True", "False");
         q.put("options", options);
     }
@@ -511,6 +648,60 @@ public class DynamicQuestionGeneratorService {
         q.put("requiresTyping", false);
     }
 
+    private void generateHintToWord(Map<String, Object> q, VocabularyWord word, UUID learnerId, DifficultyLevel level, int count) {
+        // NEW 9th activity type — Hint-to-Word (definition match)
+        // Tier mechanics:
+        // LEARNING:   Cebuano example sentence with target word blanked + 3 options + auto-play audio
+        // FAMILIAR:   Short English definition clue + 4 options
+        // PROFICIENT: Single-word English synonym/clue + 5 options + 15s timer
+        //
+        // Eligibility gate: at FAMILIAR/PROFICIENT, if no hintDefinition is set, this should not be generated.
+        // The service caller (RetrievalActivityService) should skip this format for words lacking hintDefinition
+        // at those tiers; the generator itself handles a graceful fallback here.
+
+        q.put("correctAnswer", word.getEnglishWord());
+        q.put("word", word.getEnglishWord());
+
+        if (level == DifficultyLevel.LEARNING) {
+            // Clue = Cebuano example sentence with word blanked
+            String cebSentence = (word.getHintCebuanoSentence() != null && !word.getHintCebuanoSentence().isBlank())
+                    ? word.getHintCebuanoSentence()
+                    : ((word.getExampleSentenceCebuano() != null && !word.getExampleSentenceCebuano().isBlank())
+                       ? word.getExampleSentenceCebuano() : word.getCebuanoMeaning());
+            q.put("questionText", "Which English word matches this clue?");
+            q.put("hintToWordClue", cebSentence);
+            q.put("hintToWordClueType", "CEBUANO_SENTENCE");
+            q.put("autoPlayAudio", true);
+            q.put("audioLanguage", "CEBUANO");
+            // No extra timer override at LEARNING
+        } else if (level == DifficultyLevel.FAMILIAR) {
+            // Clue = short English definition
+            String definition = (word.getHintDefinition() != null && !word.getHintDefinition().isBlank())
+                    ? word.getHintDefinition() : word.getCebuanoMeaning(); // fallback to Cebuano meaning
+            q.put("questionText", "Which English word matches this description?");
+            q.put("hintToWordClue", definition);
+            q.put("hintToWordClueType", "ENGLISH_DEFINITION");
+            q.put("autoPlayAudio", false);
+        } else { // PROFICIENT
+            // Clue = synonym or single-word English clue (from hintDefinition, or cebuanoMeaning fallback)
+            String definition = (word.getHintDefinition() != null && !word.getHintDefinition().isBlank())
+                    ? word.getHintDefinition() : word.getCebuanoMeaning();
+            q.put("questionText", "Identify the word from the clue:");
+            q.put("hintToWordClue", definition);
+            q.put("hintToWordClueType", "ENGLISH_SYNONYM");
+            q.put("autoPlayAudio", false);
+            q.put("timeLimitSeconds", 15); // Override timer at PROFICIENT
+        }
+
+        // Build options (correct + distractors)
+        List<String> options = new ArrayList<>();
+        options.add(word.getEnglishWord());
+        List<String> distractors = fetchWeightedEnglishDistractors(learnerId, word, level, count - 1);
+        options.addAll(distractors);
+        Collections.shuffle(options);
+        q.put("options", options);
+    }
+
     private void generateTypeWhatYouHear(Map<String, Object> q, VocabularyWord word) {
         q.put("questionText", "Listen to the word and type what you hear.");
         q.put("correctAnswer", word.getEnglishWord());
@@ -519,10 +710,24 @@ public class DynamicQuestionGeneratorService {
         q.put("options", Collections.emptyList());
     }
 
-    private void generateTranslationRecall(Map<String, Object> q, VocabularyWord word) {
-        q.put("questionText", "Type the English word for: " + word.getCebuanoMeaning());
-        q.put("cebuanoMeaning", word.getCebuanoMeaning());
-        q.put("displayWord", word.getCebuanoMeaning());
+    private void generateTranslationRecall(Map<String, Object> q, VocabularyWord word, DifficultyLevel level) {
+        // NEW DIMENSION — Progressive cue removal:
+        // LEARNING:   show Cebuano meaning + first letter of the English answer as a starter hint
+        // FAMILIAR:   show Cebuano meaning only
+        // PROFICIENT: show only the image (if available) or a single audio TTS cue — no Cebuano text
+        String firstLetterHint = null;
+        if (level == DifficultyLevel.LEARNING && word.getEnglishWord() != null && !word.getEnglishWord().isEmpty()) {
+            firstLetterHint = word.getEnglishWord().substring(0, 1).toUpperCase() + "...";
+        }
+        boolean showCebuanoPrompt = (level != DifficultyLevel.PROFICIENT);
+
+        q.put("questionText", showCebuanoPrompt
+                ? "Type the English word for: " + word.getCebuanoMeaning()
+                : "Type the English word for this image/word.");
+        q.put("cebuanoMeaning", showCebuanoPrompt ? word.getCebuanoMeaning() : null);
+        q.put("displayWord", showCebuanoPrompt ? word.getCebuanoMeaning() : word.getEnglishWord());
+        q.put("translationFirstLetterHint", firstLetterHint);
+        q.put("translationShowCebuano", showCebuanoPrompt);
         q.put("correctAnswer", word.getEnglishWord());
         q.put("requiresTyping", true);
         q.put("options", Collections.emptyList());

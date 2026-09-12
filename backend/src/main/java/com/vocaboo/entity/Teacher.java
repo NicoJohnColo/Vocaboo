@@ -73,6 +73,7 @@ public class Teacher {
     public static TeacherBuilder builder() { return new TeacherBuilder(); }
 
     public static class TeacherBuilder {
+        private UUID teacherId;
         private String username;
         private String email;
         private String passwordHash;
@@ -82,6 +83,7 @@ public class Teacher {
         private String gender;
         private String school;
 
+        public TeacherBuilder teacherId(UUID teacherId) { this.teacherId = teacherId; return this; }
         public TeacherBuilder username(String username) { this.username = username; return this; }
         public TeacherBuilder email(String email) { this.email = email; return this; }
         public TeacherBuilder passwordHash(String passwordHash) { this.passwordHash = passwordHash; return this; }
@@ -93,6 +95,7 @@ public class Teacher {
 
         public Teacher build() {
             Teacher t = new Teacher();
+            t.teacherId = this.teacherId;
             t.username = this.username;
             t.email = this.email;
             t.passwordHash = this.passwordHash;

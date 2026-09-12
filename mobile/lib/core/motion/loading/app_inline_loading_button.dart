@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 enum AppButtonState { idle, loading, success, disabled }
 
@@ -59,9 +60,20 @@ class _AppInlineLoadingButtonState extends State<AppInlineLoadingButton>
     }
   }
 
+  Color _getDepthColor(Color base) {
+    if (base == const Color(0xFF0EA5E9)) return const Color(0xFF0284C7);
+    if (base == const Color(0xFF10B981) || base == const Color(0xFF58CC02)) return const Color(0xFF059669);
+    if (base == const Color(0xFFEF4444)) return const Color(0xFFDC2626);
+    if (base == const Color(0xFFF59E0B)) return const Color(0xFFD97706);
+    return HSLColor.fromColor(base).withLightness((HSLColor.fromColor(base).lightness - 0.15).clamp(0.0, 1.0)).toColor();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isActionDisabled = widget.onPressed == null || _state == AppButtonState.disabled;
+    const double depth = 4.5;
+    final double effectiveDepth = isActionDisabled ? 2.0 : depth;
+    final double translateY = (_isPressed && !isActionDisabled) ? depth : 0.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -73,50 +85,74 @@ class _AppInlineLoadingButtonState extends State<AppInlineLoadingButton>
             ? widget.height
             : (widget.isFullWidth ? maxWidth : widget.width);
 
+        final Color baseColor = isActionDisabled
+            ? const Color(0xFFCBD5E1)
+            : (_state == AppButtonState.success
+                ? const Color(0xFF10B981)
+                : widget.backgroundColor);
+
+        final Color depthColor = isActionDisabled
+            ? const Color(0xFF94A3B8)
+            : (_state == AppButtonState.success
+                ? const Color(0xFF059669)
+                : _getDepthColor(widget.backgroundColor));
+
+        final double borderRadius = (_state == AppButtonState.loading || _state == AppButtonState.success)
+            ? widget.height / 2
+            : widget.borderRadius;
+
         return RepaintBoundary(
           child: Center(
-            child: GestureDetector(
-              onTapDown: isActionDisabled ? null : (_) => setState(() => _isPressed = true),
-              onTapUp: isActionDisabled ? null : (_) => setState(() => _isPressed = false),
-              onTapCancel: () => setState(() => _isPressed = false),
-              onTap: isActionDisabled ? null : _handlePress,
-              child: AnimatedScale(
-                scale: _isPressed ? 0.96 : 1.0,
-                duration: AppDurations.micro,
-                curve: AppCurves.springBack,
-                child: AnimatedContainer(
-                  duration: AppDurations.standard,
-                  curve: AppCurves.emphasizedDecelerate,
-                  height: widget.height,
-                  width: targetWidth,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: isActionDisabled
-                        ? const Color(0xFFCBD5E1)
-                        : (_state == AppButtonState.success
-                            ? const Color(0xFF10B981) // Emerald for success
-                            : widget.backgroundColor),
-                    borderRadius: BorderRadius.circular(
-                      (_state == AppButtonState.loading || _state == AppButtonState.success)
-                          ? widget.height / 2
-                          : widget.borderRadius,
+            child: SizedBox(
+              width: targetWidth,
+              height: widget.height + effectiveDepth,
+              child: GestureDetector(
+                onTapDown: isActionDisabled ? null : (_) => setState(() => _isPressed = true),
+                onTapUp: isActionDisabled ? null : (_) => setState(() => _isPressed = false),
+                onTapCancel: () => setState(() => _isPressed = false),
+                onTap: isActionDisabled ? null : _handlePress,
+                behavior: HitTestBehavior.opaque,
+                child: Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    // Solid 3D Bottom Depth Layer
+                    Positioned(
+                      top: effectiveDepth,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        height: widget.height,
+                        decoration: BoxDecoration(
+                          color: depthColor,
+                          borderRadius: BorderRadius.circular(borderRadius),
+                        ),
+                      ),
                     ),
-                    boxShadow: isActionDisabled
-                        ? null
-                        : [
-                            BoxShadow(
-                              color: widget.backgroundColor.withValues(alpha: _isPressed ? 0.15 : 0.28),
-                              blurRadius: _isPressed ? 8 : 16,
-                              offset: Offset(0, _isPressed ? 3 : 6),
-                            ),
-                          ],
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: AppDurations.short,
-                    switchInCurve: AppCurves.emphasizedDecelerate,
-                    switchOutCurve: AppCurves.emphasizedAccelerate,
-                    child: _buildButtonChild(),
-                  ),
+
+                    // Top Pressable Surface Layer
+                    AnimatedPositioned(
+                      duration: Duration(milliseconds: _isPressed ? 90 : 160),
+                      curve: _isPressed ? Curves.easeOut : const Cubic(0.34, 1.56, 0.64, 1.0),
+                      top: translateY,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        height: widget.height,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: baseColor,
+                          borderRadius: BorderRadius.circular(borderRadius),
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: AppDurations.short,
+                          switchInCurve: AppCurves.emphasizedDecelerate,
+                          switchOutCurve: AppCurves.emphasizedAccelerate,
+                          child: _buildButtonChild(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -161,10 +197,9 @@ class _AppInlineLoadingButtonState extends State<AppInlineLoadingButton>
             Flexible(
               child: Text(
                 widget.text,
-                style: TextStyle(
-                  fontFamily: 'Outfit',
+                style: AppTypography.baloo2(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w700,
                   color: widget.textColor,
                   letterSpacing: 0.2,
                 ),

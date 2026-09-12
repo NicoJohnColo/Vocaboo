@@ -35,8 +35,9 @@ public class LeaderboardService {
                     leaderboard.add(LeaderboardEntryResponse.builder()
                             .learnerId(mastery.getLearner().getLearnerId())
                             .displayName(mastery.getLearner().getDisplayName())
+                            .avatar(mastery.getLearner().getAvatar())
                             .points(weeklyPoints)
-                            .tier(mastery.getMasteryLevel())
+                            .tier(resolveLeagueTier(weeklyPoints, mastery.getMasteryLevel()))
                             .build());
                 }
             }
@@ -47,8 +48,9 @@ public class LeaderboardService {
                     leaderboard.add(LeaderboardEntryResponse.builder()
                             .learnerId(mastery.getLearner().getLearnerId())
                             .displayName(mastery.getLearner().getDisplayName())
+                            .avatar(mastery.getLearner().getAvatar())
                             .points(mastery.getTotalPoints())
-                            .tier(mastery.getMasteryLevel())
+                            .tier(resolveLeagueTier(mastery.getTotalPoints(), mastery.getMasteryLevel()))
                             .build());
                 }
             }
@@ -66,5 +68,17 @@ public class LeaderboardService {
         }
         
         return leaderboard;
+    }
+
+    private String resolveLeagueTier(int points, String masteryLevel) {
+        if (points >= 3500 || "MASTERED".equalsIgnoreCase(masteryLevel)) {
+            return "DIAMOND";
+        } else if (points >= 2500 || "PROFICIENT".equalsIgnoreCase(masteryLevel)) {
+            return "GOLD";
+        } else if (points >= 1000 || "FAMILIAR".equalsIgnoreCase(masteryLevel)) {
+            return "SILVER";
+        } else {
+            return "BRONZE";
+        }
     }
 }

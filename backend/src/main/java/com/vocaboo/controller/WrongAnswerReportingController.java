@@ -40,9 +40,30 @@ public class WrongAnswerReportingController {
      * Endpoint: GET /api/admin/reports/wrong-answers
      */
     @GetMapping("/api/admin/reports/wrong-answers")
-    public ResponseEntity<WrongAnswerAnalysisResponse> getClassWrongAnswerAnalysis() {
+    public ResponseEntity<WrongAnswerAnalysisResponse> getClassWrongAnswerAnalysis(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) UUID sectionId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) com.vocaboo.entity.GradeLevel gradeLevel,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String cohortType,
+            org.springframework.security.core.Authentication auth) {
+
+        UUID teacherId = isTeacher(auth) ? parseUserId(auth) : null;
         WrongAnswerAnalysisResponse response =
-                wrongAnswerReportingService.getClassWideWrongAnswerAnalysis();
+                wrongAnswerReportingService.getClassWideWrongAnswerAnalysis(sectionId, gradeLevel, cohortType, teacherId);
         return ResponseEntity.ok(response);
+    }
+
+    private UUID parseUserId(org.springframework.security.core.Authentication auth) {
+        if (auth == null || auth.getName() == null) return null;
+        try {
+            return UUID.fromString(auth.getName());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean isTeacher(org.springframework.security.core.Authentication auth) {
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
     }
 }

@@ -1,8 +1,9 @@
 import { apiFetch } from './AuthService';
 
 export const CategoryService = {
-  async getAll() {
-    const res = await apiFetch('/api/admin/categories');
+  async getAll(classId) {
+    const url = classId ? `/api/admin/categories?classId=${encodeURIComponent(classId)}` : '/api/admin/categories';
+    const res = await apiFetch(url);
     if (!res.ok) throw new Error('Failed to fetch categories');
     return res.json();
   },
@@ -12,6 +13,7 @@ export const CategoryService = {
       category_name: payload.category_name,
       description: payload.description,
       sort_order: payload.sort_order,
+      class_id: payload.class_id || null,
     };
     const res = await apiFetch('/api/admin/categories', {
       method: 'POST',
@@ -29,6 +31,7 @@ export const CategoryService = {
       category_name: payload.category_name,
       description: payload.description,
       sort_order: payload.sort_order,
+      class_id: payload.class_id || null,
     };
     const res = await apiFetch(`/api/admin/categories/${id}`, {
       method: 'PUT',

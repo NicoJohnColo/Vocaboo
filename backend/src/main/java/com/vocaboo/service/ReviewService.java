@@ -30,6 +30,7 @@ public class ReviewService {
     private final IntroductionSessionRepository introductionSessionRepository;
     private final PracticeSessionRepository practiceSessionRepository;
     private final CumulativeReviewSessionRepository cumulativeReviewSessionRepository;
+    private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
 
     @Transactional
     public ReviewSession startReview(UUID learnerId, UUID lessonId) {
@@ -37,6 +38,17 @@ public class ReviewService {
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
+
+        if (Boolean.TRUE.equals(lesson.getIsDeleted()) || !"PUBLISHED".equalsIgnoreCase(lesson.getContentStatus())) {
+            throw new IllegalArgumentException("Lesson is not available.");
+        }
+        if (lesson.getClassroom() != null) {
+            boolean isEnrolled = classEnrollmentRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(
+                    lesson.getClassroom().getClassId(), learnerId, "ACTIVE");
+            if (!isEnrolled) {
+                throw new org.springframework.security.access.AccessDeniedException("You must be enrolled in this class to access its lessons.");
+            }
+        }
 
         ReviewSession session = ReviewSession.builder()
                 .learner(learner)
@@ -104,7 +116,8 @@ public class ReviewService {
                 perf.setIncorrectCount(perf.getIncorrectCount() + 1);
             }
             double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
-            perf.setAccuracy(BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP));
+            BigDecimal candidateAcc = BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP);
+            perf.setAccuracy(candidateAcc);
             perf.setLastPracticedAt(OffsetDateTime.now());
             performanceRepository.save(perf);
         }
@@ -124,11 +137,14 @@ public class ReviewService {
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
 
-        int safeCorrectCount = correctCount != null ? correctCount : 0;
-        int safeTotalCount = totalCount != null ? totalCount : 0;
+        int safeTotalCount = Math.max(0, totalCount != null ? totalCount : 0);
+        int safeCorrectCount = Math.max(0, correctCount != null ? correctCount : 0);
+        if (safeTotalCount > 0 && safeCorrectCount > safeTotalCount) {
+            safeCorrectCount = safeTotalCount;
+        }
         double resolvedScore = score != null
-                ? score
-                : (safeTotalCount > 0 ? ((double) safeCorrectCount / safeTotalCount) * 100.0 : 0.0);
+                ? Math.min(100.0, Math.max(0.0, score))
+                : (safeTotalCount > 0 ? Math.min(100.0, ((double) safeCorrectCount / safeTotalCount) * 100.0) : 0.0);
 
         LessonModuleScore moduleScore = lessonModuleScoreRepository
                 .findByLearnerLearnerIdAndLessonLessonIdAndModuleNumber(learnerId, lessonId, moduleNumber)
@@ -139,15 +155,33 @@ public class ReviewService {
                         .build());
 
         BigDecimal bdScore = BigDecimal.valueOf(resolvedScore).setScale(2, RoundingMode.HALF_UP);
-        if (moduleScore.getScore() == null || bdScore.compareTo(moduleScore.getScore()) > 0) {
-            moduleScore.setCorrectCount(safeCorrectCount);
-            moduleScore.setTotalCount(safeTotalCount);
-            moduleScore.setScore(bdScore);
-            moduleScore.setStarsEarned(PracticeSessionService.calculateStars(bdScore));
-            if (timeSeconds != null) {
-                moduleScore.setTimeSeconds(timeSeconds);
-            }
-            lessonModuleScoreRepository.save(moduleScore);
+        if (bdScore.compareTo(BigDecimal.valueOf(100.00)) > 0) {
+            bdScore = BigDecimal.valueOf(100.00);
+        } else if (bdScore.compareTo(BigDecimal.ZERO) < 0) {
+            bdScore = BigDecimal.ZERO;
+        }
+        moduleScore.setCorrectCount(safeCorrectCount);
+        moduleScore.setTotalCount(safeTotalCount);
+        moduleScore.setScore(bdScore);
+        moduleScore.setStarsEarned(PracticeSessionService.calculateStars(bdScore));
+        if (timeSeconds != null) {
+            moduleScore.setTimeSeconds(timeSeconds);
+        }
+        lessonModuleScoreRepository.save(moduleScore);
+
+        LearnerLessonStatus lls = lessonStatusRepository
+                .findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId)
+                .orElseGet(() -> LearnerLessonStatus.builder()
+                        .learner(learner)
+                        .lesson(lesson)
+                        .attempts(0)
+                        .build());
+        // Module 1 is vocabulary introduction (presentation, not assessed quiz).
+        // Only assessed practice modules (Module 2+) update the lesson's mastery score.
+        if (moduleNumber != null && moduleNumber > 1) {
+            lls.setMasteryScore(bdScore);
+            lls.setUpdatedAt(OffsetDateTime.now());
+            lessonStatusRepository.save(lls);
         }
     }
 
@@ -219,10 +253,8 @@ public class ReviewService {
                         .build());
 
         status.setAttempts(status.getAttempts() + 1);
-        BigDecimal newScore = BigDecimal.valueOf(score);
-        if (status.getMasteryScore() == null || newScore.compareTo(status.getMasteryScore()) > 0) {
-            status.setMasteryScore(newScore);
-        }
+        BigDecimal newScore = BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP);
+        status.setMasteryScore(newScore);
         status.setUpdatedAt(OffsetDateTime.now());
 
         return lessonStatusRepository.save(status);
@@ -230,9 +262,17 @@ public class ReviewService {
 
         @Transactional
         public CategoryReviewResponse completeCategoryReview(UUID learnerId, UUID categoryId, UUID sessionId, Double score) {
-                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(categoryId);
+                final java.util.Set<UUID> enrolledClassIds = (learnerId != null)
+                        ? classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learnerId, "ACTIVE").stream()
+                                .map(e -> e.getClassroom().getClassId())
+                                .collect(java.util.stream.Collectors.toSet())
+                        : java.util.Collections.emptySet();
+
+                List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(categoryId, "PUBLISHED").stream()
+                        .filter(l -> l.getClassroom() == null || enrolledClassIds.contains(l.getClassroom().getClassId()))
+                        .collect(java.util.stream.Collectors.toList());
                 if (lessons.isEmpty()) {
-                        throw new IllegalArgumentException("Category not found");
+                        throw new IllegalArgumentException("Category has no accessible lessons");
                 }
 
                 Learner learner = learnerRepository.findById(learnerId)
@@ -250,10 +290,8 @@ public class ReviewService {
                                                         .build());
 
                         status.setAttempts(status.getAttempts() + 1);
-                        BigDecimal newScore = BigDecimal.valueOf(score != null ? score : 0.0);
-                        if (status.getMasteryScore() == null || newScore.compareTo(status.getMasteryScore()) > 0) {
-                            status.setMasteryScore(newScore);
-                        }
+                        BigDecimal newScore = BigDecimal.valueOf(score != null ? score : 0.0).setScale(2, RoundingMode.HALF_UP);
+                        status.setMasteryScore(newScore);
                         status.setUpdatedAt(OffsetDateTime.now());
 
                         if (passed) {

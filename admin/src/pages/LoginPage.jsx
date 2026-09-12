@@ -575,7 +575,6 @@ export default function LoginPage() {
 
       <main className="login-card">
         <div className="login-card__header">
-          <div className="login-card__logo">🎓</div>
           <h1 className="login-card__title">Vocaboo Admin</h1>
           <p className="login-card__subtitle">
             {isRegistering ? 'Create your administrator account' : 'Sign in to the management panel'}

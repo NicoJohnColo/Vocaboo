@@ -143,6 +143,21 @@ public class DatabaseSeeder implements CommandLineRunner {
                 // Policy already exists
             }
         }
+
+        try {
+            jdbcTemplate.execute("ALTER TABLE vocabulary_categories ADD COLUMN IF NOT EXISTS teacher_id UUID DEFAULT NULL REFERENCES teachers(teacher_id) ON DELETE CASCADE");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_vocabulary_categories_teacher_id ON vocabulary_categories(teacher_id)");
+            jdbcTemplate.execute("ALTER TABLE vocabulary_categories DROP CONSTRAINT IF EXISTS vocabulary_categories_category_name_key");
+        } catch (Exception e) {
+            // Already updated or constraint absent
+        }
+
+        try {
+            jdbcTemplate.execute("ALTER TABLE learners ADD COLUMN IF NOT EXISTS user_id VARCHAR(11)");
+            jdbcTemplate.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learners_user_id ON learners(user_id)");
+        } catch (Exception e) {
+            // Already updated or index exists
+        }
     }
 
     @Override

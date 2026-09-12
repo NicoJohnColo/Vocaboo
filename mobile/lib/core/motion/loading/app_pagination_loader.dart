@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 /// A smooth, animated pagination loading indicator for infinite scroll lists.
 ///
@@ -47,8 +48,7 @@ class AppPaginationLoader extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     'Loading more...',
-                    style: TextStyle(
-                      fontFamily: 'Outfit',
+                    style: AppTypography.nunito(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: indicatorColor,
@@ -58,11 +58,10 @@ class AppPaginationLoader extends StatelessWidget {
               )
             : Text(
                 endOfListMessage,
-                style: const TextStyle(
-                  fontFamily: 'Outfit',
+                style: AppTypography.nunito(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF94A3B8),
+                  color: const Color(0xFF94A3B8),
                 ),
               ),
       ),

@@ -85,30 +85,57 @@ public class PronunciationService {
         PHONETIC_MAP.put("market", "/ˈmɑːr.kɪt/");
         PHONETIC_MAP.put("church", "/tʃɜːrtʃ/");
         PHONETIC_MAP.put("park", "/pɑːrk/");
+        PHONETIC_MAP.put("spoon", "/spuːn/");
+        PHONETIC_MAP.put("fork", "/fɔːrk/");
+        PHONETIC_MAP.put("knife", "/naɪf/");
+        PHONETIC_MAP.put("plate", "/pleɪt/");
+        PHONETIC_MAP.put("cup", "/kʌp/");
+        PHONETIC_MAP.put("stove", "/stoʊv/");
+        PHONETIC_MAP.put("pot", "/pɒt/");
+        PHONETIC_MAP.put("pan", "/pæn/");
+        PHONETIC_MAP.put("refrigerator", "/rɪˈfrɪdʒ.ə.reɪ.tər/");
+        PHONETIC_MAP.put("head", "/hɛd/");
+        PHONETIC_MAP.put("mouth", "/maʊθ/");
+        PHONETIC_MAP.put("teeth", "/tiːθ/");
+        PHONETIC_MAP.put("tooth", "/tuːθ/");
+        PHONETIC_MAP.put("throat", "/θroʊt/");
+        PHONETIC_MAP.put("vegetable", "/ˈvɛdʒ.tə.bəl/");
+        PHONETIC_MAP.put("vegetables", "/ˈvɛdʒ.tə.bəlz/");
     }
 
     private static final Map<String, Map<LanguageMedium, String>> TIPS_MAP = new HashMap<>();
     static {
         // v_sound tips
         Map<LanguageMedium, String> vSound = new HashMap<>();
-        vSound.put(LanguageMedium.CEBUANO_TO_ENGLISH, "Tip: The letter V makes a sound by touching your top teeth to your lower lip. Example: 'very' sounds like 'bery' but with teeth touching lip.");
-        vSound.put(LanguageMedium.FULL_ENGLISH, "Tip: For the V sound, touch your upper teeth to your lower lip and push air out.");
-        vSound.put(LanguageMedium.CEBUANO_ENGLISH_MIXED, "Tip (V): I-touch ang imong ngipon sa ubos nga ngabil. Example: 'very' dili 'bery'.");
+        vSound.put(LanguageMedium.CEBUANO_TO_ENGLISH, "Tip: Ang /v/ sound — i-touch ang ibabaw nga ngipon sa ubos nga ngabil ug pag-hum aron mag-vibrate. Ehemplo: 'stove' (dili 'stob'), 'vegetable'.");
+        vSound.put(LanguageMedium.FULL_ENGLISH, "Tip: For the /v/ sound, touch your upper teeth to your lower lip and push air out while vibrating your voice.");
+        vSound.put(LanguageMedium.CEBUANO_ENGLISH_MIXED, "Tip (V): Ang /v/ sound kay wala sa Cebuano (often masaypan og /b/). I-touch lang imong upper teeth sa lower lip unya i-vibrate imong voice. Like 'stove' dili 'stob'.");
         TIPS_MAP.put("v_sound", vSound);
 
         // f_sound tips
         Map<LanguageMedium, String> fSound = new HashMap<>();
-        fSound.put(LanguageMedium.CEBUANO_TO_ENGLISH, "Tip: Ang F sound — i-touch ang imong ngipon sa ubos nga ngabil ug hanginon. Dili sama sa P.");
-        fSound.put(LanguageMedium.FULL_ENGLISH, "Tip: For the F sound, bite your lower lip gently and push air out. It is different from P.");
-        fSound.put(LanguageMedium.CEBUANO_ENGLISH_MIXED, "Tip (F): Touch upper teeth to lower lip — mas lain kay sa P.");
+        fSound.put(LanguageMedium.CEBUANO_TO_ENGLISH, "Tip: Ang /f/ sound — i-touch ang imong ngipon sa ubos nga ngabil ug hanginon nga walay tingog. Dili sama sa P. Ehemplo: 'fork' (dili 'pork'), 'knife'.");
+        fSound.put(LanguageMedium.FULL_ENGLISH, "Tip: For the /f/ sound, bite your lower lip gently and push air out without vocal vibration. It is different from P.");
+        fSound.put(LanguageMedium.CEBUANO_ENGLISH_MIXED, "Tip (F): Ang /f/ sound kay dili /p/. I-rest lang imong upper teeth sa lower lip unya blow og air without voice. Example: 'fork' dili 'pork'.");
         TIPS_MAP.put("f_sound", fSound);
 
         // th_sound tips
         Map<LanguageMedium, String> thSound = new HashMap<>();
-        thSound.put(LanguageMedium.CEBUANO_TO_ENGLISH, "Tip: Ang TH sound — ibutang ang imong dila tali sa imong mga ngipon ug hanginon. Example: 'the' dili 'da'.");
-        thSound.put(LanguageMedium.FULL_ENGLISH, "Tip: For the TH sound, place your tongue between your teeth and push air out.");
-        thSound.put(LanguageMedium.CEBUANO_ENGLISH_MIXED, "Tip (TH): Ibutang ang dila tali sa mga ngipon. 'The' dili 'da'.");
+        thSound.put(LanguageMedium.CEBUANO_TO_ENGLISH, "Tip: Ang /θ/ (TH) sound — ibutang ang imong dila tali sa imong mga ngipon ug hanginon. Dili sama sa /t/. Ehemplo: 'teeth', 'mouth', 'think'.");
+        thSound.put(LanguageMedium.FULL_ENGLISH, "Tip: For the /θ/ (TH) sound, place the tip of your tongue between your teeth and push air out smoothly.");
+        thSound.put(LanguageMedium.CEBUANO_ENGLISH_MIXED, "Tip (TH): Ang /θ/ sound kay dili /t/. Ibutang gamay ang tip sa imong tongue between sa upper ug lower teeth unya blow og air smoothly. Example: 'teeth' dili 'tit'.");
         TIPS_MAP.put("th_sound", thSound);
+    }
+
+    private String inferTipKey(String targetWord) {
+        if (targetWord == null) return null;
+        String lower = targetWord.toLowerCase().trim();
+        if (lower.contains("th")) return "th_sound";
+        if (lower.contains("v")) return "v_sound";
+        if (lower.contains("f") || lower.contains("ph")) return "f_sound";
+        if (lower.contains("sh")) return "sh_sound";
+        if (lower.contains("ch")) return "ch_sound";
+        return null;
     }
 
     @Transactional
@@ -124,7 +151,7 @@ public class PronunciationService {
         if (request.getAudioBase64() == null || request.getAudioBase64().trim().isEmpty()) {
             return PronunciationAttemptResponse.builder()
                     .isCorrect(false)
-                    .phoneticTarget(PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), ""))
+                    .phoneticTarget(PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), "/" + request.getTargetWord().toLowerCase() + "/"))
                     .attemptNumber(request.getAttemptNumber())
                     .isInconclusive(true)
                     .build();
@@ -140,7 +167,7 @@ public class PronunciationService {
         } catch (Exception e) {
             return PronunciationAttemptResponse.builder()
                     .isCorrect(false)
-                    .phoneticTarget(PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), ""))
+                    .phoneticTarget(PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), "/" + request.getTargetWord().toLowerCase() + "/"))
                     .attemptNumber(request.getAttemptNumber())
                     .isInconclusive(true)
                     .build();
@@ -178,17 +205,22 @@ public class PronunciationService {
             logAttempt(learner.getLearnerId(), request.getTargetWord(), transcript, confidence, similarityScore, isCorrect, responseTimeMs, apiError);
         }
 
-        String phoneticTarget = PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), "");
+        String phoneticTarget = PHONETIC_MAP.getOrDefault(request.getTargetWord().toLowerCase(), "/" + request.getTargetWord().toLowerCase() + "/");
         String phonologicalTip = null;
 
-        if (!isCorrect && word.getPhonologicalTipKey() != null) {
+        String tipKey = word.getPhonologicalTipKey();
+        if (tipKey == null || tipKey.trim().isEmpty()) {
+            tipKey = inferTipKey(request.getTargetWord());
+        }
+
+        if (!isCorrect && tipKey != null) {
             // First check the dynamic tip service
             if (phoneticFeedbackService != null) {
-                phonologicalTip = phoneticFeedbackService.getTip(word.getPhonologicalTipKey(), learner.getLanguagePreference());
+                phonologicalTip = phoneticFeedbackService.getTip(tipKey, learner.getLanguagePreference());
             }
             // Fall back to static map if tip is not found in DB
             if (phonologicalTip == null) {
-                Map<LanguageMedium, String> tipsByLang = TIPS_MAP.get(word.getPhonologicalTipKey());
+                Map<LanguageMedium, String> tipsByLang = TIPS_MAP.get(tipKey);
                 if (tipsByLang != null) {
                     phonologicalTip = tipsByLang.getOrDefault(learner.getLanguagePreference(), tipsByLang.get(LanguageMedium.FULL_ENGLISH));
                 }
@@ -214,7 +246,9 @@ public class PronunciationService {
         attemptRepository.save(attempt);
 
         boolean manualTeacherFallback = !isCorrect && (request.getAttemptNumber() >= 3);
-        int pointsEarned = isCorrect ? 15 : 0;
+        int pointsEarned = (request.getModuleNumber() != null && request.getModuleNumber() == 1)
+                ? 0
+                : (isCorrect ? 15 : 0);
 
         return PronunciationAttemptResponse.builder()
                 .attemptId(attempt.getAttemptId())

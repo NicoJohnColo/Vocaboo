@@ -29,8 +29,14 @@ public class LessonController {
     private final DifficultyAdjustmentService difficultyService;
 
     @GetMapping("/categories")
-    public ResponseEntity<List<CategoryResponse>> getCategories() {
-        return ResponseEntity.ok(lessonService.getCategories());
+    public ResponseEntity<List<CategoryResponse>> getCategories(Principal principal) {
+        UUID learnerId = null;
+        if (principal != null) {
+            try {
+                learnerId = UUID.fromString(principal.getName());
+            } catch (Exception ignored) {}
+        }
+        return ResponseEntity.ok(lessonService.getCategories(learnerId));
     }
 
     @GetMapping("/categories/{id}/lessons")
@@ -59,8 +65,11 @@ public class LessonController {
 
 
     @GetMapping("/categories/{id}/activity")
-    public ResponseEntity<List<LessonWordActivityResponse>> getCategoryActivity(@PathVariable("id") UUID categoryId) {
-        return ResponseEntity.ok(lessonService.getCategoryActivityForCategory(categoryId));
+    public ResponseEntity<List<LessonWordActivityResponse>> getCategoryActivity(
+            @PathVariable("id") UUID categoryId,
+            Principal principal) {
+        UUID learnerId = principal != null ? UUID.fromString(principal.getName()) : null;
+        return ResponseEntity.ok(lessonService.getCategoryActivityForCategory(categoryId, learnerId));
     }
 
     @GetMapping("/lessons/{id}/activity")
@@ -95,9 +104,10 @@ public class LessonController {
     @GetMapping("/lessons/{id}/word-mastery-summary")
     public ResponseEntity<List<WordMasterySummaryResponse>> getWordMasterySummary(
             @PathVariable("id") UUID lessonId,
+            @RequestParam(value = "sessionId", required = false) UUID sessionId,
             Principal principal) {
         UUID learnerId = UUID.fromString(principal.getName());
-        return ResponseEntity.ok(difficultyService.getWordMasterySummary(learnerId, lessonId));
+        return ResponseEntity.ok(difficultyService.getWordMasterySummary(learnerId, lessonId, sessionId));
     }
 
     @PostMapping("/lessons/{id}/reset")

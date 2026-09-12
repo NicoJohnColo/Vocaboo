@@ -31,7 +31,9 @@ public class ProgressController {
         if (learnerId == null) {
             throw new IllegalArgumentException("Learner ID is required");
         }
-        return ResponseEntity.ok(practiceSessionService.start(learnerId, request.getLessonId(), request.getModuleNumber()));
+        return ResponseEntity.ok(practiceSessionService.start(
+                learnerId, request.getLessonId(), request.getModuleNumber(),
+                request.getClassroomContextId()));
     }
 
     @PostMapping("/practice-sessions/{id}/results")
@@ -74,5 +76,11 @@ public class ProgressController {
             @PathVariable("id") UUID learnerId,
             @RequestParam(value = "limit", defaultValue = "5") int limit) {
         return ResponseEntity.ok(practiceSessionService.getRecentWords(learnerId, limit));
+    }
+
+    @GetMapping({"/learners/{id}/activity-dates", "/learners/{id}/streak-stats"})
+    public ResponseEntity<com.vocaboo.dto.response.LearnerActivityStatsResponse> getActivityStats(
+            @PathVariable("id") UUID learnerId) {
+        return ResponseEntity.ok(practiceSessionService.getActivityStats(learnerId));
     }
 }

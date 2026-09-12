@@ -47,9 +47,11 @@ export const LearnerService = {
   /**
    * Get detailed diagnostic report and breakdown for a student.
    * @param {string} learnerId
+   * @param {string} [classId] - optional class context filter
    */
-  async getLearnerDetail(learnerId) {
-    const res = await apiFetch(`/api/admin/learners/${learnerId}`);
+  async getLearnerDetail(learnerId, classId) {
+    const url = classId ? `/api/admin/learners/${learnerId}?classId=${encodeURIComponent(classId)}` : `/api/admin/learners/${learnerId}`;
+    const res = await apiFetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || 'Failed to fetch learner detail');
@@ -122,6 +124,21 @@ export const LearnerService = {
   },
 
   /**
+   * Permanently delete student account and all related learning records.
+   * @param {string} learnerId
+   */
+  async deleteLearner(learnerId) {
+    const res = await apiFetch(`/api/admin/learners/${learnerId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to delete student account');
+    }
+    return res.json();
+  },
+
+  /**
    * Reset learner progress (full or lesson-specific).
    * @param {string} learnerId
    * @param {string} [lessonId]
@@ -159,6 +176,40 @@ export const LearnerService = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || 'Bulk action failed');
+    }
+    return res.json();
+  },
+
+  /**
+   * Fetch learners flagged for teacher intervention.
+   * @param {Object} [params]
+   * @param {string} [params.sectionId]
+   * @param {string} [params.gradeLevel]
+   */
+  async getFlaggedLearners({ sectionId, gradeLevel } = {}) {
+    const query = new URLSearchParams();
+    if (sectionId) query.set('sectionId', sectionId);
+    if (gradeLevel) query.set('gradeLevel', gradeLevel);
+
+    const res = await apiFetch(`/api/admin/learners/flagged?${query.toString()}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to fetch flagged learners');
+    }
+    return res.json();
+  },
+
+  /**
+   * Resolve / clear a teacher review flag on a learner's difficulty progress.
+   * @param {string} progressId
+   */
+  async resolveFlagged(progressId) {
+    const res = await apiFetch(`/api/admin/learners/flagged/${progressId}/resolve`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to resolve flag');
     }
     return res.json();
   },

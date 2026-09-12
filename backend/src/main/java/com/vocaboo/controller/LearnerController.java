@@ -50,11 +50,17 @@ public class LearnerController {
         private String languagePreference;
         private Boolean masteryApplyImmediately;
         private String posFocus;
+        private String avatar;
+        private String gradeLevel;
+        private Integer age;
 
         public String getDisplayName() { return displayName; }
         public String getLanguagePreference() { return languagePreference; }
         public Boolean getMasteryApplyImmediately() { return masteryApplyImmediately; }
         public String getPosFocus() { return posFocus; }
+        public String getAvatar() { return avatar; }
+        public String getGradeLevel() { return gradeLevel; }
+        public Integer getAge() { return age; }
     }
 
     @PatchMapping("/preferences")
@@ -65,7 +71,10 @@ public class LearnerController {
                 request.getDisplayName(), 
                 request.getLanguagePreference(), 
                 request.getMasteryApplyImmediately(),
-                request.getPosFocus()
+                request.getPosFocus(),
+                request.getAvatar(),
+                request.getGradeLevel(),
+                request.getAge()
         );
         return ResponseEntity.ok(response);
     }

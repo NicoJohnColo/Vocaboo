@@ -23,6 +23,9 @@ public class CreateCategoryRequest {
     @JsonProperty("sort_order")
     private Integer sortOrder; // Optional; auto-calculated if null
 
+    @JsonProperty("class_id")
+    private java.util.UUID classId; // Required for teachers; null for global admin categories
+
     public String getCategoryName() {
         return categoryName;
     }
@@ -33,5 +36,9 @@ public class CreateCategoryRequest {
 
     public Integer getSortOrder() {
         return sortOrder;
+    }
+
+    public java.util.UUID getClassId() {
+        return classId;
     }
 }

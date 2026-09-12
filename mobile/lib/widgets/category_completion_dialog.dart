@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/typography_tokens.dart';
 import '../providers/auth_provider.dart';
+import 'app_3d_button.dart';
 
 class CategoryCompletionDialog extends StatelessWidget {
   final String categoryName;
@@ -38,7 +40,6 @@ class CategoryCompletionDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final currentPos = auth.learner?.posFocus ?? 'NOUN';
 
@@ -73,27 +74,27 @@ class CategoryCompletionDialog extends StatelessWidget {
             Text(
               'Great job with ${categoryName.toUpperCase()}!',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.baloo2(
                 fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0F172A),
               ),
             ),
             const SizedBox(height: 10),
             Text(
               'You completed the $currentPos path! What would you like to do next?',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: AppTypography.nunito(
                 fontSize: 14,
-                color: Color(0xFF64748B),
+                color: const Color(0xFF64748B),
                 height: 1.4,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 24),
 
             // Choice 1: Continue to another category (Verbs / Adjectives)
-            ElevatedButton.icon(
+            App3DButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 if (onSelectAnotherCategory != null) {
@@ -102,21 +103,18 @@ class CategoryCompletionDialog extends StatelessWidget {
                   context.go('/category/$categoryId/lessons');
                 }
               },
-              icon: const Icon(Icons.swap_horiz_rounded, size: 20),
-              label: const Text('Continue to another category'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-                textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-              ),
+              icon: Icons.swap_horiz_rounded,
+              text: 'Continue to another category',
+              variant: App3DButtonVariant.primary,
+              height: 52.0,
+              depth: 4.5,
+              isFullWidth: true,
+              borderRadius: 16,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
 
             // Choice 2: Proceed to next lesson
-            OutlinedButton.icon(
+            App3DButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 if (onProceedToNextLesson != null) {
@@ -125,15 +123,13 @@ class CategoryCompletionDialog extends StatelessWidget {
                   context.go('/category/$categoryId/lessons');
                 }
               },
-              icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-              label: const Text('Proceed to next lesson'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF0F172A),
-                side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-              ),
+              icon: Icons.arrow_forward_rounded,
+              text: 'Proceed to next lesson',
+              variant: App3DButtonVariant.secondary,
+              height: 52.0,
+              depth: 4.5,
+              isFullWidth: true,
+              borderRadius: 16,
             ),
             const SizedBox(height: 10),
 

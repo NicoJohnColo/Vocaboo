@@ -1,10 +1,12 @@
 import { apiFetch } from './AuthService';
 
 export const LessonService = {
-  async getAll(categoryId) {
-    const url = categoryId
-      ? `/api/admin/lessons?categoryId=${categoryId}`
-      : '/api/admin/lessons';
+  async getAll(categoryId, classId) {
+    const params = new URLSearchParams();
+    if (categoryId) params.set('categoryId', categoryId);
+    if (classId) params.set('classId', classId);
+    const query = params.toString();
+    const url = query ? `/api/admin/lessons?${query}` : '/api/admin/lessons';
     const res = await apiFetch(url);
     if (!res.ok) throw new Error('Failed to fetch lessons');
     return res.json();
@@ -21,8 +23,19 @@ export const LessonService = {
       lessonTitle: payload.lesson_title,
       lessonDescription: payload.lesson_description,
       categoryId: payload.category_id,
+      classId: payload.class_id || null,
       gradeLevel: payload.grade_level,
       lessonType: payload.lesson_type,
+      module2Activities: payload.module2_activities,
+      module3Activities: payload.module3_activities,
+      module4Activities: payload.module4_activities,
+      upgradeStreakRequired: payload.upgrade_streak_required,
+      demotionThreshold: payload.demotion_threshold,
+      reintroductionThreshold: payload.reintroduction_threshold,
+      module3UpgradeStreakRequired: payload.module3_upgrade_streak_required ?? payload.module3UpgradeStreakRequired,
+      module3DemotionThreshold: payload.module3_demotion_threshold ?? payload.module3DemotionThreshold,
+      streakCelebrationThreshold: payload.streak_celebration_threshold ?? payload.streakCelebrationThreshold,
+      contextParagraph: payload.context_paragraph ?? payload.contextParagraph,
     };
     const res = await apiFetch('/api/admin/lessons', {
       method: 'POST',
@@ -39,7 +52,18 @@ export const LessonService = {
     const backendPayload = {
       lessonTitle: payload.lesson_title,
       lessonDescription: payload.lesson_description,
+      classId: payload.class_id || null,
       gradeLevel: payload.grade_level,
+      module2Activities: payload.module2_activities,
+      module3Activities: payload.module3_activities,
+      module4Activities: payload.module4_activities,
+      upgradeStreakRequired: payload.upgrade_streak_required,
+      demotionThreshold: payload.demotion_threshold,
+      reintroductionThreshold: payload.reintroduction_threshold,
+      module3UpgradeStreakRequired: payload.module3_upgrade_streak_required ?? payload.module3UpgradeStreakRequired,
+      module3DemotionThreshold: payload.module3_demotion_threshold ?? payload.module3DemotionThreshold,
+      streakCelebrationThreshold: payload.streak_celebration_threshold ?? payload.streakCelebrationThreshold,
+      contextParagraph: payload.context_paragraph ?? payload.contextParagraph,
     };
     const res = await apiFetch(`/api/admin/lessons/${id}`, {
       method: 'PUT',

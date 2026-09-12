@@ -58,20 +58,25 @@ public class RewardData {
     public static RewardDataBuilder builder() { return new RewardDataBuilder(); }
 
     public static class RewardDataBuilder {
+        private UUID rewardId;
         private Learner learner;
         private Lesson lesson;
         private String badgeType;
+        private OffsetDateTime earnedAt;
 
+        public RewardDataBuilder rewardId(UUID rewardId) { this.rewardId = rewardId; return this; }
         public RewardDataBuilder learner(Learner learner) { this.learner = learner; return this; }
         public RewardDataBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
         public RewardDataBuilder badgeType(String badgeType) { this.badgeType = badgeType; return this; }
+        public RewardDataBuilder earnedAt(OffsetDateTime earnedAt) { this.earnedAt = earnedAt; return this; }
 
         public RewardData build() {
             RewardData r = new RewardData();
+            r.rewardId = this.rewardId;
             r.learner = this.learner;
             r.lesson = this.lesson;
             r.badgeType = this.badgeType;
-            r.earnedAt = OffsetDateTime.now();
+            r.earnedAt = this.earnedAt != null ? this.earnedAt : OffsetDateTime.now();
             return r;
         }
     }

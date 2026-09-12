@@ -42,6 +42,9 @@ public class AdminLeaderboardEntryResponse {
     @JsonProperty("overall_accuracy")
     private double overallAccuracy;
 
+    @JsonProperty("avatar")
+    private String avatar;
+
     public int getPoints() { return points; }
     public double getOverallAccuracy() { return overallAccuracy; }
     public void setRank(int rank) { this.rank = rank; }
@@ -59,6 +62,7 @@ public class AdminLeaderboardEntryResponse {
         private int points;
         private int badgesCount;
         private double overallAccuracy;
+        private String avatar;
 
         public AdminLeaderboardEntryResponseBuilder rank(int rank) { this.rank = rank; return this; }
         public AdminLeaderboardEntryResponseBuilder learnerId(UUID learnerId) { this.learnerId = learnerId; return this; }
@@ -70,6 +74,7 @@ public class AdminLeaderboardEntryResponse {
         public AdminLeaderboardEntryResponseBuilder points(int points) { this.points = points; return this; }
         public AdminLeaderboardEntryResponseBuilder badgesCount(int badgesCount) { this.badgesCount = badgesCount; return this; }
         public AdminLeaderboardEntryResponseBuilder overallAccuracy(double overallAccuracy) { this.overallAccuracy = overallAccuracy; return this; }
+        public AdminLeaderboardEntryResponseBuilder avatar(String avatar) { this.avatar = avatar; return this; }
 
         public AdminLeaderboardEntryResponse build() {
             AdminLeaderboardEntryResponse r = new AdminLeaderboardEntryResponse();
@@ -83,6 +88,7 @@ public class AdminLeaderboardEntryResponse {
             r.points = this.points;
             r.badgesCount = this.badgesCount;
             r.overallAccuracy = this.overallAccuracy;
+            r.avatar = this.avatar != null ? this.avatar : "prof1.jpg";
             return r;
         }
     }

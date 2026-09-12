@@ -71,7 +71,7 @@ export default function FileUploadDropZone({ accept, maxSizeMB, onFileSelect, la
           borderRadius: 'var(--radius-sm)',
           padding: '24px',
           textAlign: 'center',
-          backgroundColor: isDragOver ? 'rgba(124, 77, 255, 0.05)' : 'var(--glass-bg)',
+          backgroundColor: isDragOver ? 'rgba(37, 99, 235, 0.06)' : 'var(--glass-bg)',
           cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.2s ease',
           opacity: disabled ? 0.6 : 1

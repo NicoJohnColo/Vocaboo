@@ -30,7 +30,8 @@ public class RetrievalActivityService {
             "WORD_SCRAMBLE",
             "IMAGE_LABELING",
             "TRUE_OR_FALSE",
-            "TRANSLATION_RECALL"
+            "TRANSLATION_RECALL",
+            "HINT_TO_WORD"
         );
 
     private static class FormatBag {
@@ -87,6 +88,9 @@ public class RetrievalActivityService {
                             .learner(learner)
                             .lesson(lesson)
                             .moduleNumber(2)
+                            .classroomContextId(lesson.getClassroom() != null
+                                ? lesson.getClassroom().getClassId()
+                                : null)
                             .build());
                 } else {
                     throw new IllegalArgumentException("Session not found");
@@ -94,6 +98,17 @@ public class RetrievalActivityService {
             } else {
                 throw new IllegalArgumentException("Session not found");
             }
+        }
+
+        // Retrieval can receive an introduction-session ID or an older
+        // practice session created before classroom context was mandatory.
+        // Repair the context from the lesson before recording the answer so
+        // class activity is not silently written as global activity.
+        if (session.getClassroomContextId() == null
+                && session.getLesson() != null
+                && session.getLesson().getClassroom() != null) {
+            session.setClassroomContextId(session.getLesson().getClassroom().getClassId());
+            session = sessionRepository.save(session);
         }
         return session;
     }
@@ -107,20 +122,21 @@ public class RetrievalActivityService {
         switch (level) {
             case LEARNING:
                 // Easiest: recognition-based activities + initial recall
+                // HINT_TO_WORD eligible at LEARNING (Cebuano sentence clue with audio)
                 return new ArrayList<>(Arrays.asList(
-                    "MULTIPLE_CHOICE", "FILL_IN_BLANK", "TRUE_OR_FALSE", "IMAGE_LABELING", "TRANSLATION_RECALL"
+                    "MULTIPLE_CHOICE", "FILL_IN_BLANK", "TRUE_OR_FALSE", "IMAGE_LABELING", "TRANSLATION_RECALL", "HINT_TO_WORD"
                 ));
             case FAMILIAR:
-                // All 8 formats available
+                // All formats available including HINT_TO_WORD (English definition clue)
                 return new ArrayList<>(Arrays.asList(
                     "MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING",
-                    "SENTENCE_ARRANGEMENT", "WORD_SCRAMBLE", "IMAGE_LABELING", "TRUE_OR_FALSE", "TRANSLATION_RECALL"
+                    "SENTENCE_ARRANGEMENT", "WORD_SCRAMBLE", "IMAGE_LABELING", "TRUE_OR_FALSE", "TRANSLATION_RECALL", "HINT_TO_WORD"
                 ));
             case PROFICIENT:
-                // All 8 formats available
+                // All formats available; HINT_TO_WORD requires hintDefinition to be set (gated in generator)
                 return new ArrayList<>(Arrays.asList(
                     "MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING",
-                    "SENTENCE_ARRANGEMENT", "WORD_SCRAMBLE", "IMAGE_LABELING", "TRUE_OR_FALSE", "TRANSLATION_RECALL"
+                    "SENTENCE_ARRANGEMENT", "WORD_SCRAMBLE", "IMAGE_LABELING", "TRUE_OR_FALSE", "TRANSLATION_RECALL", "HINT_TO_WORD"
                 ));
             default:
                 return new ArrayList<>(Arrays.asList(
@@ -138,6 +154,17 @@ public class RetrievalActivityService {
             pool = new ArrayList<>(CORE_FORMATS);
         } else {
             pool = Arrays.asList(eligible.split(";"));
+        }
+
+        // Filter by per-lesson configured activity formats if present
+        if (word.getLesson() != null && word.getLesson().getModule2Activities() != null && !word.getLesson().getModule2Activities().isBlank()) {
+            List<String> lessonFormats = Arrays.asList(word.getLesson().getModule2Activities().toUpperCase().split(";"));
+            List<String> lessonFiltered = pool.stream()
+                .filter(f -> lessonFormats.contains(f.trim().toUpperCase()))
+                .collect(Collectors.toList());
+            if (!lessonFiltered.isEmpty()) {
+                pool = lessonFiltered;
+            }
         }
 
         // Intersect with tier-appropriate formats for this word
@@ -160,6 +187,16 @@ public class RetrievalActivityService {
             pool = new ArrayList<>(CORE_FORMATS);
         } else {
             pool = Arrays.asList(eligible.split(";"));
+        }
+
+        if (word.getLesson() != null && word.getLesson().getModule2Activities() != null && !word.getLesson().getModule2Activities().isBlank()) {
+            List<String> lessonFormats = Arrays.asList(word.getLesson().getModule2Activities().toUpperCase().split(";"));
+            List<String> lessonFiltered = pool.stream()
+                .filter(f -> lessonFormats.contains(f.trim().toUpperCase()))
+                .collect(Collectors.toList());
+            if (!lessonFiltered.isEmpty()) {
+                pool = lessonFiltered;
+            }
         }
 
         DifficultyLevel level = difficultyService.getCurrentLevel(learnerId, word.getWordId(), moduleNumber);
@@ -186,10 +223,29 @@ public class RetrievalActivityService {
                 ? new ArrayList<>(CORE_FORMATS)
                 : Arrays.asList(eligible.split(";"));
 
+        // Strictly enforce per-lesson configured activity formats if set by Admin/Teacher
+        if (word.getLesson() != null && word.getLesson().getModule2Activities() != null && !word.getLesson().getModule2Activities().isBlank()) {
+            List<String> lessonFormats = Arrays.stream(word.getLesson().getModule2Activities().toUpperCase().split(";"))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.toList());
+            List<String> lessonFiltered = pool.stream()
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .filter(lessonFormats::contains)
+                .collect(Collectors.toList());
+            if (!lessonFiltered.isEmpty()) {
+                pool = lessonFiltered;
+            } else {
+                pool = lessonFormats;
+            }
+        }
+
         DifficultyLevel level = difficultyService.getCurrentLevel(learnerId, word.getWordId(), moduleNumber);
         List<String> tierFormats = getFormatsForLevel(level);
 
         // Candidate formats for this word that haven't been picked for this word yet
+        final List<String> lessonPool = pool;
         List<String> candidates = pool.stream()
                 .map(String::trim)
                 .map(String::toUpperCase)
@@ -199,17 +255,16 @@ public class RetrievalActivityService {
                 .collect(Collectors.toList());
 
         if (candidates.isEmpty()) {
-            candidates = tierFormats.stream()
+            candidates = lessonPool.stream()
+                    .map(String::trim)
+                    .map(String::toUpperCase)
                     .filter(f -> !excludes.contains(f))
-                    .filter(f -> !(f.equalsIgnoreCase("MATCHING") && globalUsage.getOrDefault("MATCHING", 0) >= 1))
                     .collect(Collectors.toList());
             if (candidates.isEmpty()) {
-                candidates = tierFormats.stream()
-                    .filter(f -> !(f.equalsIgnoreCase("MATCHING") && globalUsage.getOrDefault("MATCHING", 0) >= 1))
-                    .collect(Collectors.toList());
-                if (candidates.isEmpty()) {
-                    candidates = tierFormats; // Fallback to all if literally nothing is left
-                }
+                candidates = lessonPool.stream()
+                        .map(String::trim)
+                        .map(String::toUpperCase)
+                        .collect(Collectors.toList());
             }
         }
 
@@ -284,18 +339,30 @@ public class RetrievalActivityService {
             DifficultyLevel currentLevel = difficultyService.getCurrentLevel(learnerId, word.getWordId(), moduleNumber);
 
             if (moduleNumber != null && moduleNumber == 3) {
-                if (pronunciationUnlocked && currentLevel == DifficultyLevel.PROFICIENT) {
-                    // Fixed pattern: Completion, Pronunciation, Rearrangement
-                    String[] pattern = {"FILL_IN_BLANK", "PRONUNCIATION_FEEDBACK", "SENTENCE_ARRANGEMENT"};
+                List<String> allowedM3 = new ArrayList<>();
+                if (word.getLesson() != null && word.getLesson().getModule3Activities() != null && !word.getLesson().getModule3Activities().isBlank()) {
+                    allowedM3.addAll(Arrays.stream(word.getLesson().getModule3Activities().toUpperCase().split(";"))
+                            .map(String::trim)
+                            .filter(s -> !s.isBlank())
+                            .collect(Collectors.toList()));
+                }
+                if (allowedM3.isEmpty()) {
+                    allowedM3.add("FILL_IN_BLANK");
+                    allowedM3.add("SENTENCE_ARRANGEMENT");
+                }
+
+                if (pronunciationUnlocked && currentLevel == DifficultyLevel.PROFICIENT && allowedM3.contains("PRONUNCIATION_FEEDBACK")) {
                     for (int r = 0; r < 3; r++) {
-                        String format = pattern[r];
+                        String format = allowedM3.get(r % allowedM3.size());
                         questionsList.add(questionGenerator.generateQuestion(learnerId, word, format));
                     }
                 } else {
-                    // Normal random rotation between just Sentence Completion and Sentence Rearrangement
-                    String[] m3Formats = {"FILL_IN_BLANK", "SENTENCE_ARRANGEMENT"};
+                    List<String> nonPronounce = allowedM3.stream()
+                            .filter(f -> !f.contains("PRONUNCIATION"))
+                            .collect(Collectors.toList());
+                    if (nonPronounce.isEmpty()) nonPronounce = allowedM3;
                     for (int r = 0; r < 3; r++) {
-                        String format = m3Formats[random.nextInt(m3Formats.length)];
+                        String format = nonPronounce.get(random.nextInt(nonPronounce.size()));
                         questionsList.add(questionGenerator.generateQuestion(learnerId, word, format));
                     }
                 }

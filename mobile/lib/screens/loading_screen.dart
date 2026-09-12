@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/typography_tokens.dart';
 import '../providers/auth_provider.dart';
-import '../services/localization_service.dart';
 
 class LoadingScreen extends StatefulWidget {
   final Duration duration;
@@ -12,7 +11,7 @@ class LoadingScreen extends StatefulWidget {
 
   const LoadingScreen({
     super.key,
-    this.duration = const Duration(seconds: 13),
+    this.duration = const Duration(seconds: 5),
     this.redirectPath = '/home',
     this.extraParams,
   });
@@ -94,7 +93,7 @@ class _LoadingScreenState extends State<LoadingScreen> with TickerProviderStateM
 
   late String _selectedGif;
   late List<Map<String, String>> _selectedTips;
-  int _currentTipIndex = 0;
+  final int _currentTipIndex = 0;
   String _fullText = '';
 
   @override
@@ -104,10 +103,10 @@ class _LoadingScreenState extends State<LoadingScreen> with TickerProviderStateM
     // Select random GIF for this loading screen (stays static)
     _selectedGif = _gifs[_getRandomIndex(_gifs.length)];
     
-    // Select 2 random tips for this loading screen
-    _selectedTips = _getRandomTips(2);
+    // Select 1 curated tip for this 5-second loading screen
+    _selectedTips = _getRandomTips(1);
     
-    // Setup progress animation immediately
+    // Setup progress animation over the 5-second duration
     _progressController = AnimationController(
       duration: widget.duration,
       vsync: this,
@@ -163,8 +162,10 @@ class _LoadingScreenState extends State<LoadingScreen> with TickerProviderStateM
       _displayText = '';
     });
     
+    // Smooth, brisk typing duration (~1.2s - 1.6s) so tip is fully visible for ~3.5s
+    final typingDurationMs = (fullText.length * 30).clamp(800, 1600);
     _typingController = AnimationController(
-      duration: Duration(milliseconds: fullText.length * 60),
+      duration: Duration(milliseconds: typingDurationMs),
       vsync: this,
     );
     
@@ -179,22 +180,6 @@ class _LoadingScreenState extends State<LoadingScreen> with TickerProviderStateM
     });
     
     _typingController.forward();
-    
-    // After typing completes, wait then move to next tip
-    _typingController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _typingController.removeStatusListener((_) {});
-        
-        Future.delayed(const Duration(seconds: 5), () {
-          if (mounted && _currentTipIndex < _selectedTips.length - 1) {
-            setState(() {
-              _currentTipIndex++;
-            });
-            _startTipTyping();
-          }
-        });
-      }
-    });
   }
 
   void _navigateToNextScreen() {
@@ -278,11 +263,11 @@ class _LoadingScreenState extends State<LoadingScreen> with TickerProviderStateM
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
+                      style: TextStyle(
+                        fontFamily: AppTypography.bodyFontFamily,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F172A),
+                        color: const Color(0xFF0F172A),
                         height: 1.4,
                       ),
                     ),
@@ -320,13 +305,13 @@ class _LoadingScreenState extends State<LoadingScreen> with TickerProviderStateM
               const SizedBox(height: 24),
               
               // Loading text
-              const Text(
+              Text(
                 'Loading...',
                 style: TextStyle(
-                  fontFamily: 'Outfit',
+                  fontFamily: AppTypography.bodyFontFamily,
                   fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF64748B), // Slate grey
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B), // Slate grey
                 ),
               ),
             ],

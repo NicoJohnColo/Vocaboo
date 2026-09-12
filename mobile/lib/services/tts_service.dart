@@ -130,6 +130,24 @@ class TTSService {
     }
   }
 
+  /// Speaks an isolated phonetic sound (e.g. "ah", "sh", "buh") with clear articulation.
+  static Future<bool> speakSound(String soundText) async {
+    if (soundText.trim().isEmpty) return true;
+    try {
+      await initialize();
+      await _flutterTts.stop();
+      await _flutterTts.setLanguage('en-US');
+      await _flutterTts.setSpeechRate(0.32); // Slightly slower for clear sound articulation
+      final result = await _flutterTts.speak(soundText);
+      await _flutterTts.setSpeechRate(0.4); // Reset to default
+      return result == 1;
+    } catch (e) {
+      // ignore: avoid_print
+      print('TTSService.speakSound error: $e');
+      return false;
+    }
+  }
+
   /// Cleans and replaces common accented characters to ensure smooth pronunciation by the engine.
   static String cleanCebuanoDiacritics(String text) {
     var cleaned = text;
@@ -170,6 +188,8 @@ class TtsService {
   Future<void> initialize() => TTSService.initialize();
 
   Future<void> speak(String text) => TTSService.speak(text);
+  
+  Future<bool> speakSound(String soundText) => TTSService.speakSound(soundText);
   
   Future<bool> speakCebuano(String text) => TTSService.speakCebuano(text);
   

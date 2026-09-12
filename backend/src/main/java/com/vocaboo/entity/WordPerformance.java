@@ -132,6 +132,7 @@ public class WordPerformance {
     public static WordPerformanceBuilder builder() { return new WordPerformanceBuilder(); }
 
     public static class WordPerformanceBuilder {
+        private UUID performanceId;
         private Learner learner;
         private VocabularyWord word;
         private Integer correctCount = 0;
@@ -141,20 +142,27 @@ public class WordPerformance {
         private Integer fallbackCount = 0;
         private Integer totalAttempts = 0;
         private BigDecimal accuracy = BigDecimal.ZERO;
+        private OffsetDateTime lastPracticedAt;
+        private OffsetDateTime createdAt;
+        private OffsetDateTime updatedAt;
 
+        public WordPerformanceBuilder performanceId(UUID performanceId) { this.performanceId = performanceId; return this; }
         public WordPerformanceBuilder learner(Learner learner) { this.learner = learner; return this; }
         public WordPerformanceBuilder word(VocabularyWord word) { this.word = word; return this; }
         public WordPerformanceBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
         public WordPerformanceBuilder incorrectCount(Integer incorrectCount) { this.incorrectCount = incorrectCount; return this; }
-        public WordPerformanceBuilder createdAt(OffsetDateTime createdAt) { return this; }
         public WordPerformanceBuilder demeritPoints(Integer demeritPoints) { this.demeritPoints = demeritPoints; return this; }
         public WordPerformanceBuilder tierDropCount(Integer tierDropCount) { this.tierDropCount = tierDropCount; return this; }
         public WordPerformanceBuilder fallbackCount(Integer fallbackCount) { this.fallbackCount = fallbackCount; return this; }
         public WordPerformanceBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
         public WordPerformanceBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+        public WordPerformanceBuilder lastPracticedAt(OffsetDateTime lastPracticedAt) { this.lastPracticedAt = lastPracticedAt; return this; }
+        public WordPerformanceBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public WordPerformanceBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public WordPerformance build() {
             WordPerformance w = new WordPerformance();
+            w.performanceId = this.performanceId;
             w.learner = this.learner;
             w.word = this.word;
             w.correctCount = this.correctCount;
@@ -164,9 +172,9 @@ public class WordPerformance {
             w.fallbackCount = this.fallbackCount;
             w.totalAttempts = this.totalAttempts;
             w.accuracy = this.accuracy;
-            w.lastPracticedAt = OffsetDateTime.now();
-            w.createdAt = OffsetDateTime.now();
-            w.updatedAt = OffsetDateTime.now();
+            w.lastPracticedAt = this.lastPracticedAt != null ? this.lastPracticedAt : OffsetDateTime.now();
+            w.createdAt = this.createdAt != null ? this.createdAt : OffsetDateTime.now();
+            w.updatedAt = this.updatedAt != null ? this.updatedAt : OffsetDateTime.now();
             return w;
         }
     }

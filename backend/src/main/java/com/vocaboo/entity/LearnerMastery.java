@@ -121,6 +121,7 @@ public class LearnerMastery {
     }
 
     public static class LearnerMasteryBuilder {
+        private UUID masteryId;
         private Learner learner;
         private Integer totalPoints = 0;
         private Integer totalSessionsPlayed = 0;
@@ -128,8 +129,11 @@ public class LearnerMastery {
         private BigDecimal overallAccuracy = BigDecimal.ZERO;
         private Integer totalQuestionsAnswered = 0;
         private Integer totalCorrectAnswers = 0;
-        private String masteryLevel = "NOVICE";
+        private String masteryLevel = "LEARNING";
+        private OffsetDateTime createdAt;
+        private OffsetDateTime updatedAt;
 
+        public LearnerMasteryBuilder masteryId(UUID masteryId) { this.masteryId = masteryId; return this; }
         public LearnerMasteryBuilder learner(Learner learner) { this.learner = learner; return this; }
         public LearnerMasteryBuilder totalPoints(Integer totalPoints) { this.totalPoints = totalPoints; return this; }
         public LearnerMasteryBuilder totalSessionsPlayed(Integer totalSessionsPlayed) { this.totalSessionsPlayed = totalSessionsPlayed; return this; }
@@ -138,11 +142,12 @@ public class LearnerMastery {
         public LearnerMasteryBuilder totalQuestionsAnswered(Integer totalQuestionsAnswered) { this.totalQuestionsAnswered = totalQuestionsAnswered; return this; }
         public LearnerMasteryBuilder totalCorrectAnswers(Integer totalCorrectAnswers) { this.totalCorrectAnswers = totalCorrectAnswers; return this; }
         public LearnerMasteryBuilder masteryLevel(String masteryLevel) { this.masteryLevel = masteryLevel; return this; }
-        public LearnerMasteryBuilder createdAt(OffsetDateTime createdAt) { return this; }
-        public LearnerMasteryBuilder updatedAt(OffsetDateTime updatedAt) { return this; }
+        public LearnerMasteryBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public LearnerMasteryBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public LearnerMastery build() {
             LearnerMastery m = new LearnerMastery();
+            m.masteryId = this.masteryId;
             m.learner = this.learner;
             m.totalPoints = this.totalPoints;
             m.totalSessionsPlayed = this.totalSessionsPlayed;
@@ -151,8 +156,8 @@ public class LearnerMastery {
             m.totalQuestionsAnswered = this.totalQuestionsAnswered;
             m.totalCorrectAnswers = this.totalCorrectAnswers;
             m.masteryLevel = this.masteryLevel;
-            m.createdAt = OffsetDateTime.now();
-            m.updatedAt = OffsetDateTime.now();
+            m.createdAt = this.createdAt != null ? this.createdAt : OffsetDateTime.now();
+            m.updatedAt = this.updatedAt != null ? this.updatedAt : OffsetDateTime.now();
             return m;
         }
     }

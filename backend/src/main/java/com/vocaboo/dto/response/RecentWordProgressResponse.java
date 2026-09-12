@@ -20,6 +20,9 @@ public class RecentWordProgressResponse {
     private String currentLevel; // 'LEARNING', 'FAMILIAR', 'PROFICIENT', 'MASTERED'
     private String partOfSpeech;
     private OffsetDateTime lastPracticedAt;
+    private Integer totalAttempts;
+    private Integer correctCount;
+    private Integer incorrectCount;
 
     public static RecentWordProgressResponseBuilder builder() { return new RecentWordProgressResponseBuilder(); }
 
@@ -31,6 +34,9 @@ public class RecentWordProgressResponse {
         private String currentLevel;
         private String partOfSpeech;
         private OffsetDateTime lastPracticedAt;
+        private Integer totalAttempts;
+        private Integer correctCount;
+        private Integer incorrectCount;
 
         public RecentWordProgressResponseBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
         public RecentWordProgressResponseBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
@@ -39,6 +45,9 @@ public class RecentWordProgressResponse {
         public RecentWordProgressResponseBuilder currentLevel(String currentLevel) { this.currentLevel = currentLevel; return this; }
         public RecentWordProgressResponseBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
         public RecentWordProgressResponseBuilder lastPracticedAt(OffsetDateTime lastPracticedAt) { this.lastPracticedAt = lastPracticedAt; return this; }
+        public RecentWordProgressResponseBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
+        public RecentWordProgressResponseBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
+        public RecentWordProgressResponseBuilder incorrectCount(Integer incorrectCount) { this.incorrectCount = incorrectCount; return this; }
 
         public RecentWordProgressResponse build() {
             RecentWordProgressResponse r = new RecentWordProgressResponse();
@@ -49,6 +58,9 @@ public class RecentWordProgressResponse {
             r.currentLevel = this.currentLevel;
             r.partOfSpeech = this.partOfSpeech;
             r.lastPracticedAt = this.lastPracticedAt;
+            r.totalAttempts = this.totalAttempts;
+            r.correctCount = this.correctCount;
+            r.incorrectCount = this.incorrectCount;
             return r;
         }
     }

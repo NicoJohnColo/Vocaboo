@@ -54,6 +54,12 @@ public class UpdateVocabularyRequest {
     
     private Boolean isConfusablePairMember;
 
+    /** Short English definition/synonym clue for HINT_TO_WORD activity (FAMILIAR/PROFICIENT) */
+    private String hintDefinition;
+
+    /** Short Cebuano clue for HINT_TO_WORD activity (LEARNING) */
+    private String hintCebuanoSentence;
+
     public String getEnglishWord() { return englishWord; }
     public String getCebuanoMeaning() { return cebuanoMeaning; }
     public String getPartOfSpeech() { return partOfSpeech; }
@@ -70,4 +76,6 @@ public class UpdateVocabularyRequest {
     public String getEligibleActivityTypes() { return eligibleActivityTypes; }
     public String getPhonologicalTipKey() { return phonologicalTipKey; }
     public Boolean getIsConfusablePairMember() { return isConfusablePairMember; }
+    public String getHintDefinition() { return hintDefinition; }
+    public String getHintCebuanoSentence() { return hintCebuanoSentence; }
 }

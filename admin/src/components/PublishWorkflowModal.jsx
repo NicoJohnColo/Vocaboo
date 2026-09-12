@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const GRADES = ['GRADE_3_4', 'GRADE_5_6'];
+const GRADES = ['GRADE_4', 'GRADE_5', 'GRADE_6'];
 const STATUSES = [
   { value: 'DRAFT', label: '📝 Draft', desc: 'Visible to admins only. Not shown to learners.' },
   { value: 'PUBLISHED', label: '🚀 Published', desc: 'Live for selected grade levels.' },
@@ -53,7 +53,7 @@ export default function PublishWorkflowModal({ lesson, onSubmit, onClose, submit
                     checked={targetGrades.includes(g)}
                     onChange={() => toggleGrade(g)}
                   />
-                  <span>{g.replace('_', ' ')}</span>
+                  <span>{g.replace('GRADE_', 'Grade ')}</span>
                 </label>
               ))}
             </div>

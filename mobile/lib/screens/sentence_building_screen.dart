@@ -218,6 +218,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
   // Activity alternation index
   final int _activityIndex = 0;
 
+  /// Tracks the last entry-level format shown per wordId so the next visit
+  /// always rotates to a different activity type (mirrors Module 2 behaviour).
+  final Map<String, ActivityFormat> _lastWordFormat = {};
+
   // Format 1: Completion Options & Free-type Controllers
   List<String> _completionOptions = [];
   final Map<int, String> _selectedCompletionWords = {};
@@ -233,6 +237,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
   bool _tofIsCorrect = false;    // result after checking
   String _tofEnglishSentence = ''; // sentence shown to learner (may be wrong)
   bool _tofSentenceIsCorrect = false; // ground truth: is the shown sentence correct?
+  String _tofKeyWord = '';       // evaluated key word (bold/highlighted in sentence)
 
   // Pronunciation feedback state
   bool _isRecording = false;
@@ -651,39 +656,52 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     _currentPhase = Phase.sentenceActivity;
 
     final stage = _getWordStage(_currentWord.wordId);
+    final wordId = _currentWord.wordId;
 
-    // TOF is always the entry format when enabled — it warm-ups the word visit
-    // before the production activities (Completion / Rearrangement).
+    // TOF is always the warm-up entry when enabled — but we still rotate
+    // between completion and rearrangement for subsequent visits so the
+    // learner never sees the exact same sequence twice in a row.
     if (_hasTruthOrFalse) {
       _currentFormat = ActivityFormat.truthOrFalse;
-    } else if (stage == 1) {
-      // Stage 1 (LEARNING): Sentence Completion first, or Rearrangement
-      if (_hasCompletion) {
-        _currentFormat = ActivityFormat.completion;
-      } else if (_hasRearrangement) {
-        _currentFormat = ActivityFormat.rearrangement;
-      } else {
-        _currentFormat = ActivityFormat.completion;
-      }
-    } else if (stage == 2) {
-      // Stage 2 (FAMILIAR): Sentence Completion first, or Rearrangement
-      if (_hasCompletion) {
-        _currentFormat = ActivityFormat.completion;
-      } else if (_hasRearrangement) {
-        _currentFormat = ActivityFormat.rearrangement;
-      } else {
-        _currentFormat = ActivityFormat.completion;
-      }
     } else {
-      // Stage 3 (PROFICIENT): Sentence Completion first, or Rearrangement
-      if (_hasCompletion) {
-        _currentFormat = ActivityFormat.completion;
-      } else if (_hasRearrangement) {
-        _currentFormat = ActivityFormat.rearrangement;
+      // Build the pool of formats eligible for this stage.
+      // Stage 1 (LEARNING)  : completion preferred, rearrangement optional
+      // Stage 2 (FAMILIAR)  : both completion and rearrangement eligible
+      // Stage 3 (PROFICIENT): rearrangement preferred, completion optional
+      List<ActivityFormat> pool;
+      if (stage == 1) {
+        pool = [
+          if (_hasCompletion) ActivityFormat.completion,
+          if (_hasRearrangement) ActivityFormat.rearrangement,
+        ];
+        if (pool.isEmpty) pool = [ActivityFormat.completion];
+      } else if (stage == 2) {
+        pool = [
+          if (_hasCompletion) ActivityFormat.completion,
+          if (_hasRearrangement) ActivityFormat.rearrangement,
+        ];
+        if (pool.isEmpty) pool = [ActivityFormat.completion];
       } else {
-        _currentFormat = ActivityFormat.rearrangement;
+        // Stage 3 — rearrangement leads, completion optional
+        pool = [
+          if (_hasRearrangement) ActivityFormat.rearrangement,
+          if (_hasCompletion) ActivityFormat.completion,
+        ];
+        if (pool.isEmpty) pool = [ActivityFormat.rearrangement];
       }
+
+      // Exclude the format that was used last time for THIS word (rotation).
+      final lastFmt = _lastWordFormat[wordId];
+      final rotated = pool.where((f) => f != lastFmt).toList();
+      final chosen = rotated.isNotEmpty
+          ? rotated[Random().nextInt(rotated.length)]
+          : pool[Random().nextInt(pool.length)];
+
+      _currentFormat = chosen;
     }
+
+    // Record chosen format so the next visit can rotate away from it.
+    _lastWordFormat[wordId] = _currentFormat;
 
     setState(() {
       _resetItemState();
@@ -707,6 +725,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     _tofIsCorrect = false;
     _tofEnglishSentence = '';
     _tofSentenceIsCorrect = false;
+    _tofKeyWord = '';
     final wordId = _currentWord.wordId;
     final priorAttempts = _wordPronunciationAttempts[wordId] ?? 0;
     _pronunciationAttempt = (priorAttempts + 1).clamp(1, 3);
@@ -979,25 +998,44 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     final rand = Random();
     bool showCorrect = rand.nextDouble() < correctBias;
 
+    // Helper: replace any blank placeholder with the actual word so the
+    // TOF sentence always reads naturally (never shows literal "{BLANK}").
+    String _fillBlanks(String sentence, String word) {
+      return sentence.replaceAll(
+        RegExp(
+          r'\{BLANK\}|\[BLANK\]|<BLANK>|\(BLANK\)|\{blank\}|\[blank\]|<blank>|\(blank\)|\(\.\.\.\)|\[\.\.\.\]|\.\.\.|_{1,}|-{2,}|\[_\]',
+          caseSensitive: false,
+        ),
+        word,
+      );
+    }
+
+    final cleanTarget = _currentWord.englishWord.trim().replaceAll('*', '');
+
     if (showCorrect || pool.isEmpty) {
-      // Show the correct sentence
-      _tofEnglishSentence = correctSentence;
+      // Show the correct sentence — fill any {BLANK} with the target word
+      _tofEnglishSentence = _fillBlanks(correctSentence, cleanTarget);
       _tofSentenceIsCorrect = true;
+      _tofKeyWord = cleanTarget;
     } else {
       // Swap in a distractor: stage 2 prefers the second distractor if available
       final distractorIdx = (stage == 2 && pool.length > 1) ? 1 : 0;
-      final distractor = pool[distractorIdx];
-      final wrongSentence = correctSentence.replaceFirst(
-        RegExp(RegExp.escape(_currentWord.englishWord), caseSensitive: false),
+      final distractor = pool[distractorIdx].trim().replaceAll('*', '');
+      // Fill {BLANK} with the target word first, then swap target → distractor
+      final filledSentence = _fillBlanks(correctSentence, cleanTarget);
+      final wrongSentence = filledSentence.replaceFirst(
+        RegExp(RegExp.escape(cleanTarget), caseSensitive: false),
         distractor,
       );
-      if (wrongSentence == correctSentence) {
+      if (wrongSentence == filledSentence) {
         // Regex found nothing to replace — fall back to correct
-        _tofEnglishSentence = correctSentence;
+        _tofEnglishSentence = filledSentence;
         _tofSentenceIsCorrect = true;
+        _tofKeyWord = cleanTarget;
       } else {
         _tofEnglishSentence = wrongSentence;
         _tofSentenceIsCorrect = false;
+        _tofKeyWord = distractor;
       }
     }
 
@@ -2899,104 +2937,80 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
   /// Builds the True-or-False Match (Tama/Sayop) activity card.
   Widget _buildTruthOrFalseActivity(String? pref) {
     final stage = _getWordStage(_currentWord.wordId);
-    final showCebuano = stage < 3; // hide Cebuano scaffold at PROFICIENT
     final tamaLabel  = LocalizationService.translate(pref, 'tof_correct');
     final sayopLabel = LocalizationService.translate(pref, 'tof_wrong');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Cebuano scaffold (hidden at stage 3) ────────────────────────────
-        if (showCebuano) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0FDF4),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF86EFAC), width: 1.5),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('🇵🇭', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'SINUGBOANON',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF16A34A),
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      CebuanoTextHighlighter(
-                        text: (_currentWord.exampleSentenceCebuano?.isNotEmpty == true)
-                            ? _currentWord.exampleSentenceCebuano!
-                            : _currentWord.cebuanoMeaning,
-                        highlightWord: stage == 1 ? _currentWord.cebuanoMeaning : '',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF15803D),
-                          height: 1.5,
-                        ),
-                        highlightStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF15803D),
-                          decoration: TextDecoration.underline,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+        // ── Cebuano scaffold (always shown; highlight removed at PROFICIENT) ─
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF86EFAC), width: 1.5),
           ),
-          const SizedBox(height: 12),
-          const Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Divider()),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  '↕',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 16),
+              const Text('🇵🇭', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'SINUGBOANON',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF16A34A),
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    CebuanoTextHighlighter(
+                      text: (_currentWord.exampleSentenceCebuano?.isNotEmpty == true)
+                          ? _currentWord.exampleSentenceCebuano!
+                          : _currentWord.cebuanoMeaning,
+                      // Only highlight the target word at Learning/Familiar stages
+                      highlightWord: stage < 3 ? _currentWord.cebuanoMeaning : '',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF15803D),
+                        height: 1.5,
+                      ),
+                      highlightStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF15803D),
+                        decoration: TextDecoration.underline,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Expanded(child: Divider()),
             ],
           ),
-          const SizedBox(height: 12),
-        ],
-
-        // ── PROFICIENT anchor: cebuanoMeaning as a faded small label ────────
-        if (!showCebuano) ...[
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(8),
-              ),
+        ),
+        const SizedBox(height: 12),
+        const Row(
+          children: [
+            Expanded(child: Divider()),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                '(${_currentWord.cebuanoMeaning})',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF94A3B8),
-                  fontStyle: FontStyle.italic,
-                ),
+                '↕',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 16),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            Expanded(child: Divider()),
+          ],
+        ),
+        const SizedBox(height: 12),
 
         // ── English sentence card ────────────────────────────────────────────
         Container(
@@ -3034,41 +3048,66 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                _tofEnglishSentence,
+              CebuanoTextHighlighter(
+                text: _tofEnglishSentence,
+                highlightWord: _tofKeyWord,
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF1E293B),
                   height: 1.6,
                 ),
-              ),
-              const SizedBox(height: 12),
-              // Target word chip
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                highlightStyle: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: _isChecked
+                      ? (_tofSentenceIsCorrect
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFFDC2626))
+                      : const Color(0xFF0284C7),
+                  decoration: TextDecoration.underline,
+                  decorationColor: _isChecked
+                      ? (_tofSentenceIsCorrect
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFFDC2626))
+                      : const Color(0xFF0284C7),
+                  decorationThickness: 2.5,
+                  height: 1.6,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.vpn_key_outlined,
-                        size: 13, color: Color(0xFF0EA5E9)),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Target: ${_currentWord.englishWord}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0369A1),
+              ),
+              if (_isChecked && !_tofSentenceIsCorrect) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF86EFAC)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        size: 14,
+                        color: Color(0xFF16A34A),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        'Should be: ${_currentWord.englishWord}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF15803D),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -3185,15 +3224,6 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          App3DButton(
-            text: LocalizationService.translate(pref, 'check'),
-            variant: _tofUserAnswer != null
-                ? App3DButtonVariant.primary
-                : App3DButtonVariant.secondary,
-            height: 52,
-            onPressed: _tofUserAnswer != null ? () => _checkAnswer() : null,
           ),
         ],
       ],
@@ -3562,7 +3592,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                           ],
 
                           // English Sentence Frame with visual blank/tapped words
-                          Container(
+                          // Only shown for completion and rearrangement — NOT for truthOrFalse
+                          if (_currentFormat != ActivityFormat.truthOrFalse) Container(
                             padding: const EdgeInsets.all(24),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF8FAFC),
@@ -3859,6 +3890,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                               ],
                             ),
                           ),
+                          if (_currentFormat != ActivityFormat.truthOrFalse)
                           const SizedBox(height: 36),
 
                           if (!_isChecked &&
@@ -3986,7 +4018,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
           // Bottom action bar / Feedback banner
           (() {
             bool isActionEnabled = false;
-            if (_currentFormat == ActivityFormat.completion) {
+            if (_currentFormat == ActivityFormat.truthOrFalse) {
+              isActionEnabled = _tofUserAnswer != null;
+            } else if (_currentFormat == ActivityFormat.completion) {
               final blanksCount = _completionTokens
                   .where((t) => t.isBlank)
                   .length;

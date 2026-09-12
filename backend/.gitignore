@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Generated files ###
+db_dump_progress.txt

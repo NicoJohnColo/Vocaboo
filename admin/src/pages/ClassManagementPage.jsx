@@ -124,43 +124,43 @@ export default function ClassManagementPage() {
         {loading ? (
           <div className="auth-loading" style={{ minHeight: 300 }}><div className="spinner" /></div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18 }}>
             {sections.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: 'var(--color-text-muted)', padding: 40 }}>
-                No class sections created yet. Click <strong>+ New Section</strong> to get started.
+              <div style={{ gridColumn: '1 / -1' }} className="coming-soon">
+                <div className="coming-soon__icon">🏫</div>
+                <div className="coming-soon__title">No sections yet</div>
+                <p className="coming-soon__text">Click <strong>+ New Section</strong> to create your first classroom cohort.</p>
               </div>
             )}
             {sections.map(sec => (
-              <div key={sec.section_id} style={{
-                background: 'var(--glass-bg)',
-                borderRadius: 'var(--radius-md)',
-                padding: 20,
-                border: '1px solid var(--color-border)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-              }}>
+              <div key={sec.section_id} className="section-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 0, marginBottom: 0 }}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text-main)' }}>
-                      {sec.section_name}
-                    </span>
-                    <span className="word-count-badge">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 38, height: 38, borderRadius: 10,
+                        background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                        display: 'grid', placeItems: 'center',
+                        fontSize: '1.1rem', flexShrink: 0,
+                        boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
+                      }}>🏫</div>
+                      <span style={{ fontSize: '1.0rem', fontWeight: 700, color: 'var(--color-text-main)', lineHeight: 1.2 }}>
+                        {sec.section_name}
+                      </span>
+                    </div>
+                    <div style={{
+                      fontSize: '0.72rem', fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+                      background: 'rgba(37,99,235,0.10)', color: 'var(--primary-mid)',
+                      border: '1px solid rgba(37,99,235,0.20)', flexShrink: 0,
+                    }}>
                       {sec.learner_count || 0} students
-                    </span>
+                    </div>
                   </div>
 
                   {sec.grade_distribution && Object.keys(sec.grade_distribution).length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                       {Object.entries(sec.grade_distribution).map(([grade, count]) => (
-                        <span key={grade} style={{
-                          fontSize: '0.75rem',
-                          background: 'rgba(124, 77, 255, 0.1)',
-                          color: 'var(--color-primary)',
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          fontWeight: 600,
-                        }}>
+                        <span key={grade} className="status-pill status-pill--neutral" style={{ fontSize: '0.68rem' }}>
                           {grade.replace('_', ' ')}: {count}
                         </span>
                       ))}
@@ -172,13 +172,9 @@ export default function ClassManagementPage() {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
-                  <button className="btn btn--sm btn--ghost" onClick={() => openEdit(sec)}>
-                    ✏️ Rename
-                  </button>
-                  <button className="btn btn--sm btn--danger-ghost" onClick={() => openDelete(sec)}>
-                    🗑️ Delete
-                  </button>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+                  <button className="btn btn--sm btn--ghost" onClick={() => openEdit(sec)}>✏️ Rename</button>
+                  <button className="btn btn--sm btn--danger-ghost" onClick={() => openDelete(sec)}>🗑️ Delete</button>
                 </div>
               </div>
             ))}

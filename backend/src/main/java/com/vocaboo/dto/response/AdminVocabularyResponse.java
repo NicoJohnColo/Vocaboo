@@ -82,6 +82,15 @@ public class AdminVocabularyResponse {
     @JsonProperty("audio_text_english")
     private String audioTextEnglish;
 
+    @JsonProperty("hint_definition")
+    private String hintDefinition;
+
+    @JsonProperty("hint_cebuano_sentence")
+    private String hintCebuanoSentence;
+
+    @JsonProperty("eligible_activity_types")
+    private String eligibleActivityTypes;
+
     public static AdminVocabularyResponseBuilder builder() {
         return new AdminVocabularyResponseBuilder();
     }
@@ -110,6 +119,9 @@ public class AdminVocabularyResponse {
         private String explanationText;
         private String audioTextCebuano;
         private String audioTextEnglish;
+        private String hintDefinition;
+        private String hintCebuanoSentence;
+        private String eligibleActivityTypes;
 
         public AdminVocabularyResponseBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
         public AdminVocabularyResponseBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
@@ -134,6 +146,9 @@ public class AdminVocabularyResponse {
         public AdminVocabularyResponseBuilder explanationText(String explanationText) { this.explanationText = explanationText; return this; }
         public AdminVocabularyResponseBuilder audioTextCebuano(String audioTextCebuano) { this.audioTextCebuano = audioTextCebuano; return this; }
         public AdminVocabularyResponseBuilder audioTextEnglish(String audioTextEnglish) { this.audioTextEnglish = audioTextEnglish; return this; }
+        public AdminVocabularyResponseBuilder hintDefinition(String hintDefinition) { this.hintDefinition = hintDefinition; return this; }
+        public AdminVocabularyResponseBuilder hintCebuanoSentence(String hintCebuanoSentence) { this.hintCebuanoSentence = hintCebuanoSentence; return this; }
+        public AdminVocabularyResponseBuilder eligibleActivityTypes(String eligibleActivityTypes) { this.eligibleActivityTypes = eligibleActivityTypes; return this; }
 
         public AdminVocabularyResponse build() {
             AdminVocabularyResponse r = new AdminVocabularyResponse();
@@ -160,6 +175,9 @@ public class AdminVocabularyResponse {
             r.explanationText = this.explanationText;
             r.audioTextCebuano = this.audioTextCebuano;
             r.audioTextEnglish = this.audioTextEnglish;
+            r.hintDefinition = this.hintDefinition;
+            r.hintCebuanoSentence = this.hintCebuanoSentence;
+            r.eligibleActivityTypes = this.eligibleActivityTypes;
             return r;
         }
     }

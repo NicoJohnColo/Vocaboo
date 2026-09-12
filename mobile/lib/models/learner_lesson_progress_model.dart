@@ -8,6 +8,8 @@ class LearnerLessonProgressModel {
   final int totalAttempts;
   final String? completedAt;
   final String status; // 'COMPLETED', 'UNLOCKED', 'LOCKED'
+  final String? classId;
+  final String? className;
 
   LearnerLessonProgressModel({
     required this.lessonId,
@@ -19,6 +21,8 @@ class LearnerLessonProgressModel {
     required this.totalAttempts,
     this.completedAt,
     required this.status,
+    this.classId,
+    this.className,
   });
 
   factory LearnerLessonProgressModel.fromJson(Map<String, dynamic> json) {
@@ -32,6 +36,8 @@ class LearnerLessonProgressModel {
       totalAttempts: json['totalAttempts'] ?? 0,
       completedAt: json['completedAt'],
       status: json['status'] ?? 'UNLOCKED',
+      classId: json['classId'],
+      className: json['className'],
     );
   }
 }

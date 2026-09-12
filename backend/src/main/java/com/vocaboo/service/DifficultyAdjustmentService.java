@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.List;
@@ -30,6 +31,10 @@ public class DifficultyAdjustmentService {
     private final PointTransactionRepository pointTransactionRepository;
     private final LearnerMasteryRepository masteryRepository;
     private final WordPerformanceRepository wordPerformanceRepository;
+    private final PracticeResultRepository practiceResultRepository;
+    private final LessonWordAccuracyRepository lessonWordAccuracyRepository;
+    private final LearnerLessonStatusRepository lessonStatusRepository;
+    private final LessonModuleScoreRepository lessonModuleScoreRepository;
 
     @Transactional(readOnly = true)
     public DifficultyLevel getCurrentLevel(UUID learnerId, UUID wordId, Integer moduleNumber) {
@@ -67,25 +72,123 @@ public class DifficultyAdjustmentService {
 
     @Transactional(readOnly = true)
     public List<WordMasterySummaryResponse> getWordMasterySummary(UUID learnerId, UUID lessonId) {
+        return getWordMasterySummary(learnerId, lessonId, null);
+    }
+
+    @Transactional
+    public List<WordMasterySummaryResponse> getWordMasterySummary(UUID learnerId, UUID lessonId, UUID sessionId) {
         List<VocabularyWord> words = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
         List<WordMasterySummaryResponse> responses = new ArrayList<>();
+
+        List<PracticeResult> sessionResults = (sessionId != null && practiceResultRepository != null)
+                ? practiceResultRepository.findBySessionSessionId(sessionId)
+                : List.of();
+        Map<UUID, List<PracticeResult>> sessionByWord = sessionResults.stream()
+                .filter(pr -> pr.getWord() != null)
+                .collect(Collectors.groupingBy(pr -> pr.getWord().getWordId()));
         
         for (VocabularyWord word : words) {
             DifficultyProgress progress = progressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, word.getWordId(), 2).orElse(null);
             WordPerformance perf = wordPerformanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId()).orElse(null);
             
             String tierState = progress != null ? progress.getCurrentLevel().name() : DifficultyLevel.LEARNING.name();
+
+            List<PracticeResult> wordSessionResults = sessionByWord.get(word.getWordId());
+            boolean isRetaken = sessionId != null && wordSessionResults != null && !wordSessionResults.isEmpty();
+
+            int sessionTotal = wordSessionResults != null ? wordSessionResults.size() : 0;
+            int sessionCorrect = sessionTotal > 0 ? (int) wordSessionResults.stream().filter(pr -> Boolean.TRUE.equals(pr.getIsCorrect())).count() : 0;
+            int sessionErrors = sessionTotal - sessionCorrect;
+
+            // Calculate session accuracy
+            double sessionAccuracy = sessionTotal > 0 ? ((double) sessionCorrect / sessionTotal * 100.0) : 0.0;
+            BigDecimal sessionAcc = BigDecimal.valueOf(sessionAccuracy).setScale(2, java.math.RoundingMode.HALF_UP);
+
+            // Get or create lesson word accuracy record
+            LessonWordAccuracy lessonWordAcc = lessonWordAccuracyRepository
+                    .findByLearnerLearnerIdAndLessonLessonIdAndWordWordId(learnerId, lessonId, word.getWordId())
+                    .orElse(null);
             
+            BigDecimal displayAcc;
+            BigDecimal currentAcc;
+            BigDecimal bestAcc;
             String rating = null;
-            if (perf != null && perf.getAccuracy() != null) {
-                double acc = perf.getAccuracy().doubleValue();
-                if (acc >= 90.0) {
-                    rating = "GOLD";
-                } else if (acc >= 70.0) {
-                    rating = "SILVER";
+            boolean isImproved = false;
+            BigDecimal previousLessonAcc = lessonWordAcc != null ? lessonWordAcc.getBestAccuracy() : BigDecimal.ZERO;
+            int totalAttempts;
+            int correctAttempts;
+
+            if (sessionId != null && sessionTotal > 0) {
+                // We have active session data for this word in this session attempt
+                currentAcc = sessionAcc;
+                displayAcc = sessionAcc; // Accuracy reflects the actual current attempt!
+                totalAttempts = sessionTotal;
+                correctAttempts = sessionCorrect;
+
+                if (lessonWordAcc == null) {
+                    Learner learner = learnerRepository.findById(learnerId).orElse(null);
+                    Lesson lesson = word.getLesson();
+                    lessonWordAcc = LessonWordAccuracy.builder()
+                            .learner(learner)
+                            .lesson(lesson)
+                            .word(word)
+                            .bestAccuracy(sessionAcc)
+                            .attempts(sessionTotal)
+                            .lastPracticedAt(OffsetDateTime.now())
+                            .build();
+                    lessonWordAccuracyRepository.save(lessonWordAcc);
+                    bestAcc = sessionAcc;
+                    isImproved = false;
+                } else if (sessionAcc.compareTo(lessonWordAcc.getBestAccuracy()) > 0) {
+                    lessonWordAcc.setBestAccuracy(sessionAcc);
+                    lessonWordAcc.setAttempts(lessonWordAcc.getAttempts() + sessionTotal);
+                    lessonWordAcc.setLastPracticedAt(OffsetDateTime.now());
+                    lessonWordAccuracyRepository.save(lessonWordAcc);
+                    bestAcc = sessionAcc;
+                    isImproved = previousLessonAcc.compareTo(BigDecimal.ZERO) > 0;
                 } else {
-                    rating = "BRONZE";
+                    lessonWordAcc.setAttempts(lessonWordAcc.getAttempts() + sessionTotal);
+                    lessonWordAcc.setLastPracticedAt(OffsetDateTime.now());
+                    lessonWordAccuracyRepository.save(lessonWordAcc);
+                    bestAcc = lessonWordAcc.getBestAccuracy();
+                    isImproved = false;
                 }
+
+                // If learner had previous practice history, this is a retake/replay
+                isRetaken = previousLessonAcc.compareTo(BigDecimal.ZERO) > 0 || (lessonWordAcc.getAttempts() > sessionTotal);
+            } else {
+                // No session data for this attempt: show stored best or lifetime performance
+                displayAcc = lessonWordAcc != null ? lessonWordAcc.getBestAccuracy() : 
+                           (perf != null && perf.getAccuracy() != null ? perf.getAccuracy() : BigDecimal.ZERO);
+                currentAcc = displayAcc;
+                bestAcc = displayAcc;
+                totalAttempts = lessonWordAcc != null ? lessonWordAcc.getAttempts() : 
+                                (perf != null ? perf.getTotalAttempts() : 0);
+                correctAttempts = totalAttempts > 0 
+                        ? displayAcc.multiply(BigDecimal.valueOf(totalAttempts)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP).intValue() 
+                        : 0;
+                isRetaken = false;
+            }
+
+            if (perf != null && perf.getTotalAttempts() != null && perf.getTotalAttempts() > 0) {
+                int totCorr = perf.getCorrectCount() != null ? perf.getCorrectCount() : 0;
+                int totAtt = perf.getTotalAttempts();
+                if (totCorr < totAtt) {
+                    BigDecimal realAcc = BigDecimal.valueOf(totCorr * 100.0 / totAtt).setScale(2, RoundingMode.HALF_UP);
+                    if (displayAcc.compareTo(BigDecimal.valueOf(100.00)) >= 0) {
+                        displayAcc = realAcc;
+                        currentAcc = realAcc;
+                    }
+                }
+            }
+
+            double ratingAcc = displayAcc.doubleValue();
+            if (ratingAcc >= 90.0) {
+                rating = "GOLD";
+            } else if (ratingAcc >= 70.0) {
+                rating = "SILVER";
+            } else {
+                rating = "BRONZE";
             }
             
             responses.add(WordMasterySummaryResponse.builder()
@@ -95,10 +198,15 @@ public class DifficultyAdjustmentService {
                 .partOfSpeech(word.getPartOfSpeech())
                 .tierState(tierState)
                 .wordRating(rating)
-                .totalAttempts(perf != null ? perf.getTotalAttempts() : 0)
-                .correctAttempts(perf != null ? perf.getCorrectCount() : 0)
-                .accuracy(perf != null && perf.getAccuracy() != null ? perf.getAccuracy() : BigDecimal.ZERO)
-                .tierDropCount(0) // Default as it's not tracked directly
+                .totalAttempts(totalAttempts)
+                .correctAttempts(correctAttempts)
+                .accuracy(displayAcc)
+                .currentAccuracy(currentAcc)
+                .bestAccuracy(bestAcc)
+                .tierDropCount(sessionErrors)
+                .isRetaken(isRetaken)
+                .previousAccuracy(previousLessonAcc)
+                .isImproved(isImproved)
                 .build());
         }
         return responses;
@@ -163,13 +271,17 @@ public class DifficultyAdjustmentService {
                 }
             }
 
+            Lesson lesson = progress.getWord() != null ? progress.getWord().getLesson() : null;
             boolean readyToAdvance = false;
-            int requiredStreak = getRequiredUpgradeStreak(oldLevel);
+            int requiredStreak = (lesson != null && lesson.getUpgradeStreakRequired() != null)
+                    ? lesson.getUpgradeStreakRequired()
+                    : getRequiredUpgradeStreak(oldLevel);
             boolean satisfiesRecallGate = (oldLevel != DifficultyLevel.PROFICIENT) || Boolean.TRUE.equals(progress.getRecallInCurrentStreak());
 
             if (isModule3) {
-                readyToAdvance = Boolean.TRUE.equals(progress.getSentenceCompletionClearedAtCurrentTier()) && 
-                                 Boolean.TRUE.equals(progress.getSentenceRearrangementClearedAtCurrentTier());
+                // In Module 3, learner must clear BOTH Sentence Completion and Sentence Rearrangement at the current tier
+                readyToAdvance = Boolean.TRUE.equals(progress.getSentenceCompletionClearedAtCurrentTier())
+                        && Boolean.TRUE.equals(progress.getSentenceRearrangementClearedAtCurrentTier());
                 log.info("CALCULATE_NEXT_CORRECT_M3: word={} activity={} oldLevel={} compCleared={} arrCleared={} ready={}",
                         wordId, activityType, oldLevel, progress.getSentenceCompletionClearedAtCurrentTier(),
                         progress.getSentenceRearrangementClearedAtCurrentTier(), readyToAdvance);
@@ -181,14 +293,20 @@ public class DifficultyAdjustmentService {
 
             if (readyToAdvance && oldLevel != DifficultyLevel.MASTERED) {
                 newLevel = getNextHigher(oldLevel);
+
                 progress.setCurrentLevel(newLevel);
                 progress.setConsecutiveCorrect(0);
-                progress.setRecallInCurrentStreak(false);
-                progress.setSentenceCompletionClearedAtCurrentTier(false);
-                progress.setSentenceRearrangementClearedAtCurrentTier(false);
+                progress.setConsecutiveIncorrect(0);
                 progress.setAttemptCountAtCurrentTier(1);
-                log.info("LEVEL_UP: word={} {} -> {}", wordId, oldLevel, newLevel);
-                logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_CORRECT");
+                progress.setRecallInCurrentStreak(false);
+
+                if (isModule3) {
+                    progress.setSentenceCompletionClearedAtCurrentTier(false);
+                    progress.setSentenceRearrangementClearedAtCurrentTier(false);
+                }
+
+                log.info("LEVEL_UP: word={} {} -> {} after streak={}", wordId, oldLevel, newLevel, requiredStreak);
+                logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "STREAK_ADVANCE");
 
                 if (newLevel == DifficultyLevel.MASTERED && !Boolean.TRUE.equals(progress.getMasteryBonusAwarded())) {
                     progress.setMasteryBonusAwarded(true);
@@ -225,32 +343,48 @@ public class DifficultyAdjustmentService {
             }
         } else {
             // Wrong answer: reset correct streak
+            Lesson lesson = progress.getWord() != null ? progress.getWord().getLesson() : null;
             progress.setConsecutiveCorrect(0);
             progress.setRecallInCurrentStreak(false);
             int newIncorrect = progress.getConsecutiveIncorrect() + 1;
             progress.setConsecutiveIncorrect(newIncorrect);
             progress.setAttemptCountAtCurrentTier(progress.getAttemptCountAtCurrentTier() + 1);
 
-            if (isModule3) {
+            // MASTERED is a terminal learning state. Accuracy and retries are
+            // tracked independently and must not demote an already mastered word.
+            if (oldLevel == DifficultyLevel.MASTERED) {
+                log.info("CALCULATE_NEXT_HOLD_MASTERED: word={} remains MASTERED after incorrect answer", wordId);
+            } else if (isModule3) {
                 progress.setSentenceCompletionClearedAtCurrentTier(false);
                 progress.setSentenceRearrangementClearedAtCurrentTier(false);
-                progress.setConsecutiveIncorrect(0);
-                newLevel = getNextLower(oldLevel);
-                if (newLevel != oldLevel) {
-                    progress.setCurrentLevel(newLevel);
-                    progress.setAttemptCountAtCurrentTier(1);
-                    logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "MODULE_3_INCORRECT_DEMOTION");
+                final int m3DemotionThreshold = (lesson != null && lesson.getModule3DemotionThreshold() != null)
+                        ? lesson.getModule3DemotionThreshold()
+                        : 1;
+
+                if (newIncorrect >= m3DemotionThreshold) {
+                    newLevel = getNextLower(oldLevel);
+                    if (newLevel != oldLevel) {
+                        progress.setCurrentLevel(newLevel);
+                        progress.setConsecutiveIncorrect(0);
+                        progress.setAttemptCountAtCurrentTier(1);
+                        log.info("DEMOTION_M3: word={} {} -> {} after incorrect={}", wordId, oldLevel, newLevel, newIncorrect);
+                        logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "DEMOTION");
+                    }
                 }
             } else {
-                // Demotion gate: require 2 consecutive wrong answers before easing down
-                // (1 wrong answer just resets the correct streak — no tier change)
-                final int demotionThreshold = 2;
+                // Demotion gate: require configured consecutive wrong answers before easing down
+                final int demotionThreshold = (lesson != null && lesson.getDemotionThreshold() != null)
+                        ? lesson.getDemotionThreshold()
+                        : 2;
+                final int reintroThreshold = (lesson != null && lesson.getReintroductionThreshold() != null)
+                        ? lesson.getReintroductionThreshold()
+                        : 4;
 
                 log.info("CALCULATE_NEXT_WRONG: word={} oldLevel={} consecutiveWrong={}/{}",
                         wordId, oldLevel, newIncorrect, demotionThreshold);
 
                 if (oldLevel != DifficultyLevel.LEARNING && newIncorrect >= demotionThreshold) {
-                    // After 2 consecutive wrong answers, ease down one level
+                    // After demotionThreshold consecutive wrong answers, ease down one level
                     newLevel = getNextLower(oldLevel);
                     progress.setCurrentLevel(newLevel);
                     progress.setConsecutiveIncorrect(0);
@@ -258,12 +392,18 @@ public class DifficultyAdjustmentService {
                     log.info("LEVEL_DOWN: word={} {} -> {} after {} wrong answers", wordId, oldLevel, newLevel, demotionThreshold);
                     logTransition(progress.getLearner(), progress.getWord(), oldLevel, newLevel, "CONSECUTIVE_INCORRECT_EASE_DOWN");
                 } else if (oldLevel == DifficultyLevel.LEARNING) {
-                    // At LEARNING floor: if 4 consecutive incorrect, trigger short reintroduction
-                    if (newIncorrect >= 4) {
+                    // At LEARNING floor: if reintroThreshold consecutive incorrect, trigger short reintroduction
+                    if (newIncorrect >= reintroThreshold) {
                         progress.setNeedsReintroduction(true);
-                        progress.setReintroductionCount(progress.getReintroductionCount() + 1);
+                        int newReintro = progress.getReintroductionCount() + 1;
+                        progress.setReintroductionCount(newReintro);
                         progress.setLastReintroducedAt(OffsetDateTime.now());
                         progress.setConsecutiveIncorrect(0);
+                        if (newReintro >= 2) {
+                            progress.setNeedsTeacherReview(true);
+                            log.warn("FLAG_TEACHER_REVIEW: learner={} word={} reintroCount={}",
+                                    progress.getLearner().getLearnerId(), wordId, newReintro);
+                        }
                         logTransition(progress.getLearner(), progress.getWord(), oldLevel, oldLevel, "SHORT_REINTRODUCTION_TRIGGERED");
                     }
                 }
@@ -509,6 +649,10 @@ public class DifficultyAdjustmentService {
         }
         progressRepository.flush();
         wordPerformanceRepository.flush();
+
+        lessonStatusRepository.deleteByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
+        lessonModuleScoreRepository.deleteByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
+        lessonWordAccuracyRepository.deleteByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
     }
 
     private DifficultyProgressResponse toProgressResponse(DifficultyProgress progress) {

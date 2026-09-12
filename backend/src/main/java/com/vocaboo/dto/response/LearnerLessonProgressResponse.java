@@ -22,6 +22,8 @@ public class LearnerLessonProgressResponse {
     private Integer totalAttempts;
     private OffsetDateTime completedAt;
     private String status; // 'COMPLETED', 'UNLOCKED', 'LOCKED'
+    private UUID classId;
+    private String className;
 
     public String getLessonTitle() { return lessonTitle; }
     public UUID getCategoryId() { return categoryId; }
@@ -40,6 +42,8 @@ public class LearnerLessonProgressResponse {
         private Integer totalAttempts;
         private OffsetDateTime completedAt;
         private String status;
+        private UUID classId;
+        private String className;
 
         public LearnerLessonProgressResponseBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
         public LearnerLessonProgressResponseBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
@@ -50,6 +54,8 @@ public class LearnerLessonProgressResponse {
         public LearnerLessonProgressResponseBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
         public LearnerLessonProgressResponseBuilder completedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; return this; }
         public LearnerLessonProgressResponseBuilder status(String status) { this.status = status; return this; }
+        public LearnerLessonProgressResponseBuilder classId(UUID classId) { this.classId = classId; return this; }
+        public LearnerLessonProgressResponseBuilder className(String className) { this.className = className; return this; }
 
         public LearnerLessonProgressResponse build() {
             LearnerLessonProgressResponse r = new LearnerLessonProgressResponse();
@@ -62,6 +68,8 @@ public class LearnerLessonProgressResponse {
             r.totalAttempts = this.totalAttempts;
             r.completedAt = this.completedAt;
             r.status = this.status;
+            r.classId = this.classId;
+            r.className = this.className;
             return r;
         }
     }

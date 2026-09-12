@@ -17,6 +17,9 @@ public class AdminLearnerSummaryResponse {
     @JsonProperty("learner_id")
     private UUID learnerId;
 
+    @JsonProperty("user_id")
+    private String userId;
+
     @JsonProperty("display_name")
     private String displayName;
 
@@ -34,6 +37,9 @@ public class AdminLearnerSummaryResponse {
 
     @JsonProperty("language_preference")
     private String languagePreference;
+
+    @JsonProperty("avatar")
+    private String avatar;
 
     @JsonProperty("is_active")
     private Boolean isActive;
@@ -71,8 +77,25 @@ public class AdminLearnerSummaryResponse {
     @JsonProperty("created_at")
     private OffsetDateTime createdAt;
 
+    // ── Class-Scoped Performance (Populated when filtering by a section) ──
+    @JsonProperty("class_points")
+    private Integer classPoints;
+
+    @JsonProperty("class_accuracy")
+    private BigDecimal classAccuracy;
+
+    @JsonProperty("class_mastery_level")
+    private String classMasteryLevel;
+
+    @JsonProperty("class_sessions_played")
+    private Integer classSessionsPlayed;
+
     public UUID getLearnerId() {
         return learnerId;
+    }
+
+    public String getUserId() {
+        return userId;
     }
 
     public String getDisplayName() {
@@ -91,12 +114,12 @@ public class AdminLearnerSummaryResponse {
         return languagePreference;
     }
 
-    public Integer getCompletedLessonsCount() {
-        return completedLessonsCount;
+    public String getAvatar() {
+        return avatar != null ? avatar : "prof1.jpg";
     }
 
-    public Integer getWordsMasteredCount() {
-        return wordsMasteredCount;
+    public String getMasteryLevel() {
+        return masteryLevel;
     }
 
     public Integer getTotalPoints() {
@@ -105,6 +128,26 @@ public class AdminLearnerSummaryResponse {
 
     public BigDecimal getOverallAccuracy() {
         return overallAccuracy;
+    }
+
+    public Integer getCompletedLessonsCount() {
+        return completedLessonsCount;
+    }
+
+    public Integer getWordsMasteredCount() {
+        return wordsMasteredCount;
+    }
+
+    public Integer getCumulativeReviewsCompleted() {
+        return cumulativeReviewsCompleted;
+    }
+
+    public BigDecimal getAvgCumulativeScore() {
+        return avgCumulativeScore;
+    }
+
+    public String getBestCumulativeBadge() {
+        return bestCumulativeBadge;
     }
 
     public Boolean getIsActive() {
@@ -125,12 +168,14 @@ public class AdminLearnerSummaryResponse {
 
     public static class AdminLearnerSummaryResponseBuilder {
         private UUID learnerId;
+        private String userId;
         private String displayName;
         private Integer age;
         private String gradeLevel;
         private UUID sectionId;
         private String sectionName;
         private String languagePreference;
+        private String avatar;
         private Boolean isActive;
         private String masteryLevel;
         private Integer totalPoints;
@@ -143,14 +188,20 @@ public class AdminLearnerSummaryResponse {
         private String bestCumulativeBadge;
         private OffsetDateTime lastActiveAt;
         private OffsetDateTime createdAt;
+        private Integer classPoints;
+        private BigDecimal classAccuracy;
+        private String classMasteryLevel;
+        private Integer classSessionsPlayed;
 
         public AdminLearnerSummaryResponseBuilder learnerId(UUID learnerId) { this.learnerId = learnerId; return this; }
+        public AdminLearnerSummaryResponseBuilder userId(String userId) { this.userId = userId; return this; }
         public AdminLearnerSummaryResponseBuilder displayName(String displayName) { this.displayName = displayName; return this; }
         public AdminLearnerSummaryResponseBuilder age(Integer age) { this.age = age; return this; }
         public AdminLearnerSummaryResponseBuilder gradeLevel(String gradeLevel) { this.gradeLevel = gradeLevel; return this; }
         public AdminLearnerSummaryResponseBuilder sectionId(UUID sectionId) { this.sectionId = sectionId; return this; }
         public AdminLearnerSummaryResponseBuilder sectionName(String sectionName) { this.sectionName = sectionName; return this; }
         public AdminLearnerSummaryResponseBuilder languagePreference(String languagePreference) { this.languagePreference = languagePreference; return this; }
+        public AdminLearnerSummaryResponseBuilder avatar(String avatar) { this.avatar = avatar; return this; }
         public AdminLearnerSummaryResponseBuilder isActive(Boolean isActive) { this.isActive = isActive; return this; }
         public AdminLearnerSummaryResponseBuilder masteryLevel(String masteryLevel) { this.masteryLevel = masteryLevel; return this; }
         public AdminLearnerSummaryResponseBuilder totalPoints(Integer totalPoints) { this.totalPoints = totalPoints; return this; }
@@ -163,16 +214,22 @@ public class AdminLearnerSummaryResponse {
         public AdminLearnerSummaryResponseBuilder bestCumulativeBadge(String bestCumulativeBadge) { this.bestCumulativeBadge = bestCumulativeBadge; return this; }
         public AdminLearnerSummaryResponseBuilder lastActiveAt(OffsetDateTime lastActiveAt) { this.lastActiveAt = lastActiveAt; return this; }
         public AdminLearnerSummaryResponseBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public AdminLearnerSummaryResponseBuilder classPoints(Integer classPoints) { this.classPoints = classPoints; return this; }
+        public AdminLearnerSummaryResponseBuilder classAccuracy(BigDecimal classAccuracy) { this.classAccuracy = classAccuracy; return this; }
+        public AdminLearnerSummaryResponseBuilder classMasteryLevel(String classMasteryLevel) { this.classMasteryLevel = classMasteryLevel; return this; }
+        public AdminLearnerSummaryResponseBuilder classSessionsPlayed(Integer classSessionsPlayed) { this.classSessionsPlayed = classSessionsPlayed; return this; }
 
         public AdminLearnerSummaryResponse build() {
             AdminLearnerSummaryResponse r = new AdminLearnerSummaryResponse();
             r.learnerId = this.learnerId;
+            r.userId = this.userId;
             r.displayName = this.displayName;
             r.age = this.age;
             r.gradeLevel = this.gradeLevel;
             r.sectionId = this.sectionId;
             r.sectionName = this.sectionName;
             r.languagePreference = this.languagePreference;
+            r.avatar = this.avatar != null ? this.avatar : "prof1.jpg";
             r.isActive = this.isActive;
             r.masteryLevel = this.masteryLevel;
             r.totalPoints = this.totalPoints;
@@ -185,6 +242,10 @@ public class AdminLearnerSummaryResponse {
             r.bestCumulativeBadge = this.bestCumulativeBadge;
             r.lastActiveAt = this.lastActiveAt;
             r.createdAt = this.createdAt;
+            r.classPoints = this.classPoints;
+            r.classAccuracy = this.classAccuracy;
+            r.classMasteryLevel = this.classMasteryLevel;
+            r.classSessionsPlayed = this.classSessionsPlayed;
             return r;
         }
     }

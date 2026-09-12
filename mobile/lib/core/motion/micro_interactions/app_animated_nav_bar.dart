@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 class AppNavBarItem {
   final IconData icon;
@@ -128,10 +129,9 @@ class _NavBarItemWidget extends StatelessWidget {
                 curve: Curves.easeIn,
                 child: Text(
                   item.label,
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
+                  style: AppTypography.baloo2(
                     fontSize: 13,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
                     color: activeColor,
                   ),
                 ),

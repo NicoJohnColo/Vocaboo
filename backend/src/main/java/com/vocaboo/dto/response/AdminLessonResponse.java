@@ -56,6 +56,42 @@ public class AdminLessonResponse {
     @JsonProperty("context_paragraph")
     private String contextParagraph;
 
+    @JsonProperty("module2_activities")
+    private String module2Activities;
+
+    @JsonProperty("module3_activities")
+    private String module3Activities;
+
+    @JsonProperty("module4_activities")
+    private String module4Activities;
+
+    @JsonProperty("upgrade_streak_required")
+    private Integer upgradeStreakRequired;
+
+    @JsonProperty("demotion_threshold")
+    private Integer demotionThreshold;
+
+    @JsonProperty("reintroduction_threshold")
+    private Integer reintroductionThreshold;
+
+    @JsonProperty("module3_upgrade_streak_required")
+    private Integer module3UpgradeStreakRequired;
+
+    @JsonProperty("module3_demotion_threshold")
+    private Integer module3DemotionThreshold;
+
+    @JsonProperty("streak_celebration_threshold")
+    private Integer streakCelebrationThreshold;
+
+    @JsonProperty("class_id")
+    private UUID classId;
+
+    @JsonProperty("class_name")
+    private String className;
+
+    @JsonProperty("class_code")
+    private String classCode;
+
     public static AdminLessonResponseBuilder builder() {
         return new AdminLessonResponseBuilder();
     }
@@ -76,6 +112,18 @@ public class AdminLessonResponse {
         private OffsetDateTime createdAt;
         private OffsetDateTime updatedAt;
         private String contextParagraph;
+        private String module2Activities;
+        private String module3Activities;
+        private String module4Activities;
+        private Integer upgradeStreakRequired;
+        private Integer demotionThreshold;
+        private Integer reintroductionThreshold;
+        private Integer module3UpgradeStreakRequired;
+        private Integer module3DemotionThreshold;
+        private Integer streakCelebrationThreshold;
+        private UUID classId;
+        private String className;
+        private String classCode;
 
         public AdminLessonResponseBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
         public AdminLessonResponseBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
@@ -92,6 +140,18 @@ public class AdminLessonResponse {
         public AdminLessonResponseBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
         public AdminLessonResponseBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
         public AdminLessonResponseBuilder contextParagraph(String contextParagraph) { this.contextParagraph = contextParagraph; return this; }
+        public AdminLessonResponseBuilder module2Activities(String module2Activities) { this.module2Activities = module2Activities; return this; }
+        public AdminLessonResponseBuilder module3Activities(String module3Activities) { this.module3Activities = module3Activities; return this; }
+        public AdminLessonResponseBuilder module4Activities(String module4Activities) { this.module4Activities = module4Activities; return this; }
+        public AdminLessonResponseBuilder upgradeStreakRequired(Integer upgradeStreakRequired) { this.upgradeStreakRequired = upgradeStreakRequired; return this; }
+        public AdminLessonResponseBuilder demotionThreshold(Integer demotionThreshold) { this.demotionThreshold = demotionThreshold; return this; }
+        public AdminLessonResponseBuilder reintroductionThreshold(Integer reintroductionThreshold) { this.reintroductionThreshold = reintroductionThreshold; return this; }
+        public AdminLessonResponseBuilder module3UpgradeStreakRequired(Integer module3UpgradeStreakRequired) { this.module3UpgradeStreakRequired = module3UpgradeStreakRequired; return this; }
+        public AdminLessonResponseBuilder module3DemotionThreshold(Integer module3DemotionThreshold) { this.module3DemotionThreshold = module3DemotionThreshold; return this; }
+        public AdminLessonResponseBuilder streakCelebrationThreshold(Integer streakCelebrationThreshold) { this.streakCelebrationThreshold = streakCelebrationThreshold; return this; }
+        public AdminLessonResponseBuilder classId(UUID classId) { this.classId = classId; return this; }
+        public AdminLessonResponseBuilder className(String className) { this.className = className; return this; }
+        public AdminLessonResponseBuilder classCode(String classCode) { this.classCode = classCode; return this; }
 
         public AdminLessonResponse build() {
             AdminLessonResponse r = new AdminLessonResponse();
@@ -110,6 +170,18 @@ public class AdminLessonResponse {
             r.createdAt = this.createdAt;
             r.updatedAt = this.updatedAt;
             r.contextParagraph = this.contextParagraph;
+            r.module2Activities = this.module2Activities;
+            r.module3Activities = this.module3Activities;
+            r.module4Activities = this.module4Activities;
+            r.upgradeStreakRequired = this.upgradeStreakRequired;
+            r.demotionThreshold = this.demotionThreshold;
+            r.reintroductionThreshold = this.reintroductionThreshold;
+            r.module3UpgradeStreakRequired = this.module3UpgradeStreakRequired;
+            r.module3DemotionThreshold = this.module3DemotionThreshold;
+            r.streakCelebrationThreshold = this.streakCelebrationThreshold;
+            r.classId = this.classId;
+            r.className = this.className;
+            r.classCode = this.classCode;
             return r;
         }
     }

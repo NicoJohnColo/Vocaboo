@@ -6,9 +6,10 @@ export default function ConfirmDeleteDialog({
   onCancel,
   danger = true,
   loading = false,
+  style,
 }) {
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={onCancel} style={{ zIndex: 130, ...style }}>
       <div className="modal modal--sm" onClick={e => e.stopPropagation()}>
         <div className="modal__icon">{danger ? '🗑️' : '⚠️'}</div>
         <h2 className="modal__title">{title}</h2>

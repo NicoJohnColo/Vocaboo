@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 enum ToastType { info, success, warning, error }
 
@@ -207,10 +208,9 @@ class _AppToastWidgetState extends State<_AppToastWidget>
                               if (widget.title != null) ...[
                                 Text(
                                   widget.title!,
-                                  style: const TextStyle(
-                                    fontFamily: 'Outfit',
+                                  style: AppTypography.baloo2(
                                     fontSize: 14,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w700,
                                     color: Colors.white,
                                   ),
                                 ),
@@ -218,11 +218,10 @@ class _AppToastWidgetState extends State<_AppToastWidget>
                               ],
                               Text(
                                 widget.message,
-                                style: const TextStyle(
-                                  fontFamily: 'Outfit',
+                                style: AppTypography.nunito(
                                   fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFFE2E8F0),
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFFE2E8F0),
                                 ),
                               ),
                             ],

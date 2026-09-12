@@ -4,15 +4,24 @@ import '../core/motion/motion.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
+import '../widgets/app_avatar.dart';
+import '../widgets/app_3d_bottom_nav_bar.dart';
 
 class LeaderboardScreen extends StatefulWidget {
-  const LeaderboardScreen({super.key});
+  final bool isInsideShell;
+
+  const LeaderboardScreen({
+    super.key,
+    this.isInsideShell = false,
+  });
 
   @override
   State<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
-class _LeaderboardScreenState extends State<LeaderboardScreen> {
+class _LeaderboardScreenState extends State<LeaderboardScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   String _currentRange = 'weekly';
   bool _isLoading = false;
   String? _error;
@@ -63,29 +72,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return AppViewStatus.content;
   }
 
-  Color _getAvatarColor(String name) {
-    final colors = [
-      const Color(0xFF0EA5E9),
-      const Color(0xFF8B5CF6),
-      const Color(0xFFEC4899),
-      const Color(0xFF10B981),
-      const Color(0xFFF59E0B),
-      const Color(0xFF6366F1),
-    ];
-    final hash = name.codeUnits.fold(0, (sum, char) => sum + char);
-    return colors[hash % colors.length];
-  }
-
-  String _getInitials(String name) {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) return '?';
-    final parts = trimmed.split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return trimmed.substring(0, trimmed.length >= 2 ? 2 : 1).toUpperCase();
-  }
-
   Widget _buildToggle(String? pref) {
     final isWeekly = _currentRange == 'weekly';
     return Container(
@@ -134,8 +120,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     ),
                     Text(
                       LocalizationService.translate(pref, 'this_week'),
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
+                      style: AppTypography.baloo2(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         color: isWeekly ? Colors.white : const Color(0xFF64748B),
@@ -156,7 +141,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 decoration: BoxDecoration(
                   gradient: !isWeekly
                       ? const LinearGradient(
-                          colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                          colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         )
@@ -166,7 +151,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   boxShadow: !isWeekly
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                            color: const Color(0xFF2563EB).withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 3),
                           )
@@ -182,8 +167,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     ),
                     Text(
                       LocalizationService.translate(pref, 'all_time'),
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
+                      style: AppTypography.baloo2(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         color: !isWeekly ? Colors.white : const Color(0xFF64748B),
@@ -308,10 +292,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     required LinearGradient gradient,
     bool isFirst = false,
   }) {
-    final name = entry['displayName']?.toString() ?? 'Learner';
+    final rawName = entry['displayName']?.toString() ?? entry['name']?.toString();
+    final name = (rawName != null && rawName.trim().isNotEmpty)
+        ? rawName.trim()
+        : 'Learner';
     final points = entry['points'] ?? 0;
-    final initials = _getInitials(name);
-    final avatarBg = _getAvatarColor(name);
+    final avatar = entry['avatar']?.toString();
 
     return AppPressable(
       onTap: () {
@@ -333,33 +319,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           const SizedBox(height: 2),
 
           // Avatar Circle with Ring
-          Container(
-            padding: EdgeInsets.all(isFirst ? 3.5 : 2.5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              border: Border.all(color: borderColor, width: isFirst ? 3 : 2),
-              boxShadow: [
-                BoxShadow(
-                  color: borderColor.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: CircleAvatar(
-              radius: isFirst ? 24 : 19,
-              backgroundColor: avatarBg,
-              child: Text(
-                initials,
-                style: TextStyle(
-                  fontFamily: 'Outfit',
-                  fontWeight: FontWeight.w900,
-                  fontSize: isFirst ? 16 : 13,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+          AppAvatar(
+            avatar: avatar,
+            name: name,
+            size: isFirst ? 56 : 46,
+            borderWidth: isFirst ? 3.5 : 2.5,
+            borderColor: borderColor,
+            showShadow: true,
           ),
           const SizedBox(height: 6),
 
@@ -369,8 +335,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'Outfit',
+            style: AppTypography.baloo2(
               fontWeight: FontWeight.w800,
               fontSize: isFirst ? 14 : 12,
               color: const Color(0xFF0F172A),
@@ -393,9 +358,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 const SizedBox(width: 3),
                 Text(
                   '$points',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: FontWeight.w900,
+                  style: AppTypography.baloo2(
+                    fontWeight: FontWeight.w800,
                     fontSize: isFirst ? 12 : 11,
                     color: badgeColor,
                   ),
@@ -428,9 +392,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 ),
                 child: Text(
                   '#$rank',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: FontWeight.w900,
+                  style: AppTypography.baloo2(
+                    fontWeight: FontWeight.w800,
                     fontSize: isFirst ? 18 : 15,
                     color: badgeColor,
                   ),
@@ -443,106 +406,86 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildRankItem(
-    BuildContext context,
-    Map<String, dynamic> entry,
-    int index,
-    String? currentUserId,
-  ) {
-    final rank = entry['rank'] as int;
-    final displayName = entry['displayName']?.toString() ?? 'Learner';
-    final points = entry['points'] ?? 0;
-    final tier = entry['tier']?.toString() ?? 'Learning';
-    final entryId = entry['learnerId']?.toString();
+  Widget _buildRankItem(BuildContext context, Map<String, dynamic> entry, int index, String? currentUserId) {
+    final rank = index + 1;
+    final isMe = (entry['id']?.toString() == currentUserId || entry['learnerId']?.toString() == currentUserId);
+    final rawDisplayName = entry['displayName']?.toString() ?? entry['name']?.toString();
+    final displayName = (rawDisplayName != null && rawDisplayName.trim().isNotEmpty)
+        ? rawDisplayName.trim()
+        : (isMe
+            ? (Provider.of<AuthProvider>(context, listen: false).learner?.displayName ?? 'You')
+            : 'Learner $rank');
+    final int points = (entry['points'] is num)
+        ? (entry['points'] as num).toInt()
+        : (int.tryParse(entry['points']?.toString() ?? '0') ?? 0);
+    final rawTier = (entry['tier']?.toString() ?? '').toUpperCase();
 
-    final isMe = currentUserId != null &&
-        entryId != null &&
-        currentUserId.toLowerCase() == entryId.toLowerCase();
+    Color rankBg = const Color(0xFFF1F5F9);
+    Color rankTextClr = const Color(0xFF64748B);
+    String rankStr = '#$rank';
 
-    final initials = _getInitials(displayName);
-    final avatarColor = _getAvatarColor(displayName);
+    if (rank == 1) {
+      rankBg = const Color(0xFFFEF3C7);
+      rankTextClr = const Color(0xFFD97706);
+      rankStr = '🥇';
+    } else if (rank == 2) {
+      rankBg = const Color(0xFFF1F5F9);
+      rankTextClr = const Color(0xFF64748B);
+      rankStr = '🥈';
+    } else if (rank == 3) {
+      rankBg = const Color(0xFFFFEDD5);
+      rankTextClr = const Color(0xFFC2410C);
+      rankStr = '🥉';
+    }
 
     Color tierBgColor;
     Color tierTextColor;
     String tierLabel;
-    switch (tier.toUpperCase()) {
-      case 'MASTERED':
-        tierBgColor = const Color(0xFFF3E8FF);
-        tierTextColor = const Color(0xFF7E22CE);
-        tierLabel = '🌟 Mastered';
-        break;
-      case 'PROFICIENT':
-        tierBgColor = const Color(0xFFECFDF5);
-        tierTextColor = const Color(0xFF047857);
-        tierLabel = '⚡ Proficient';
-        break;
-      default:
-        tierBgColor = const Color(0xFFF0F9FF);
-        tierTextColor = const Color(0xFF0369A1);
-        tierLabel = '🎈 Learning';
-        break;
+
+    if (points >= 3500 || rawTier == 'DIAMOND' || rawTier == 'MASTERED') {
+      tierBgColor = const Color(0xFFE0F2FE);
+      tierTextColor = const Color(0xFF0369A1);
+      tierLabel = 'Diamond League';
+    } else if (points >= 2500 || rawTier == 'GOLD' || rawTier == 'PROFICIENT') {
+      tierBgColor = const Color(0xFFFEF3C7);
+      tierTextColor = const Color(0xFFB45309);
+      tierLabel = 'Gold League';
+    } else if (points >= 1000 || rawTier == 'SILVER' || rawTier == 'FAMILIAR') {
+      tierBgColor = const Color(0xFFF1F5F9);
+      tierTextColor = const Color(0xFF475569);
+      tierLabel = 'Silver League';
+    } else {
+      tierBgColor = const Color(0xFFFFEDD5);
+      tierTextColor = const Color(0xFFC2410C);
+      tierLabel = 'Bronze League';
     }
 
-    return AppStaggeredFadeIn(
-      index: index,
-      child: AppPressable(
-        onTap: () {
-          AppToast.show(
-            context,
-            title: displayName,
-            message: '$points points earned in $tier!',
-            type: ToastType.info,
-          );
-        },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isMe ? const Color(0xFFEFF6FF) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isMe ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
-              width: isMe ? 2.0 : 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isMe
-                    ? const Color(0xFF06A6FF).withValues(alpha: 0.12)
-                    : Colors.black.withValues(alpha: 0.02),
-                blurRadius: isMe ? 10 : 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: isMe ? const Color(0xFFF0F9FF) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isMe ? const Color(0xFF06A6FF) : const Color(0xFFE2E8F0),
+          width: isMe ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              // Rank Badge
+              // Rank Circle
               () {
-                Color rankBg;
-                Color rankTextClr;
-                String rankStr;
-                if (rank == 1) {
-                  rankBg = const Color(0xFFFEF3C7);
-                  rankTextClr = const Color(0xFFD97706);
-                  rankStr = '🥇';
-                } else if (rank == 2) {
-                  rankBg = const Color(0xFFE2E8F0);
-                  rankTextClr = const Color(0xFF475569);
-                  rankStr = '🥈';
-                } else if (rank == 3) {
-                  rankBg = const Color(0xFFFFEDD5);
-                  rankTextClr = const Color(0xFFC2410C);
-                  rankStr = '🥉';
-                } else if (isMe) {
-                  rankBg = const Color(0xFF06A6FF);
-                  rankTextClr = Colors.white;
-                  rankStr = '#$rank';
-                } else {
-                  rankBg = const Color(0xFFF1F5F9);
-                  rankTextClr = const Color(0xFF64748B);
-                  rankStr = '#$rank';
-                }
-
                 return Container(
                   width: 36,
                   height: 36,
@@ -553,9 +496,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   child: Center(
                     child: Text(
                       rankStr,
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.w900,
+                      style: AppTypography.baloo2(
+                        fontWeight: FontWeight.w800,
                         fontSize: rank <= 3 ? 16 : 13,
                         color: rankTextClr,
                       ),
@@ -566,18 +508,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               const SizedBox(width: 12),
 
               // Avatar Circle
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: avatarColor,
-                child: Text(
-                  initials,
-                  style: const TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Colors.white,
-                  ),
-                ),
+              AppAvatar(
+                avatar: entry['avatar']?.toString(),
+                name: displayName,
+                size: 42,
+                showShadow: false,
               ),
               const SizedBox(width: 12),
 
@@ -593,8 +528,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                             displayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontFamily: 'Outfit',
+                            style: AppTypography.baloo2(
                               fontWeight: FontWeight.w800,
                               fontSize: 15,
                               color: isMe ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
@@ -609,11 +543,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                               color: const Color(0xFF06A6FF),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text(
+                            child: Text(
                               'YOU! 🚀',
-                              style: TextStyle(
-                                fontFamily: 'Outfit',
-                                fontWeight: FontWeight.w900,
+                              style: AppTypography.baloo2(
+                                fontWeight: FontWeight.w800,
                                 fontSize: 9,
                                 color: Colors.white,
                               ),
@@ -631,10 +564,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       ),
                       child: Text(
                         tierLabel,
-                        style: TextStyle(
-                          fontFamily: 'Outfit',
+                        style: AppTypography.baloo2(
                           fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w800,
                           color: tierTextColor,
                         ),
                       ),
@@ -662,11 +594,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     const SizedBox(width: 4),
                     Text(
                       '$points',
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.w900,
+                      style: AppTypography.baloo2(
+                        fontWeight: FontWeight.w800,
                         fontSize: 13,
-                        color: Color(0xFFB45309),
+                        color: const Color(0xFFB45309),
                       ),
                     ),
                   ],
@@ -681,6 +612,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final auth = Provider.of<AuthProvider>(context);
     final pref = auth.learner?.languagePreference;
     final currentUserId = auth.learner?.learnerId;
@@ -693,21 +625,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        centerTitle: true,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('🏆 ', style: TextStyle(fontSize: 22)),
-            Text(
-              LocalizationService.translate(pref, 'leaderboard_title'),
-              style: const TextStyle(
-                fontFamily: 'Outfit',
-                fontWeight: FontWeight.w900,
-                fontSize: 22,
-                color: Color(0xFF06A6FF),
-              ),
-            ),
-          ],
+        centerTitle: false,
+        titleSpacing: 20,
+        title: Text(
+          LocalizationService.translate(pref, 'leaderboard_title'),
+          style: AppTypography.baloo2(
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: const Color(0xFF06A6FF),
+          ),
         ),
       ),
       body: AppRefreshIndicator(
@@ -737,17 +663,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
                     // Full Rankings List (shows ALL players)
                     if (_leaderboardData.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Text(
-                          'ALL RANKINGS',
-                          style: TextStyle(
-                            fontFamily: 'Outfit',
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Color(0xFF94A3B8),
-                            letterSpacing: 1.2,
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.people_rounded, size: 18, color: Color(0xFF64748B)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'All Rankings',
+                              style: AppTypography.baloo2(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                color: const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       ..._leaderboardData.asMap().entries.map((e) {
@@ -761,6 +691,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: widget.isInsideShell
+          ? null
+          : const App3DBottomNavBar(
+              currentPath: '/leaderboard',
+            ),
     );
   }
 }

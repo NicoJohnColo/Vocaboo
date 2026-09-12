@@ -4,14 +4,22 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../models/vocabulary_word_model.dart';
+import '../services/local_storage_service.dart';
 import '../services/localization_service.dart';
 import '../services/tts_service.dart';
+import '../core/motion/motion.dart';
 
 class DiagnosticCheckScreen extends StatefulWidget {
   final String lessonId;
   final String categoryId;
+  final String? lessonTitle;
 
-  const DiagnosticCheckScreen({super.key, required this.lessonId, required this.categoryId});
+  const DiagnosticCheckScreen({
+    super.key,
+    required this.lessonId,
+    required this.categoryId,
+    this.lessonTitle,
+  });
 
   @override
   State<DiagnosticCheckScreen> createState() => _DiagnosticCheckScreenState();
@@ -53,6 +61,15 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
         _localWords = activeWords;
         _confusablePairs = pairs;
       });
+
+      LocalStorageService.saveActiveLessonSession(
+        widget.lessonId,
+        'diag_${widget.lessonId}',
+        '/lesson/${widget.lessonId}/diagnostic',
+        posFocus: filter ?? 'ALL',
+        allWords: activeWords.map((w) => w.toJson()).toList(),
+        categoryId: widget.categoryId,
+      );
     });
   }
 
@@ -127,6 +144,7 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
             'allWords': all,
             'sessionId': result.sessionId,
             'categoryId': widget.categoryId,
+            'lessonTitle': widget.lessonTitle,
           },
         );
       } else {
@@ -230,10 +248,10 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
         ),
         title: Text(
           LocalizationService.translate(pref, 'diagnostic_check'),
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
+          style: AppTypography.baloo2(
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF06A6FF),
           ),
         ),
       ),
@@ -243,23 +261,9 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  height: 8,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween<double>(end: progress),
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, value, _) {
-                      return LinearProgressIndicator(
-                        value: value,
-                        backgroundColor: const Color(0xFFE2E8F0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0EA5E9)),
-                      );
-                    },
-                  ),
-                ),
+              App3DProgressBar(
+                value: progress,
+                height: 20.0,
               ),
               const SizedBox(height: 12),
               Text(
@@ -275,122 +279,98 @@ class _DiagnosticCheckScreenState extends State<DiagnosticCheckScreen> {
               ),
               const Spacer(),
 
-              // Word Card
-              Container(
-                height: hasPair ? 270 : 240,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        currentWord.englishWord,
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                          letterSpacing: -0.5,
-                        ),
+              // Word Card with Smooth Directional Slide Transition
+              AppQuestionTransition(
+                child: Container(
+                  key: ValueKey('diag_card_${currentWord.wordId}_$_currentIndex'),
+                  height: hasPair ? 270 : 240,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        LocalizationService.translate(pref, 'know_word_prompt'),
-                        style: const TextStyle(fontSize: 16, color: Color(0xFF64748B)),
-                      ),
-                      // Confusable badge shown only when this word has a pair
-                      if (hasPair) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF7ED),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                                color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.swap_horiz_rounded, size: 14, color: Color(0xFFD97706)),
-                              SizedBox(width: 5),
-                              Text(
-                                'Has confusable pair',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFFD97706),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
+                  ),
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          currentWord.englishWord,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0F172A),
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          LocalizationService.translate(pref, 'know_word_prompt'),
+                          style: const TextStyle(fontSize: 16, color: Color(0xFF64748B)),
+                        ),
+                        // Confusable badge shown only when this word has a pair
+                        if (hasPair) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.swap_horiz_rounded, size: 14, color: Color(0xFFD97706)),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Has confusable pair',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFFD97706),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ),
               const Spacer(),
 
-              // Buttons
-              ElevatedButton(
+              // Buttons (Chunky 3D Duolingo Style)
+              App3DButton(
                 onPressed: () => _answerCurrent(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0EA5E9),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.check_circle_outline, size: 22),
-                    const SizedBox(width: 12),
-                    Text(
-                      LocalizationService.translate(pref, 'yes_know'),
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                    ),
-                  ],
-                ),
+                variant: App3DButtonVariant.primary,
+                height: 54,
+                depth: 4.5,
+                isFullWidth: true,
+                icon: Icons.check_circle_outline,
+                text: LocalizationService.translate(pref, 'yes_know'),
+              ),
+              const SizedBox(height: 14),
+              App3DButton(
+                onPressed: () => _answerCurrent(false),
+                variant: App3DButtonVariant.secondary,
+                height: 50,
+                depth: 3.5,
+                isFullWidth: true,
+                icon: Icons.school_outlined,
+                text: LocalizationService.translate(pref, 'not_yet'),
               ),
               const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: () => _answerCurrent(false),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.help_outline_rounded, size: 22, color: Color(0xFFD97706)),
-                    const SizedBox(width: 12),
-                    Text(
-                      LocalizationService.translate(pref, 'no_dont_know'),
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                          color: Color(0xFF0F172A)),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
@@ -422,6 +402,9 @@ class _ConfusablePairSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final pref = auth.learner?.languagePreference;
+
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
       minChildSize: 0.5,
@@ -452,13 +435,13 @@ class _ConfusablePairSheet extends StatelessWidget {
                   children: [
                     const Icon(Icons.swap_horiz_rounded, size: 32, color: Color(0xFFF59E0B)),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Confusable Words',
                       style: TextStyle(
                         fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
-                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0F172A),
+                        fontFamily: AppTypography.displayFontFamily,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -512,17 +495,17 @@ class _ConfusablePairSheet extends StatelessWidget {
                                     textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(height: 12),
-                                  ElevatedButton.icon(
+                                  App3DButton(
                                     onPressed: () => ttsService.speak(wordAEnglish),
-                                    icon: const Icon(Icons.volume_up_rounded, size: 16),
-                                    label: const Text("Listen"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF0284C7),
-                                      foregroundColor: Colors.white,
-                                      elevation: 0,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                    ),
+                                    icon: Icons.volume_up_rounded,
+                                    text: LocalizationService.translate(pref, 'listen'),
+                                    customBaseColor: const Color(0xFF0284C7),
+                                    customDepthColor: const Color(0xFF0369A1),
+                                    height: 38,
+                                    depth: 3.0,
+                                    borderRadius: 12,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                                   ),
                                 ],
                               ),
@@ -547,9 +530,9 @@ class _ConfusablePairSheet extends StatelessWidget {
                                       color: const Color(0xFFD97706),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    child: const Text(
-                                      'Bonus Word',
-                                      style: TextStyle(
+                                    child: Text(
+                                      LocalizationService.translate(pref, 'bonus_word'),
+                                      style: const TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.white,
@@ -576,17 +559,17 @@ class _ConfusablePairSheet extends StatelessWidget {
                                     textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(height: 12),
-                                  ElevatedButton.icon(
+                                  App3DButton(
                                     onPressed: () => ttsService.speak(wordBEnglish),
-                                    icon: const Icon(Icons.volume_up_rounded, size: 16),
-                                    label: const Text("Listen"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFD97706),
-                                      foregroundColor: Colors.white,
-                                      elevation: 0,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                    ),
+                                    icon: Icons.volume_up_rounded,
+                                    text: LocalizationService.translate(pref, 'listen'),
+                                    customBaseColor: const Color(0xFFD97706),
+                                    customDepthColor: const Color(0xFFB45309),
+                                    height: 38,
+                                    depth: 3.0,
+                                    borderRadius: 12,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                                   ),
                                 ],
                               ),
@@ -636,19 +619,13 @@ class _ConfusablePairSheet extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.fromLTRB(
                     24, 8, 24, MediaQuery.of(context).padding.bottom + 16),
-                child: ElevatedButton(
+                child: App3DButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Got it',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                  ),
+                  variant: App3DButtonVariant.dark,
+                  height: 54,
+                  depth: 4.5,
+                  isFullWidth: true,
+                  text: LocalizationService.translate(pref, 'got_it'),
                 ),
               ),
             ],

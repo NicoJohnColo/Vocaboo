@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../models/learner_model.dart';
+import '../constants/app_avatars.dart';
 import 'package:mobile/config/app_config.dart';
 import '../services/local_storage_service.dart';
 
@@ -82,7 +83,14 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> register(String displayName, int age, String pin, String languagePreference) async {
+  Future<bool> register(
+    String displayName,
+    int age,
+    String pin,
+    String languagePreference, {
+    String? avatar,
+    String? gradeLevel,
+  }) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -97,6 +105,8 @@ class AuthProvider with ChangeNotifier {
               'age': age,
               'pin': pin,
               'languagePreference': languagePreference,
+              if (avatar != null && avatar.isNotEmpty) 'avatar': avatar,
+              if (gradeLevel != null && gradeLevel.isNotEmpty) 'gradeLevel': gradeLevel,
             }),
           )
           .timeout(const Duration(seconds: 5));
@@ -109,9 +119,11 @@ class AuthProvider with ChangeNotifier {
           learnerId: body['learnerId'],
           displayName: body['displayName'],
           age: age,
+          gradeLevel: body['gradeLevel'] ?? gradeLevel ?? 'GRADE_4',
           languagePreference: body['languagePreference'],
           onboardingComplete: body['onboardingComplete'] ?? true,
           masteryApplyImmediately: body['masteryApplyImmediately'] ?? true,
+          avatar: AppAvatars.normalize(body['avatar'] ?? avatar, seed: (body['displayName'] ?? body['learnerId'])?.toString()),
         );
 
         await _storage.write(key: 'jwt_token', value: _token);
@@ -161,12 +173,13 @@ class AuthProvider with ChangeNotifier {
           languagePreference: body['languagePreference'],
           onboardingComplete: body['onboardingComplete'] ?? true,
           masteryApplyImmediately: body['masteryApplyImmediately'] ?? true,
+          avatar: AppAvatars.normalize(body['avatar'], seed: (body['displayName'] ?? body['learnerId'])?.toString()),
         );
 
         await _storage.write(key: 'jwt_token', value: _token);
         await _storage.write(key: 'learner_id', value: _learner!.learnerId);
 
-        // Fetch complete profile to get age
+        // Fetch complete profile to get age and actual avatar
         await fetchProfile();
         
         _isLoading = false;
@@ -209,7 +222,53 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> updateProfile(String displayName, int age) async {
+  Future<bool> updateAvatar(String newAvatar) async {
+    if (_token == null) return false;
+
+    // Optimistic local update for instantaneous UI feedback
+    final oldAvatar = _learner?.avatar;
+    if (_learner != null) {
+      _learner = _learner!.copyWith(avatar: newAvatar);
+      notifyListeners();
+    }
+
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/learners/preferences'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'avatar': newAvatar,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        _learner = LearnerModel.fromJson(json.decode(response.body));
+        notifyListeners();
+        return true;
+      } else {
+        // Rollback on failure
+        if (_learner != null && oldAvatar != null) {
+          _learner = _learner!.copyWith(avatar: oldAvatar);
+          notifyListeners();
+        }
+        return false;
+      }
+    } catch (e) {
+      // Rollback on connection failure
+      if (_learner != null && oldAvatar != null) {
+        _learner = _learner!.copyWith(avatar: oldAvatar);
+        notifyListeners();
+      }
+      return false;
+    }
+  }
+
+  Future<bool> updateProfile(String displayName, int age, {String? avatar, String? gradeLevel}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -224,6 +283,9 @@ class AuthProvider with ChangeNotifier {
             },
             body: json.encode({
               'displayName': displayName,
+              'age': age,
+              if (gradeLevel != null && gradeLevel.isNotEmpty) 'gradeLevel': gradeLevel,
+              if (avatar != null && avatar.isNotEmpty) 'avatar': avatar,
             }),
           )
           .timeout(const Duration(seconds: 5));

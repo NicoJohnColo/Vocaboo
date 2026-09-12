@@ -5,7 +5,7 @@ import 'api_service.dart';
 class AuthService {
   final ApiService _apiService = ApiService();
 
-  Future<http.Response> register(String displayName, int age, String pin, String languagePreference) async {
+  Future<http.Response> register(String displayName, int age, String pin, String languagePreference, {String? avatar, String? gradeLevel}) async {
     return await http.post(
       Uri.parse('${ApiService.baseUrl}/learners/register'),
       headers: {'Content-Type': 'application/json'},
@@ -14,6 +14,8 @@ class AuthService {
         'age': age,
         'pin': pin,
         'languagePreference': languagePreference,
+        if (avatar != null && avatar.isNotEmpty) 'avatar': avatar,
+        if (gradeLevel != null && gradeLevel.isNotEmpty) 'gradeLevel': gradeLevel,
       }),
     );
   }

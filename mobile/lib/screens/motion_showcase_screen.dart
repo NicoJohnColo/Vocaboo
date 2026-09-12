@@ -36,13 +36,13 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text(
+        title: Text(
           'Motion System Showcase',
           style: TextStyle(
-            fontFamily: 'Outfit',
-            fontWeight: FontWeight.w900,
+            fontFamily: AppTypography.displayFontFamily,
+            fontWeight: FontWeight.w800,
             fontSize: 20,
-            color: Color(0xFF0F172A),
+            color: const Color(0xFF06A6FF),
           ),
         ),
         actions: [
@@ -54,13 +54,13 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
                 context: context,
                 builder: (context) => AlertDialog(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                  title: const Text(
+                  title: Text(
                     'Vocaboo Motion Engine',
-                    style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold),
+                    style: TextStyle(fontFamily: AppTypography.displayFontFamily, fontWeight: FontWeight.bold),
                   ),
-                  content: const Text(
+                  content: Text(
                     'All animations run at 60-120fps using compositor-friendly transforms (Scale, Translate, Opacity) isolated in RepaintBoundaries with full Reduce Motion accessibility support.',
-                    style: TextStyle(fontFamily: 'Outfit', fontSize: 14, color: Color(0xFF475569)),
+                    style: TextStyle(fontFamily: AppTypography.bodyFontFamily, fontSize: 14, color: const Color(0xFF475569)),
                   ),
                   actions: [
                     TextButton(
@@ -121,12 +121,12 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
                         alignment: Alignment.center,
-                        child: const Text(
+                        child: Text(
                           'Spring Tap',
                           style: TextStyle(
-                            fontFamily: 'Outfit',
+                            fontFamily: AppTypography.displayFontFamily,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F172A),
+                            color: const Color(0xFF0F172A),
                           ),
                         ),
                       ),
@@ -144,21 +144,21 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Modal Bottom Sheet',
                                   style: TextStyle(
-                                    fontFamily: 'Outfit',
+                                    fontFamily: AppTypography.displayFontFamily,
                                     fontSize: 20,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                const Text(
+                                Text(
                                   'Slides up smoothly with spring deceleration and backdrop dimming synced to gesture.',
                                   style: TextStyle(
-                                    fontFamily: 'Outfit',
+                                    fontFamily: AppTypography.bodyFontFamily,
                                     fontSize: 14,
-                                    color: Color(0xFF64748B),
+                                    color: const Color(0xFF64748B),
                                   ),
                                 ),
                                 const SizedBox(height: 20),
@@ -180,10 +180,10 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         alignment: Alignment.center,
-                        child: const Text(
+                        child: Text(
                           'Open Bottom Sheet',
                           style: TextStyle(
-                            fontFamily: 'Outfit',
+                            fontFamily: AppTypography.displayFontFamily,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -218,37 +218,37 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                            color: const Color(0xFF2563EB).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(
                             Icons.auto_awesome_rounded,
-                            color: Color(0xFF8B5CF6),
+                            color: Color(0xFF2563EB),
                             size: 32,
                           ),
                         ),
                       ),
                       const SizedBox(width: 16),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Shared Element Continuity',
                               style: TextStyle(
-                                fontFamily: 'Outfit',
+                                fontFamily: AppTypography.displayFontFamily,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
+                                color: const Color(0xFF0F172A),
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
                               'Tap to see smooth hero flight without text jitter or elevation glitching.',
                               style: TextStyle(
-                                fontFamily: 'Outfit',
+                                fontFamily: AppTypography.bodyFontFamily,
                                 fontSize: 12,
-                                color: Color(0xFF64748B),
+                                color: const Color(0xFF64748B),
                               ),
                             ),
                           ],
@@ -297,13 +297,13 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Fluid Spring Switch',
                     style: TextStyle(
-                      fontFamily: 'Outfit',
+                      fontFamily: AppTypography.displayFontFamily,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                      color: const Color(0xFF0F172A),
                     ),
                   ),
                   AppAnimatedSwitch(
@@ -316,13 +316,13 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Animated Checkbox',
                     style: TextStyle(
-                      fontFamily: 'Outfit',
+                      fontFamily: AppTypography.displayFontFamily,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                      color: const Color(0xFF0F172A),
                     ),
                   ),
                   AppAnimatedCheckbox(
@@ -409,11 +409,11 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
-      style: const TextStyle(
-        fontFamily: 'Outfit',
+      style: TextStyle(
+        fontFamily: AppTypography.displayFontFamily,
         fontSize: 16,
         fontWeight: FontWeight.w800,
-        color: Color(0xFF0F172A),
+        color: const Color(0xFF0F172A),
       ),
     );
   }
@@ -438,7 +438,7 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
         child: Text(
           label,
           style: TextStyle(
-            fontFamily: 'Outfit',
+            fontFamily: AppTypography.displayFontFamily,
             fontSize: 13,
             fontWeight: FontWeight.bold,
             color: color,
@@ -463,7 +463,7 @@ class _MotionShowcaseScreenState extends State<MotionShowcaseScreen> {
           child: Text(
             label,
             style: TextStyle(
-              fontFamily: 'Outfit',
+              fontFamily: AppTypography.displayFontFamily,
               fontSize: 12,
               fontWeight: FontWeight.bold,
               color: isSelected ? Colors.white : const Color(0xFF64748B),

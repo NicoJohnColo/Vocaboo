@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
 import '../typography_tokens.dart';
+import '../../../widgets/app_3d_button.dart';
 
 /// Reusable Answer Feedback Banner for young learners (ages 9-12).
 ///
@@ -185,17 +186,14 @@ class _AppAnswerFeedbackState extends State<AppAnswerFeedback>
             ),
             const SizedBox(height: 16),
             if (widget.onContinue != null)
-              ElevatedButton(
+              App3DButton(
+                text: widget.continueLabel,
                 onPressed: widget.onContinue,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
-                  textStyle: AppTypography.button.copyWith(fontSize: 16),
-                ),
-                child: Text(widget.continueLabel),
+                variant: widget.isCorrect ? App3DButtonVariant.success : App3DButtonVariant.danger,
+                height: 50.0,
+                depth: 5.0,
+                isFullWidth: true,
+                borderRadius: 16,
               ),
           ],
         ),

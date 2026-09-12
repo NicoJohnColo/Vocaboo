@@ -245,7 +245,7 @@ export default function ConfusableWordPairModal({
   const bothSelected     = !!wordAId && !!wordBId && wordAId !== wordBId;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 120 }}>
       <div
         className="modal modal--lg modal--confusable"
         onClick={e => e.stopPropagation()}

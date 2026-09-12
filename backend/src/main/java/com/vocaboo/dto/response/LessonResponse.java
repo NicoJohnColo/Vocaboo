@@ -30,6 +30,17 @@ public class LessonResponse {
     private List<UUID> sourceLessonIds;
     private UUID compositeReviewAfterLessonId;
     private String contextParagraph;
+    private String module2Activities;
+    private String module3Activities;
+    private String module4Activities;
+    private Integer upgradeStreakRequired;
+    private Integer demotionThreshold;
+    private Integer reintroductionThreshold;
+    private Integer module3UpgradeStreakRequired;
+    private Integer module3DemotionThreshold;
+    private Integer streakCelebrationThreshold;
+    private UUID classId;
+    private String className;
 
     public static LessonResponseBuilder builder() { return new LessonResponseBuilder(); }
 
@@ -50,6 +61,15 @@ public class LessonResponse {
         private List<UUID> sourceLessonIds;
         private UUID compositeReviewAfterLessonId;
         private String contextParagraph;
+        private String module2Activities;
+        private String module3Activities;
+        private String module4Activities;
+        private Integer upgradeStreakRequired;
+        private Integer demotionThreshold;
+        private Integer reintroductionThreshold;
+        private Integer module3UpgradeStreakRequired;
+        private Integer module3DemotionThreshold;
+        private Integer streakCelebrationThreshold;
 
         public LessonResponseBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
         public LessonResponseBuilder categoryId(UUID categoryId) { this.categoryId = categoryId; return this; }
@@ -67,6 +87,17 @@ public class LessonResponse {
         public LessonResponseBuilder sourceLessonIds(List<UUID> sourceLessonIds) { this.sourceLessonIds = sourceLessonIds; return this; }
         public LessonResponseBuilder compositeReviewAfterLessonId(UUID compositeReviewAfterLessonId) { this.compositeReviewAfterLessonId = compositeReviewAfterLessonId; return this; }
         public LessonResponseBuilder contextParagraph(String contextParagraph) { this.contextParagraph = contextParagraph; return this; }
+        public LessonResponseBuilder module2Activities(String module2Activities) { this.module2Activities = module2Activities; return this; }
+        public LessonResponseBuilder module3Activities(String module3Activities) { this.module3Activities = module3Activities; return this; }
+        public LessonResponseBuilder module4Activities(String module4Activities) { this.module4Activities = module4Activities; return this; }
+        public LessonResponseBuilder upgradeStreakRequired(Integer upgradeStreakRequired) { this.upgradeStreakRequired = upgradeStreakRequired; return this; }
+        public LessonResponseBuilder demotionThreshold(Integer demotionThreshold) { this.demotionThreshold = demotionThreshold; return this; }
+        public LessonResponseBuilder reintroductionThreshold(Integer reintroductionThreshold) { this.reintroductionThreshold = reintroductionThreshold; return this; }
+        public LessonResponseBuilder module3UpgradeStreakRequired(Integer module3UpgradeStreakRequired) { this.module3UpgradeStreakRequired = module3UpgradeStreakRequired; return this; }
+        public LessonResponseBuilder module3DemotionThreshold(Integer module3DemotionThreshold) { this.module3DemotionThreshold = module3DemotionThreshold; return this; }
+        public LessonResponseBuilder streakCelebrationThreshold(Integer streakCelebrationThreshold) { this.streakCelebrationThreshold = streakCelebrationThreshold; return this; }
+        public LessonResponseBuilder classId(UUID classId) { this.classId = classId; return this; }
+        public LessonResponseBuilder className(String className) { this.className = className; return this; }
 
         public LessonResponse build() {
             LessonResponse r = new LessonResponse();
@@ -86,6 +117,17 @@ public class LessonResponse {
             r.sourceLessonIds = this.sourceLessonIds;
             r.compositeReviewAfterLessonId = this.compositeReviewAfterLessonId;
             r.contextParagraph = this.contextParagraph;
+            r.module2Activities = this.module2Activities;
+            r.module3Activities = this.module3Activities;
+            r.module4Activities = this.module4Activities;
+            r.upgradeStreakRequired = this.upgradeStreakRequired;
+            r.demotionThreshold = this.demotionThreshold;
+            r.reintroductionThreshold = this.reintroductionThreshold;
+            r.module3UpgradeStreakRequired = this.module3UpgradeStreakRequired;
+            r.module3DemotionThreshold = this.module3DemotionThreshold;
+            r.streakCelebrationThreshold = this.streakCelebrationThreshold;
+            r.classId = this.classId;
+            r.className = this.className;
             return r;
         }
     }

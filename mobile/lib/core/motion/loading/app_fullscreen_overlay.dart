@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 
 /// A full-screen blocking loading overlay with smooth backdrop blur and opacity fade.
 class AppFullScreenOverlay extends StatelessWidget {
@@ -75,11 +76,10 @@ class AppFullScreenOverlay extends StatelessWidget {
                   const SizedBox(height: 16),
                   Text(
                     message!,
-                    style: const TextStyle(
-                      fontFamily: 'Outfit',
+                    style: AppTypography.nunito(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                      color: const Color(0xFF0F172A),
                     ),
                     textAlign: TextAlign.center,
                   ),

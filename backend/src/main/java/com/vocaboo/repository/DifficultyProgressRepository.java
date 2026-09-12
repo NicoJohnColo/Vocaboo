@@ -37,6 +37,11 @@ public interface DifficultyProgressRepository extends JpaRepository<DifficultyPr
         @org.springframework.data.repository.query.Param("learnerId") UUID learnerId,
         @org.springframework.data.repository.query.Param("lessonId") UUID lessonId);
 
+    List<DifficultyProgress> findByNeedsTeacherReviewTrueOrderByUpdatedAtDesc();
+    List<DifficultyProgress> findByLearnerSectionSectionIdAndNeedsTeacherReviewTrueOrderByUpdatedAtDesc(UUID sectionId);
+    List<DifficultyProgress> findByLearnerGradeLevelAndNeedsTeacherReviewTrueOrderByUpdatedAtDesc(com.vocaboo.entity.GradeLevel gradeLevel);
+    long countByNeedsTeacherReviewTrue();
+
     /** Count total distinct words MASTERED for the given learner across lessons. */
     @org.springframework.data.jpa.repository.Query(
         "SELECT COUNT(DISTINCT dp.word.wordId) FROM DifficultyProgress dp " +

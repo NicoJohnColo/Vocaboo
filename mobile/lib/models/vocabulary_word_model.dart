@@ -39,6 +39,8 @@ class VocabularyWordModel {
   final String? anchoredWord; // For SENTENCE_ARRANGEMENT LEARNING tier: the pre-placed word
   final String? audioTextCebuano;
   final String? audioTextEnglish;
+  final String? hintDefinition;
+  final String? hintCebuanoSentence;
 
   VocabularyWordModel({
     required this.wordId,
@@ -76,6 +78,8 @@ class VocabularyWordModel {
     this.anchoredWord,
     this.audioTextCebuano,
     this.audioTextEnglish,
+    this.hintDefinition,
+    this.hintCebuanoSentence,
   });
 
   factory VocabularyWordModel.fromJson(Map<String, dynamic> json) {
@@ -151,6 +155,8 @@ class VocabularyWordModel {
       anchoredWord: json['anchoredWord']?.toString(),
       audioTextCebuano: _readString(json, ['audioTextCebuano', 'audio_text_cebuano']),
       audioTextEnglish: _readString(json, ['audioTextEnglish', 'audio_text_english']),
+      hintDefinition: _readString(json, ['hintDefinition', 'hint_definition', 'hintEn', 'hint_en']),
+      hintCebuanoSentence: _readString(json, ['hintCebuanoSentence', 'hint_cebuano_sentence', 'hintCeb', 'hint_ceb']),
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
+import '../typography_tokens.dart';
 import 'app_shimmer.dart';
 
 enum AppViewStatus { loading, content, empty, error }
@@ -107,21 +108,19 @@ class AppStateSwitcher extends StatelessWidget {
             const SizedBox(height: 18),
             Text(
               emptyTitle ?? 'Nothing Here Yet',
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.baloo2(
                 fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF0F172A),
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               emptyMessage ?? 'There is no data available to display right now.',
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.nunito(
                 fontSize: 14,
-                color: Color(0xFF64748B),
+                color: const Color(0xFF64748B),
               ),
               textAlign: TextAlign.center,
             ),
@@ -140,8 +139,8 @@ class AppStateSwitcher extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -153,21 +152,19 @@ class AppStateSwitcher extends StatelessWidget {
             const SizedBox(height: 18),
             Text(
               errorTitle ?? 'Oops! Something went wrong',
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.baloo2(
                 fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF0F172A),
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               errorMessage ?? 'Failed to load content. Please check your connection and try again.',
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.nunito(
                 fontSize: 14,
-                color: Color(0xFF64748B),
+                color: const Color(0xFF64748B),
               ),
               textAlign: TextAlign.center,
             ),

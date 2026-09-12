@@ -5,22 +5,39 @@ const POS_COLORS = {
 };
 
 export default function VocabularyTable({
-  words, lessonTitle, onAdd, onEdit, onDelete, onBulkImport, onConfusablePairs, loading
+  words, lessonTitle, onAdd, onEdit, onDelete, onBulkImport, onConfusablePairs, loading, readOnly = false
 }) {
   return (
     <div>
       <div className="table-toolbar">
         <span className="toolbar-label">📚 {lessonTitle}</span>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-          <button id="confusable-pairs-btn" className="btn btn--ghost btn--sm" onClick={onConfusablePairs}>
-            🔗 Confusable Pairs
-          </button>
-          <button className="btn btn--ghost btn--sm" onClick={onBulkImport}>
-            📥 Bulk Import CSV
-          </button>
-          <button id="add-word-btn" className="btn btn--primary btn--sm" onClick={onAdd}>
-            + Add Word
-          </button>
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center' }}>
+          {readOnly && (
+            <span style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              background: 'rgba(100, 116, 139, 0.1)',
+              color: '#64748b',
+              border: '1px solid rgba(100, 116, 139, 0.25)',
+            }}>
+              👁️ View-Only Mode
+            </span>
+          )}
+          {!readOnly && (
+            <>
+              <button id="confusable-pairs-btn" className="btn btn--ghost btn--sm" onClick={onConfusablePairs}>
+                🔗 Confusable Pairs
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={onBulkImport}>
+                📥 Bulk Import CSV
+              </button>
+              <button id="add-word-btn" className="btn btn--primary btn--sm" onClick={onAdd}>
+                + Add Word
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -46,13 +63,15 @@ export default function VocabularyTable({
                 <th>Explanation</th>
                 <th>TTS (CEB)</th>
                 <th>TTS (EN)</th>
+                <th>Hint (EN)</th>
+                <th>Hint (CEB)</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {words.length === 0 && (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
+                  <td colSpan={19} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
                     No words yet. Click <strong>+ Add Word</strong> or <strong>Bulk Import CSV</strong>.
                   </td>
                 </tr>
@@ -126,9 +145,25 @@ export default function VocabularyTable({
                       ? <span title={w.audio_text_english} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.audio_text_english}</span>
                       : <span style={{ opacity: 0.35 }}>—</span>}
                   </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    {w.hint_definition
+                      ? <span title={w.hint_definition} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.hint_definition}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    {w.hint_cebuano_sentence
+                      ? <span title={w.hint_cebuano_sentence} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{w.hint_cebuano_sentence}</span>
+                      : <span style={{ opacity: 0.35 }}>—</span>}
+                  </td>
                   <td className="actions-cell">
-                    <button className="btn btn--sm btn--ghost" onClick={() => onEdit(w)}>✏️</button>
-                    <button className="btn btn--sm btn--danger-ghost" onClick={() => onDelete(w)}>🗑️</button>
+                    {!readOnly ? (
+                      <>
+                        <button className="btn btn--sm btn--ghost" onClick={() => onEdit(w)} title="Edit word">✏️</button>
+                        <button className="btn btn--sm btn--danger-ghost" onClick={() => onDelete(w)} title="Delete word">🗑️</button>
+                      </>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: '0.75rem', opacity: 0.6 }}>—</span>
+                    )}
                   </td>
                 </tr>
               ))}

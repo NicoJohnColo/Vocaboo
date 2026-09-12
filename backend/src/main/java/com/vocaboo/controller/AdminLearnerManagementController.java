@@ -20,6 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -46,13 +47,15 @@ public class AdminLearnerManagementController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "displayName") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            Authentication auth) {
 
+        UUID teacherId = isTeacher(auth) ? parseAdminId(auth) : null;
         Sort sort = "desc".equalsIgnoreCase(sortDir) ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<AdminLearnerSummaryResponse> result = adminLearnerService.searchLearners(
-                search, sectionId, gradeLevel, isActive, cohortType, pageable);
+                search, sectionId, gradeLevel, isActive, cohortType, teacherId, pageable);
         return ResponseEntity.ok(result);
     }
 
@@ -61,8 +64,12 @@ public class AdminLearnerManagementController {
      * Get comprehensive profile & performance report for a student.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<AdminLearnerDetailResponse> getLearnerDetail(@PathVariable UUID id) {
-        return ResponseEntity.ok(adminLearnerService.getLearnerDetail(id));
+    public ResponseEntity<AdminLearnerDetailResponse> getLearnerDetail(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID classId,
+            Authentication auth) {
+        UUID teacherId = isTeacher(auth) ? parseAdminId(auth) : null;
+        return ResponseEntity.ok(adminLearnerService.getLearnerDetail(id, teacherId, classId));
     }
 
     /**
@@ -80,23 +87,27 @@ public class AdminLearnerManagementController {
 
     /**
      * POST /api/admin/learners/{id}/assign-class
-     * Assign student to a section.
+     * Assign student to a section (Teacher only).
      */
     @PostMapping("/{id}/assign-class")
     public ResponseEntity<Map<String, String>> assignClass(
             @PathVariable UUID id,
             @RequestBody AssignSectionRequest req,
             Authentication auth) {
-        UUID adminId = parseAdminId(auth);
-        adminSectionService.assignLearnerToSection(id, req.getSectionId(), adminId);
+        if (!isTeacher(auth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Administrators cannot assign students to classroom sections. Section assignments are managed by teachers.");
+        }
+        UUID teacherId = parseAdminId(auth);
+        adminSectionService.assignLearnerToSection(id, req.getSectionId(), teacherId);
         return ResponseEntity.ok(Map.of("status", "assigned", "message", "Learner section updated successfully"));
     }
 
     /**
      * POST /api/admin/learners/{id}/deactivate
-     * Soft-deactivate student.
+     * Soft-deactivate student (Admin only).
      */
     @PostMapping("/{id}/deactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, String>> deactivateLearner(
             @PathVariable UUID id,
             Authentication auth) {
@@ -107,15 +118,30 @@ public class AdminLearnerManagementController {
 
     /**
      * POST /api/admin/learners/{id}/reactivate
-     * Reactivate student.
+     * Reactivate student (Admin only).
      */
     @PostMapping("/{id}/reactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, String>> reactivateLearner(
             @PathVariable UUID id,
             Authentication auth) {
         UUID adminId = parseAdminId(auth);
         adminLearnerService.reactivateLearner(id, adminId);
         return ResponseEntity.ok(Map.of("status", "reactivated", "message", "Student account has been reactivated"));
+    }
+
+    /**
+     * DELETE /api/admin/learners/{id}
+     * Permanently delete student account and associated data (Admin only).
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, String>> deleteLearner(
+            @PathVariable UUID id,
+            Authentication auth) {
+        UUID adminId = parseAdminId(auth);
+        adminLearnerService.deleteLearner(id, adminId);
+        return ResponseEntity.ok(Map.of("status", "deleted", "message", "Student account has been permanently deleted"));
     }
 
     /**
@@ -145,7 +171,40 @@ public class AdminLearnerManagementController {
             @Valid @RequestBody BulkLearnerActionRequest req,
             Authentication auth) {
         UUID adminId = parseAdminId(auth);
+        boolean isTeacher = isTeacher(auth);
+        if (!isTeacher && req.getAction() == com.vocaboo.dto.request.BulkLearnerActionRequest.BulkActionType.ASSIGN_SECTION) {
+            throw new org.springframework.security.access.AccessDeniedException("Administrators cannot assign students to teacher classroom sections.");
+        }
+        if (isTeacher && (req.getAction() == com.vocaboo.dto.request.BulkLearnerActionRequest.BulkActionType.DEACTIVATE || req.getAction() == com.vocaboo.dto.request.BulkLearnerActionRequest.BulkActionType.REACTIVATE)) {
+            throw new org.springframework.security.access.AccessDeniedException("Teachers cannot deactivate or reactivate global student accounts.");
+        }
         return ResponseEntity.ok(adminLearnerService.executeBulkAction(req, adminId));
+    }
+
+    /**
+     * GET /api/admin/learners/flagged
+     * List learners requiring teacher attention due to repeated reintroductions or excessive mistakes.
+     */
+    @GetMapping("/flagged")
+    public ResponseEntity<List<com.vocaboo.dto.response.FlaggedLearnerResponse>> listFlaggedLearners(
+            @RequestParam(required = false) UUID sectionId,
+            @RequestParam(required = false) GradeLevel gradeLevel,
+            Authentication auth) {
+        UUID teacherId = isTeacher(auth) ? parseAdminId(auth) : null;
+        return ResponseEntity.ok(adminLearnerService.getFlaggedLearners(sectionId, gradeLevel, teacherId));
+    }
+
+    /**
+     * POST /api/admin/learners/flagged/{progressId}/resolve
+     * Acknowledge and resolve a teacher review flag on a learner's difficulty progress.
+     */
+    @PostMapping("/flagged/{progressId}/resolve")
+    public ResponseEntity<Map<String, String>> resolveFlag(
+            @PathVariable UUID progressId,
+            Authentication auth) {
+        String adminEmail = auth != null ? auth.getName() : "teacher";
+        adminLearnerService.resolveFlaggedLearner(progressId, adminEmail);
+        return ResponseEntity.ok(Map.of("status", "resolved", "message", "Teacher review flag cleared successfully."));
     }
 
     private UUID parseAdminId(Authentication auth) {
@@ -155,5 +214,11 @@ public class AdminLearnerManagementController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private boolean isTeacher(Authentication auth) {
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
     }
 }

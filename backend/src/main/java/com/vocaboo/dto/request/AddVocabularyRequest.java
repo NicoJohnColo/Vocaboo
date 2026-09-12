@@ -23,7 +23,7 @@ public class AddVocabularyRequest {
     private String partOfSpeech;
 
     @NotBlank(message = "Grade level is required")
-    @Pattern(regexp = "GRADE_3_4|GRADE_5_6|GRADE_6", message = "Grade level must be GRADE_3_4, GRADE_5_6, or GRADE_6")
+    @Pattern(regexp = "GRADE_4|GRADE_5|GRADE_6", message = "Grade level must be GRADE_4, GRADE_5, or GRADE_6")
     private String gradeLevel;
 
     @NotBlank(message = "English example sentence is required")
@@ -62,6 +62,12 @@ public class AddVocabularyRequest {
     
     private Boolean isConfusablePairMember;
 
+    /** Short English definition/synonym clue for HINT_TO_WORD activity (FAMILIAR/PROFICIENT) */
+    private String hintDefinition;
+
+    /** Short Cebuano clue for HINT_TO_WORD activity (LEARNING) */
+    private String hintCebuanoSentence;
+
     public String getEnglishWord() { return englishWord; }
     public String getCebuanoMeaning() { return cebuanoMeaning; }
     public String getPartOfSpeech() { return partOfSpeech; }
@@ -79,4 +85,6 @@ public class AddVocabularyRequest {
     public String getEligibleActivityTypes() { return eligibleActivityTypes; }
     public String getPhonologicalTipKey() { return phonologicalTipKey; }
     public Boolean getIsConfusablePairMember() { return isConfusablePairMember; }
+    public String getHintDefinition() { return hintDefinition; }
+    public String getHintCebuanoSentence() { return hintCebuanoSentence; }
 }

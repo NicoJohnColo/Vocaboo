@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import '../core/motion/typography_tokens.dart';
 import '../providers/auth_provider.dart';
 import 'package:mobile/config/app_config.dart';
 import '../services/tts_service.dart';
@@ -75,11 +76,10 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         ),
         title: Text(
           LocalizationService.translate(pref, 'words_to_practice_title'),
-          style: const TextStyle(
-            fontFamily: 'Outfit',
-            fontWeight: FontWeight.w900,
-            fontSize: 20,
-            color: Color(0xFF06A6FF),
+          style: AppTypography.baloo2(
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: const Color(0xFF06A6FF),
           ),
         ),
       ),
@@ -88,7 +88,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+              child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
             );
           }
           if (snapshot.hasError || snapshot.data == null) {
@@ -147,14 +147,14 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+          colors: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.28),
+            color: const Color(0xFF0EA5E9).withValues(alpha: 0.28),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -183,10 +183,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               children: [
                 Text(
                   LocalizationService.translate(pref, 'practice_together_title'),
-                  style: const TextStyle(
-                    fontFamily: 'Outfit',
+                  style: AppTypography.baloo2(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
                     height: 1.2,
                   ),
@@ -194,10 +193,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 const SizedBox(height: 6),
                 Text(
                   LocalizationService.translate(pref, 'practice_together_sub'),
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
+                  style: AppTypography.nunito(
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     color: Colors.white.withValues(alpha: 0.92),
                     height: 1.35,
                   ),
@@ -212,60 +210,50 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
 
   /// Filter chips allowing child to focus on 5 words or view all
   Widget _buildFilterChips(int totalCount, String? pref) {
-    final picksLabel = LocalizationService.translate(pref, 'todays_picks');
-    final allLabel = '${LocalizationService.translate(pref, 'all_words')} ($totalCount)';
-
-    return Padding(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         children: [
           _buildFilterChip(
-            index: 0,
-            label: picksLabel,
-            icon: Icons.star_rounded,
+            0,
+            '✨ ${LocalizationService.translate(pref, 'todays_picks')} (5)',
+            Icons.auto_awesome_rounded,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           _buildFilterChip(
-            index: 1,
-            label: allLabel,
-            icon: Icons.list_rounded,
+            1,
+            '📚 ${LocalizationService.translate(pref, 'all_words')} ($totalCount)',
+            Icons.library_books_rounded,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFilterChip({
-    required int index,
-    required String label,
-    required IconData icon,
-  }) {
+  Widget _buildFilterChip(int index, String label, IconData icon) {
     final isSelected = _selectedFilterIndex == index;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedFilterIndex = index;
-        });
-      },
+      onTap: () => setState(() => _selectedFilterIndex = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF6366F1) : Colors.white,
+          color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? const Color(0xFF6366F1) : const Color(0xFFE2E8F0),
-            width: 1.5,
+            color:
+                isSelected ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.3),
                     blurRadius: 8,
-                    offset: const Offset(0, 3),
+                    offset: const Offset(0, 2),
                   ),
                 ]
-              : null,
+              : [],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -278,10 +266,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             const SizedBox(width: 6),
             Text(
               label,
-              style: TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.baloo2(
                 fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
                 color: isSelected ? Colors.white : const Color(0xFF475569),
               ),
             ),
@@ -329,7 +316,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               decoration: BoxDecoration(
                 color: currentlyCorrect
                     ? const Color(0xFFDCFCE7)
-                    : const Color(0xFFEEF2FF),
+                    : const Color(0xFFE0F2FE),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
@@ -351,11 +338,10 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       Expanded(
                         child: Text(
                           english,
-                          style: const TextStyle(
-                            fontFamily: 'Outfit',
-                            fontSize: 17,
+                          style: AppTypography.baloo2(
+                            fontSize: 18,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: const Color(0xFF0F172A),
                           ),
                         ),
                       ),
@@ -366,7 +352,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                         decoration: BoxDecoration(
                           color: currentlyCorrect
                               ? const Color(0xFFDCFCE7)
-                              : const Color(0xFFEEF2FF),
+                              : const Color(0xFFE0F2FE),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
@@ -379,19 +365,19 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                               size: 13,
                               color: currentlyCorrect
                                   ? const Color(0xFF16A34A)
-                                  : const Color(0xFF6366F1),
+                                  : const Color(0xFF0284C7),
                             ),
                             const SizedBox(width: 4),
                             Text(
                               currentlyCorrect
                                   ? LocalizationService.translate(pref, 'you_got_this')
                                   : LocalizationService.translate(pref, 'in_practice'),
-                              style: TextStyle(
+                              style: AppTypography.baloo2(
                                 fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w800,
                                 color: currentlyCorrect
-                                    ? const Color(0xFF16A34A)
-                                    : const Color(0xFF6366F1),
+                                  ? const Color(0xFF16A34A)
+                                  : const Color(0xFF0284C7),
                               ),
                             ),
                           ],
@@ -403,11 +389,11 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                   CebuanoTextHighlighter(
                     text: cebuano,
                     highlightWord: cebuano,
-                    style: const TextStyle(
-                      fontFamily: 'Outfit',
+                    style: AppTypography.nunito(
                       fontSize: 14,
-                      color: Color(0xFF64748B),
+                      color: const Color(0xFF0284C7),
                       fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   if (partOfSpeech.isNotEmpty || lessonTitle.isNotEmpty)
@@ -417,7 +403,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                         children: [
                           if (partOfSpeech.isNotEmpty)
                             _buildTag(partOfSpeech,
-                                const Color(0xFF7C3AED), const Color(0xFFF3E8FF)),
+                                const Color(0xFF0284C7), const Color(0xFFE0F2FE)),
                           if (partOfSpeech.isNotEmpty && lessonTitle.isNotEmpty)
                             const SizedBox(width: 6),
                           if (lessonTitle.isNotEmpty && categoryName.isNotEmpty)
@@ -442,14 +428,14 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               children: [
                 IconButton(
                   icon: const Icon(Icons.volume_up_rounded,
-                      color: Color(0xFF6366F1), size: 24),
+                      color: Color(0xFF0EA5E9), size: 22),
                   onPressed: () => _ttsService.speak(english),
-                  tooltip: 'Listen',
+                  tooltip: 'Listen to pronunciation',
                 ),
                 ElevatedButton(
                   onPressed: () => _showWordDetails(word, pref),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6366F1),
+                    backgroundColor: const Color(0xFF0EA5E9),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 6),
@@ -461,10 +447,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                   ),
                   child: Text(
                     LocalizationService.translate(pref, 'practice_btn'),
-                    style: const TextStyle(
-                      fontFamily: 'Outfit',
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+                    style: AppTypography.baloo2(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -487,9 +472,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
+        style: AppTypography.baloo2(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
           color: textColor,
         ),
       ),
@@ -535,17 +520,16 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 Expanded(
                   child: Text(
                     english,
-                    style: const TextStyle(
-                      fontFamily: 'Outfit',
+                    style: AppTypography.baloo2(
                       fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
                     ),
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.volume_up_rounded,
-                      color: Color(0xFF6366F1), size: 30),
+                      color: Color(0xFF0EA5E9), size: 30),
                   onPressed: () => _ttsService.speak(english),
                   tooltip: 'Listen to word',
                 ),
@@ -555,11 +539,11 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             CebuanoTextHighlighter(
               text: cebuano,
               highlightWord: cebuano,
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.nunito(
                 fontSize: 18,
-                color: Color(0xFF64748B),
+                color: const Color(0xFF64748B),
                 fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 20),
@@ -577,7 +561,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               decoration: BoxDecoration(
                 color: currentlyCorrect
                     ? const Color(0xFFDCFCE7)
-                    : const Color(0xFFEEF2FF),
+                    : const Color(0xFFE0F2FE),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -588,7 +572,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                         : Icons.auto_awesome_rounded,
                     color: currentlyCorrect
                         ? const Color(0xFF16A34A)
-                        : const Color(0xFF6366F1),
+                        : const Color(0xFF0284C7),
                     size: 24,
                   ),
                   const SizedBox(width: 12),
@@ -597,13 +581,12 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       currentlyCorrect
                           ? 'Great job! You\'ve recently answered this word correctly. Keep practising to lock in mastery!'
                           : 'Let\'s practice this word! Listen to the audio and review the meaning above.',
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
+                      style: AppTypography.nunito(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: currentlyCorrect
                             ? const Color(0xFF15803D)
-                            : const Color(0xFF4338CA),
+                            : const Color(0xFF0369A1),
                         height: 1.3,
                       ),
                     ),
@@ -625,11 +608,10 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: const Text('Close',
-                        style: TextStyle(
-                            fontFamily: 'Outfit',
+                    child: Text('Close',
+                        style: AppTypography.baloo2(
                             fontSize: 15,
-                            fontWeight: FontWeight.bold)),
+                            fontWeight: FontWeight.w800)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -639,9 +621,9 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                       _ttsService.speak(english);
                     },
                     icon: const Icon(Icons.volume_up_rounded, size: 20),
-                    label: const Text('Listen Again'),
+                    label: Text('Listen Again', style: AppTypography.baloo2(fontSize: 15, fontWeight: FontWeight.w800)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
+                      backgroundColor: const Color(0xFF0EA5E9),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -668,15 +650,15 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
           const SizedBox(width: 12),
           Text(
             '$label: ',
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
+            style: AppTypography.nunito(color: const Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w600),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: Color(0xFF0F172A),
+              style: AppTypography.baloo2(
+                color: const Color(0xFF0F172A),
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
@@ -695,8 +677,8 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             Container(
               width: 96,
               height: 96,
-              decoration: BoxDecoration(
-                color: const Color(0xFFDCFCE7),
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCFCE7),
                 shape: BoxShape.circle,
               ),
               child: const Center(
@@ -707,21 +689,21 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             Text(
               LocalizationService.translate(pref, 'all_caught_up_title'),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'Outfit',
+              style: AppTypography.baloo2(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                color: const Color(0xFF0F172A),
               ),
             ),
             const SizedBox(height: 12),
             Text(
               LocalizationService.translate(pref, 'all_caught_up_desc'),
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: AppTypography.nunito(
                 fontSize: 15,
-                color: Color(0xFF64748B),
+                color: const Color(0xFF64748B),
                 height: 1.4,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -740,10 +722,10 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
             const Icon(Icons.wifi_off_rounded,
                 color: Color(0xFF94A3B8), size: 52),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Could not load practice words.\nPlease try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 15),
+              style: AppTypography.nunito(color: const Color(0xFF64748B), fontSize: 15, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -751,13 +733,13 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                 _future = _loadData();
               }),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
+                backgroundColor: const Color(0xFF0EA5E9),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
                 elevation: 0,
               ),
-              child: const Text('Retry'),
+              child: Text('Retry', style: AppTypography.baloo2(fontSize: 14, fontWeight: FontWeight.w800)),
             ),
           ],
         ),

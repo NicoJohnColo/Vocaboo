@@ -42,7 +42,12 @@ public class WordMasterySummaryResponse {
     private Integer totalAttempts;
     private Integer correctAttempts;
     private BigDecimal accuracy;
+    private BigDecimal currentAccuracy;
+    private BigDecimal bestAccuracy;
     private Integer tierDropCount;
+    private Boolean isRetaken;
+    private BigDecimal previousAccuracy;
+    private Boolean isImproved;
 
     public static WordMasterySummaryResponseBuilder builder() { return new WordMasterySummaryResponseBuilder(); }
 
@@ -56,7 +61,12 @@ public class WordMasterySummaryResponse {
         private Integer totalAttempts;
         private Integer correctAttempts;
         private BigDecimal accuracy;
+        private BigDecimal currentAccuracy;
+        private BigDecimal bestAccuracy;
         private Integer tierDropCount;
+        private Boolean isRetaken;
+        private BigDecimal previousAccuracy;
+        private Boolean isImproved;
 
         public WordMasterySummaryResponseBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
         public WordMasterySummaryResponseBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
@@ -67,7 +77,12 @@ public class WordMasterySummaryResponse {
         public WordMasterySummaryResponseBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
         public WordMasterySummaryResponseBuilder correctAttempts(Integer correctAttempts) { this.correctAttempts = correctAttempts; return this; }
         public WordMasterySummaryResponseBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+        public WordMasterySummaryResponseBuilder currentAccuracy(BigDecimal currentAccuracy) { this.currentAccuracy = currentAccuracy; return this; }
+        public WordMasterySummaryResponseBuilder bestAccuracy(BigDecimal bestAccuracy) { this.bestAccuracy = bestAccuracy; return this; }
         public WordMasterySummaryResponseBuilder tierDropCount(Integer tierDropCount) { this.tierDropCount = tierDropCount; return this; }
+        public WordMasterySummaryResponseBuilder isRetaken(Boolean isRetaken) { this.isRetaken = isRetaken; return this; }
+        public WordMasterySummaryResponseBuilder previousAccuracy(BigDecimal previousAccuracy) { this.previousAccuracy = previousAccuracy; return this; }
+        public WordMasterySummaryResponseBuilder isImproved(Boolean isImproved) { this.isImproved = isImproved; return this; }
 
         public WordMasterySummaryResponse build() {
             WordMasterySummaryResponse r = new WordMasterySummaryResponse();
@@ -80,7 +95,12 @@ public class WordMasterySummaryResponse {
             r.totalAttempts = this.totalAttempts;
             r.correctAttempts = this.correctAttempts;
             r.accuracy = this.accuracy;
+            r.currentAccuracy = this.currentAccuracy;
+            r.bestAccuracy = this.bestAccuracy;
             r.tierDropCount = this.tierDropCount;
+            r.isRetaken = this.isRetaken;
+            r.previousAccuracy = this.previousAccuracy;
+            r.isImproved = this.isImproved;
             return r;
         }
     }

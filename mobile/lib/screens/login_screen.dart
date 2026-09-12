@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../core/motion/motion.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -38,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
     bool isValid = true;
 
     if (id.isEmpty) {
-      _idError = 'Please enter your name.';
+      _idError = 'Please enter your User ID or name.';
       isValid = false;
     }
 
@@ -56,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (success && mounted) {
         context.go('/loading', extra: {
-          'duration': 13000,
+          'duration': 5000,
           'redirectPath': '/home',
         });
       }
@@ -88,22 +89,21 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'Welcome Back!',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
+                  style: AppTypography.baloo2(
                     fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF06A6FF),
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Log in using your name and PIN.',
-                  style: TextStyle(
+                Text(
+                  'Log in using your User ID or name and PIN.',
+                  style: AppTypography.nunito(
                     fontSize: 15,
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 36),
@@ -123,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Expanded(
                           child: Text(
                             auth.error!,
-                            style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600),
+                            style: AppTypography.nunito(color: const Color(0xFFB91C1C), fontWeight: FontWeight.w700),
                           ),
                         ),
                       ],
@@ -132,23 +132,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 24),
                 ],
 
-                // Name Input
-                const Text(
-                  'NAME',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF334155),
+                // Name / User ID Input
+                Text(
+                  'USER ID OR NAME',
+                  style: AppTypography.baloo2(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF334155),
                     letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _idController,
-                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                  style: AppTypography.nunito(color: const Color(0xFF0F172A), fontWeight: FontWeight.w700, fontSize: 16),
                   decoration: InputDecoration(
-                    hintText: 'Enter your name...',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                    hintText: 'Enter User ID (e.g. 26-1042-389) or name...',
+                    hintStyle: AppTypography.nunito(color: const Color(0xFF94A3B8)),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),
                     enabledBorder: OutlineInputBorder(
@@ -167,12 +167,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
 
                 // PIN Input
-                const Text(
+                Text(
                   '4-DIGIT PIN',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF334155),
+                  style: AppTypography.baloo2(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF334155),
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -181,17 +181,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _pinController,
                   obscureText: _obscurePin,
                   maxLength: 4,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
+                  style: AppTypography.baloo2(
+                    color: const Color(0xFF0F172A),
                     letterSpacing: 24,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
                   ),
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(
                     counterText: '',
                     hintText: '••••',
-                    hintStyle: const TextStyle(color: Color(0xFFCBD5E1), letterSpacing: 24),
+                    hintStyle: AppTypography.baloo2(color: const Color(0xFFCBD5E1), letterSpacing: 24, fontSize: 26, fontWeight: FontWeight.w800),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),
                     enabledBorder: OutlineInputBorder(
@@ -224,31 +224,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                ElevatedButton(
-                  onPressed: auth.isLoading ? null : _submitLogin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A), // Black
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: auth.isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text(
-                          'LOG IN',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
+                App3DButton(
+                  text: 'LOG IN',
+                  variant: App3DButtonVariant.primary,
+                  height: 54,
+                  isLoading: auth.isLoading,
+                  onPressed: _submitLogin,
                 ),
               ],
             ),

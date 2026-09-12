@@ -8,11 +8,17 @@ import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog';
 import PublishWorkflowModal from '../components/PublishWorkflowModal';
 import { LessonService } from '../services/LessonService';
 import { CategoryService } from '../services/CategoryService';
+import { SectionService } from '../services/SectionService';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
 export default function LessonManagementPage() {
   const navigate = useNavigate();
+  const { admin } = useAdminAuth();
+  const isTeacher = admin?.role?.toLowerCase() === 'teacher' || admin?.role?.toUpperCase() === 'ROLE_TEACHER';
+
   const [lessons, setLessons] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -23,6 +29,8 @@ export default function LessonManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterGrade, setFilterGrade] = useState('');
+  const [filterClass, setFilterClass] = useState('');
+  const [togglingId, setTogglingId] = useState(null);
 
   const flash = (msg) => {
     setSuccess(msg);
@@ -32,9 +40,14 @@ export default function LessonManagementPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [l, c] = await Promise.all([LessonService.getAll(), CategoryService.getAll()]);
+      const [l, c, clsList] = await Promise.all([
+        LessonService.getAll(),
+        CategoryService.getAll(),
+        SectionService.getAllSections().catch(() => [])
+      ]);
       setLessons(l);
       setCategories(c);
+      setClasses(clsList);
     } catch {
       setError('Failed to load lessons or categories.');
     } finally {
@@ -111,6 +124,24 @@ export default function LessonManagementPage() {
     }
   };
 
+  const handleQuickTogglePublish = async (lesson) => {
+    const isCurrentlyPublished = lesson.content_status === 'PUBLISHED';
+    const newStatus = isCurrentlyPublished ? 'DRAFT' : 'PUBLISHED';
+    const targetGrades = lesson.target_grades ? lesson.target_grades.split(',') : (lesson.grade_level ? [lesson.grade_level] : ['GRADE_4', 'GRADE_5', 'GRADE_6']);
+
+    setTogglingId(lesson.lesson_id);
+    setError('');
+    try {
+      await LessonService.updateStatus(lesson.lesson_id, newStatus, targetGrades);
+      flash(`"${lesson.lesson_title}" is now ${newStatus === 'PUBLISHED' ? '🚀 Published' : '📝 set to Draft'}.`);
+      await load();
+    } catch (err) {
+      setError(err?.message || `Failed to update status for "${lesson.lesson_title}". Note: Lessons require at least 5 vocabulary words before publishing.`);
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   return (
     <div className="admin-layout">
       <AdminNav />
@@ -136,6 +167,10 @@ export default function LessonManagementPage() {
         <LessonTable
           lessons={lessons}
           categories={categories}
+          classes={classes}
+          filterClass={filterClass}
+          onFilterClass={setFilterClass}
+          isTeacher={isTeacher}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           filterCategory={filterCategory}
@@ -147,6 +182,8 @@ export default function LessonManagementPage() {
           onDelete={l => openModal('delete', l)}
           onViewWords={l => navigate(`/lessons/${l.lesson_id}/vocabulary`, { state: { lesson: l } })}
           onPublish={l => openModal('publish', l)}
+          onTogglePublish={handleQuickTogglePublish}
+          togglingId={togglingId}
           loading={loading}
         />
 
@@ -154,6 +191,8 @@ export default function LessonManagementPage() {
         {modal === 'create' && (
           <CreateLessonModal
             categories={categories}
+            classes={classes}
+            isTeacher={isTeacher}
             onSubmit={handleCreate}
             onClose={closeModal}
             submitting={submitting}
@@ -163,6 +202,8 @@ export default function LessonManagementPage() {
         {modal === 'edit' && selected && (
           <EditLessonModal
             lesson={selected}
+            classes={classes}
+            isTeacher={isTeacher}
             onSubmit={handleUpdate}
             onClose={closeModal}
             submitting={submitting}

@@ -127,39 +127,69 @@ public class LearnerLessonStatus {
     public static LearnerLessonStatusBuilder builder() { return new LearnerLessonStatusBuilder(); }
 
     public static class LearnerLessonStatusBuilder {
+        private UUID statusId;
         private Learner learner;
         private Lesson lesson;
         private LessonStatus status = LessonStatus.LOCKED;
         private OffsetDateTime unlockedAt;
         private Integer attempts = 0;
+        private BigDecimal masteryScore;
+        private OffsetDateTime completedAt;
+        private Integer bestLessonPoints = 0;
+        private Boolean lessonCompletionBonusAwarded = false;
+        private Boolean perfectScoreBonusAwarded = false;
+        private OffsetDateTime createdAt;
+        private OffsetDateTime updatedAt;
 
+        public LearnerLessonStatusBuilder statusId(UUID statusId) { this.statusId = statusId; return this; }
         public LearnerLessonStatusBuilder learner(Learner learner) { this.learner = learner; return this; }
         public LearnerLessonStatusBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
         public LearnerLessonStatusBuilder status(LessonStatus status) { this.status = status; return this; }
         public LearnerLessonStatusBuilder unlockedAt(OffsetDateTime unlockedAt) { this.unlockedAt = unlockedAt; return this; }
         public LearnerLessonStatusBuilder attempts(Integer attempts) { this.attempts = attempts; return this; }
+        public LearnerLessonStatusBuilder masteryScore(BigDecimal masteryScore) { this.masteryScore = masteryScore; return this; }
+        public LearnerLessonStatusBuilder completedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; return this; }
+        public LearnerLessonStatusBuilder bestLessonPoints(Integer bestLessonPoints) { this.bestLessonPoints = bestLessonPoints; return this; }
+        public LearnerLessonStatusBuilder lessonCompletionBonusAwarded(Boolean lessonCompletionBonusAwarded) { this.lessonCompletionBonusAwarded = lessonCompletionBonusAwarded; return this; }
+        public LearnerLessonStatusBuilder perfectScoreBonusAwarded(Boolean perfectScoreBonusAwarded) { this.perfectScoreBonusAwarded = perfectScoreBonusAwarded; return this; }
+        public LearnerLessonStatusBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public LearnerLessonStatusBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public LearnerLessonStatus build() {
             LearnerLessonStatus s = new LearnerLessonStatus();
+            s.statusId = this.statusId;
             s.learner = this.learner;
             s.lesson = this.lesson;
             s.status = this.status;
             s.unlockedAt = this.unlockedAt;
             s.attempts = this.attempts != null ? this.attempts : 0;
-            s.createdAt = OffsetDateTime.now();
-            s.updatedAt = OffsetDateTime.now();
+            s.masteryScore = this.masteryScore;
+            s.completedAt = this.completedAt;
+            s.bestLessonPoints = this.bestLessonPoints != null ? this.bestLessonPoints : 0;
+            s.lessonCompletionBonusAwarded = this.lessonCompletionBonusAwarded != null ? this.lessonCompletionBonusAwarded : false;
+            s.perfectScoreBonusAwarded = this.perfectScoreBonusAwarded != null ? this.perfectScoreBonusAwarded : false;
+            s.createdAt = this.createdAt != null ? this.createdAt : OffsetDateTime.now();
+            s.updatedAt = this.updatedAt != null ? this.updatedAt : OffsetDateTime.now();
             return s;
         }
     }
 
     @PrePersist
     protected void onCreate() {
-        createdAt = OffsetDateTime.now();
-        updatedAt = OffsetDateTime.now();
+        if (attempts == null) attempts = 0;
+        if (bestLessonPoints == null) bestLessonPoints = 0;
+        if (lessonCompletionBonusAwarded == null) lessonCompletionBonusAwarded = false;
+        if (perfectScoreBonusAwarded == null) perfectScoreBonusAwarded = false;
+        if (createdAt == null) createdAt = OffsetDateTime.now();
+        if (updatedAt == null) updatedAt = OffsetDateTime.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
+        if (attempts == null) attempts = 0;
+        if (bestLessonPoints == null) bestLessonPoints = 0;
+        if (lessonCompletionBonusAwarded == null) lessonCompletionBonusAwarded = false;
+        if (perfectScoreBonusAwarded == null) perfectScoreBonusAwarded = false;
         updatedAt = OffsetDateTime.now();
     }
 }

@@ -34,7 +34,7 @@ public class VocabularyWord {
      */
     @Column(name = "eligible_activity_types", nullable = false, length = 255)
     @Builder.Default
-    private String eligibleActivityTypes = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+    private String eligibleActivityTypes = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD";
 
     public String getActivityType() {
         if (eligibleActivityTypes == null || eligibleActivityTypes.isBlank()) return "MULTIPLE_CHOICE";
@@ -122,6 +122,17 @@ public class VocabularyWord {
     @Column(name = "explanation_text", columnDefinition = "TEXT")
     private String explanationText;
 
+    /** Short English definition/synonym clue for HINT_TO_WORD activity at FAMILIAR/PROFICIENT tier.
+     *  e.g. "used to write" or "instrument"
+     *  Falls back to cebuanoMeaning at LEARNING tier if blank. */
+    @Column(name = "hint_definition", columnDefinition = "TEXT")
+    private String hintDefinition;
+
+    /** Short Cebuano clue for HINT_TO_WORD activity at LEARNING tier.
+     *  Falls back to exampleSentenceCebuano if blank. */
+    @Column(name = "hint_cebuano_sentence", columnDefinition = "TEXT")
+    private String hintCebuanoSentence;
+
     /** Exact text fed to Cebuano TTS (distinct from audio_asset_path file path) */
     @Column(name = "audio_text_cebuano", columnDefinition = "TEXT")
     private String audioTextCebuano;
@@ -170,6 +181,8 @@ public class VocabularyWord {
     public String getFillBlankSentence() { return fillBlankSentence; }
     public String getTileSentence() { return tileSentence; }
     public String getExplanationText() { return explanationText; }
+    public String getHintDefinition() { return hintDefinition; }
+    public String getHintCebuanoSentence() { return hintCebuanoSentence; }
     public String getAudioTextCebuano() { return audioTextCebuano; }
     public String getAudioTextEnglish() { return audioTextEnglish; }
     public String getEligibleActivityTypes() { return eligibleActivityTypes; }
@@ -185,6 +198,8 @@ public class VocabularyWord {
     public void setFillBlankSentence(String fillBlankSentence) { this.fillBlankSentence = fillBlankSentence; }
     public void setTileSentence(String tileSentence) { this.tileSentence = tileSentence; }
     public void setExplanationText(String explanationText) { this.explanationText = explanationText; }
+    public void setHintDefinition(String hintDefinition) { this.hintDefinition = hintDefinition; }
+    public void setHintCebuanoSentence(String hintCebuanoSentence) { this.hintCebuanoSentence = hintCebuanoSentence; }
     public void setAudioTextCebuano(String audioTextCebuano) { this.audioTextCebuano = audioTextCebuano; }
     public void setAudioTextEnglish(String audioTextEnglish) { this.audioTextEnglish = audioTextEnglish; }
     public void setEligibleActivityTypes(String eligibleActivityTypes) { this.eligibleActivityTypes = eligibleActivityTypes; }
@@ -196,6 +211,7 @@ public class VocabularyWord {
     }
 
     public static class VocabularyWordBuilder {
+        private UUID wordId;
         private Lesson lesson;
         private String englishWord;
         private String cebuanoMeaning;
@@ -210,6 +226,8 @@ public class VocabularyWord {
         private String fillBlankSentence;
         private String tileSentence;
         private String explanationText;
+        private String hintDefinition;
+        private String hintCebuanoSentence;
         private String audioTextCebuano;
         private String audioTextEnglish;
         private String phonologicalTipKey;
@@ -217,6 +235,7 @@ public class VocabularyWord {
         private Boolean isDeleted = false;
         private String eligibleActivityTypes;
 
+        public VocabularyWordBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
         public VocabularyWordBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
         public VocabularyWordBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
         public VocabularyWordBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
@@ -231,6 +250,8 @@ public class VocabularyWord {
         public VocabularyWordBuilder fillBlankSentence(String fillBlankSentence) { this.fillBlankSentence = fillBlankSentence; return this; }
         public VocabularyWordBuilder tileSentence(String tileSentence) { this.tileSentence = tileSentence; return this; }
         public VocabularyWordBuilder explanationText(String explanationText) { this.explanationText = explanationText; return this; }
+        public VocabularyWordBuilder hintDefinition(String hintDefinition) { this.hintDefinition = hintDefinition; return this; }
+        public VocabularyWordBuilder hintCebuanoSentence(String hintCebuanoSentence) { this.hintCebuanoSentence = hintCebuanoSentence; return this; }
         public VocabularyWordBuilder audioTextCebuano(String audioTextCebuano) { this.audioTextCebuano = audioTextCebuano; return this; }
         public VocabularyWordBuilder audioTextEnglish(String audioTextEnglish) { this.audioTextEnglish = audioTextEnglish; return this; }
         public VocabularyWordBuilder phonologicalTipKey(String phonologicalTipKey) { this.phonologicalTipKey = phonologicalTipKey; return this; }
@@ -240,6 +261,7 @@ public class VocabularyWord {
 
         public VocabularyWord build() {
             VocabularyWord w = new VocabularyWord();
+            w.wordId = this.wordId;
             w.lesson = this.lesson;
             w.englishWord = this.englishWord;
             w.cebuanoMeaning = this.cebuanoMeaning;
@@ -254,6 +276,8 @@ public class VocabularyWord {
             w.fillBlankSentence = this.fillBlankSentence;
             w.tileSentence = this.tileSentence;
             w.explanationText = this.explanationText;
+            w.hintDefinition = this.hintDefinition;
+            w.hintCebuanoSentence = this.hintCebuanoSentence;
             w.audioTextCebuano = this.audioTextCebuano;
             w.audioTextEnglish = this.audioTextEnglish;
             w.phonologicalTipKey = this.phonologicalTipKey;

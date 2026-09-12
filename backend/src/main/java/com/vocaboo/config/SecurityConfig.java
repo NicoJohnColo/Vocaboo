@@ -38,7 +38,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // Public learner endpoints
-                .requestMatchers("/api/v1/learners/register", "/api/v1/learners/login").permitAll()
+                .requestMatchers("/api/v1/learners/register", "/api/v1/learners/login", "/api/v1/learners/check-name").permitAll()
                 // Public admin login and registration
                 .requestMatchers(HttpMethod.POST, "/api/admin/login", "/api/admin/register").permitAll()
                 // Public teacher self-registration
@@ -57,27 +57,29 @@ public class SecurityConfig {
                 // ── Admin-only routes (account management, logs, admin logout) ──
                 // Teachers must NOT access these.
                 .requestMatchers("/api/admin/accounts/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/logs/**").hasRole("ADMIN")
                 .requestMatchers("/api/admin/logout-everywhere").hasRole("ADMIN")
 
                 // ── Content routes — both ADMIN and TEACHER can access ──────────
                 // Lessons, categories, vocabulary, dashboard, diagnostics, etc.
-                .requestMatchers("/api/admin/lessons/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/categories/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/vocabulary/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/confusable-pairs/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/difficulty/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/dashboard/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/diagnostics/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/learners/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/classes/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/sections/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/analytics/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/logs/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/assets/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/sandbox/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/reviews/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/reports/**").hasAnyRole("ADMIN", "TEACHER")
-                .requestMatchers("/api/admin/cross-lesson-sentences/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/lessons", "/api/admin/lessons/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/categories", "/api/admin/categories/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/vocabulary", "/api/admin/vocabulary/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/confusable-pairs", "/api/admin/confusable-pairs/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/difficulty", "/api/admin/difficulty/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/dashboard", "/api/admin/dashboard/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/diagnostics", "/api/admin/diagnostics/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/learners", "/api/admin/learners/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/classes", "/api/admin/classes/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/sections", "/api/admin/sections/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/analytics", "/api/admin/analytics/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/assets", "/api/admin/assets/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/sandbox", "/api/admin/sandbox/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/reviews", "/api/admin/reviews/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/reports", "/api/admin/reports/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/admin/cross-lesson-sentences", "/api/admin/cross-lesson-sentences/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/teacher/classes", "/api/teacher/classes/**").hasAnyRole("ADMIN", "TEACHER")
+                .requestMatchers("/api/learner/classes", "/api/learner/classes/**", "/api/v1/learner/classes", "/api/v1/learner/classes/**").hasRole("LEARNER")
                 .requestMatchers("/api/cumulative-review/**", "/api/v1/cumulative-review/**").authenticated()
 
                 // Remaining /api/admin/** (catch-all) — require at least ADMIN

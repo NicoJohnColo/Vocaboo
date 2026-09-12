@@ -13,6 +13,30 @@ function triggerBlobDownload(blob, filename) {
   window.URL.revokeObjectURL(url);
 }
 
+function getFilenameFromResponse(res, defaultName) {
+  const disposition = res.headers.get('Content-Disposition');
+  if (disposition && disposition.includes('filename=')) {
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  return defaultName;
+}
+
+async function handleResponseError(res, defaultMsg) {
+  if (res.status === 403) {
+    throw new Error('Access denied: Teachers can only export their own classes, and Administrators can only export global school-wide reports.');
+  }
+  if (res.status === 400) {
+    throw new Error('Invalid report request or student is not actively enrolled in the specified classroom.');
+  }
+  if (res.status === 404) {
+    throw new Error('The requested class, student, or curriculum report resource was not found.');
+  }
+  throw new Error(defaultMsg);
+}
+
 export const ReportService = {
   /**
    * Download Class Performance Report
@@ -27,48 +51,59 @@ export const ReportService = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
 
-    if (!res.ok) throw new Error('Failed to download class report');
+    if (!res.ok) await handleResponseError(res, 'Failed to download class report');
+
+    const ext = format.toLowerCase() === 'pdf' ? 'pdf' : 'csv';
+    const defaultName = `class_performance_report_${sectionId ? 'class' : 'all_classes'}.${ext}`;
+    const filename = getFilenameFromResponse(res, defaultName);
 
     const blob = await res.blob();
-    const ext = format.toLowerCase() === 'pdf' ? 'pdf' : 'csv';
-    triggerBlobDownload(blob, `class_performance_report.${ext}`);
+    triggerBlobDownload(blob, filename);
   },
 
   /**
    * Download Individual Student Report Card
    */
-  async downloadIndividualReport(learnerId, format = 'pdf') {
+  async downloadIndividualReport(learnerId, format = 'pdf', classId = null) {
     const token = AuthService.getToken();
     const query = new URLSearchParams({ format });
+    if (classId) query.append('classId', classId);
 
     const res = await fetch(`${BASE_URL}/api/admin/reports/individual/${learnerId}?${query.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
 
-    if (!res.ok) throw new Error('Failed to download student report card');
+    if (!res.ok) await handleResponseError(res, 'Failed to download student report card');
+
+    const ext = format.toLowerCase() === 'pdf' ? 'pdf' : 'csv';
+    const defaultName = `student_report_${learnerId}_${classId ? 'class' : 'all_classes'}.${ext}`;
+    const filename = getFilenameFromResponse(res, defaultName);
 
     const blob = await res.blob();
-    const ext = format.toLowerCase() === 'pdf' ? 'pdf' : 'csv';
-    triggerBlobDownload(blob, `student_report_${learnerId}.${ext}`);
+    triggerBlobDownload(blob, filename);
   },
 
   /**
    * Download Word Performance & Curriculum Report
    */
-  async downloadWordPerformanceReport(format = 'csv', sectionId = null, lessonId = null) {
+  async downloadWordPerformanceReport(format = 'csv', sectionId = null, lessonId = null, categoryId = null) {
     const token = AuthService.getToken();
     const query = new URLSearchParams({ format });
     if (sectionId) query.append('sectionId', sectionId);
     if (lessonId) query.append('lessonId', lessonId);
+    if (categoryId) query.append('categoryId', categoryId);
 
     const res = await fetch(`${BASE_URL}/api/admin/reports/word-performance?${query.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
 
-    if (!res.ok) throw new Error('Failed to download word performance report');
+    if (!res.ok) await handleResponseError(res, 'Failed to download word performance report');
+
+    const ext = format.toLowerCase() === 'pdf' ? 'pdf' : 'csv';
+    const defaultName = `word_performance_${sectionId ? 'class' : 'all_classes'}.${ext}`;
+    const filename = getFilenameFromResponse(res, defaultName);
 
     const blob = await res.blob();
-    const ext = format.toLowerCase() === 'pdf' ? 'pdf' : 'csv';
-    triggerBlobDownload(blob, `word_performance_report.${ext}`);
+    triggerBlobDownload(blob, filename);
   },
 };

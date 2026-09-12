@@ -22,6 +22,9 @@ public class UpdateCategoryRequest {
     @JsonProperty("sort_order")
     private Integer sortOrder;
 
+    @JsonProperty("class_id")
+    private java.util.UUID classId;
+
     public String getCategoryName() {
         return categoryName;
     }
@@ -32,5 +35,9 @@ public class UpdateCategoryRequest {
 
     public Integer getSortOrder() {
         return sortOrder;
+    }
+
+    public java.util.UUID getClassId() {
+        return classId;
     }
 }

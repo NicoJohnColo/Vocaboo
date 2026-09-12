@@ -3,6 +3,7 @@ import AdminNav from '../components/AdminNav';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { SectionService } from '../services/SectionService';
 import LearnerDetailModal from '../components/LearnerDetailModal';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
 function RankBadge({ rank }) {
   if (rank === 1) {
@@ -18,10 +19,19 @@ function RankBadge({ rank }) {
 }
 
 export default function LeaderboardsPage() {
+  const { admin } = useAdminAuth();
+  const isTeacher = admin?.role?.toLowerCase() === 'teacher' || admin?.role?.toUpperCase() === 'ROLE_TEACHER';
+
   const [range, setRange] = useState('weekly'); // 'weekly' | 'all_time'
-  const [cohortType, setCohortType] = useState('ALL'); // 'ALL' | 'INDEPENDENT' | 'ENROLLED'
+  const [cohortType, setCohortType] = useState(isTeacher ? 'ENROLLED' : 'ALL'); // 'ALL' | 'INDEPENDENT' | 'ENROLLED'
   const [selectedSection, setSelectedSection] = useState('');
   const [sections, setSections] = useState([]);
+
+  useEffect(() => {
+    if (isTeacher) {
+      setCohortType('ENROLLED');
+    }
+  }, [isTeacher]);
   
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,30 +69,35 @@ export default function LeaderboardsPage() {
       <main className="admin-main" style={{ maxWidth: '100%' }}>
         <header className="admin-main__header" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
-            <h1 className="admin-main__title">🏆 Leaderboard &amp; Gamification Hub</h1>
-            <p className="admin-main__subtitle">Track platform-wide point rankings, mastery tiers, and reward distributions</p>
+            <h1 className="admin-main__title">
+              {isTeacher ? '🏆 Classroom Leaderboard' : '🏆 Leaderboard'}
+            </h1>
+            <p className="admin-main__subtitle">
+              {isTeacher
+                ? 'Track top student rankings and points across your classroom cohorts'
+                : 'Track point rankings, mastery tiers, and student performance'}
+            </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Time Range Toggle */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{
               display: 'flex',
-              background: 'var(--glass-bg)',
-              borderRadius: 'var(--radius-sm)',
+              background: 'var(--color-surface)',
+              borderRadius: 'var(--radius-md)',
               padding: 4,
-              border: '1px solid var(--color-border)',
+              border: '1.5px solid var(--color-border)',
+              boxShadow: 'var(--shadow-xs)',
             }}>
               <button
                 style={{
-                  padding: '6px 14px',
-                  borderRadius: 6,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  background: range === 'weekly' ? 'var(--color-primary)' : 'transparent',
-                  color: range === 'weekly' ? '#fff' : 'var(--color-text-dim)',
-                  transition: 'all 0.2s',
+                  padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontWeight: 700, fontSize: '0.845rem', fontFamily: 'inherit',
+                  background: range === 'weekly'
+                    ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)'
+                    : 'transparent',
+                  color: range === 'weekly' ? '#fff' : 'var(--color-text-muted)',
+                  transition: 'all 0.18s',
+                  boxShadow: range === 'weekly' ? '0 2px 8px rgba(37,99,235,0.30)' : 'none',
                 }}
                 onClick={() => setRange('weekly')}
               >
@@ -90,15 +105,14 @@ export default function LeaderboardsPage() {
               </button>
               <button
                 style={{
-                  padding: '6px 14px',
-                  borderRadius: 6,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  background: range === 'all_time' ? 'var(--color-primary)' : 'transparent',
-                  color: range === 'all_time' ? '#fff' : 'var(--color-text-dim)',
-                  transition: 'all 0.2s',
+                  padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontWeight: 700, fontSize: '0.845rem', fontFamily: 'inherit',
+                  background: range === 'all_time'
+                    ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)'
+                    : 'transparent',
+                  color: range === 'all_time' ? '#fff' : 'var(--color-text-muted)',
+                  transition: 'all 0.18s',
+                  boxShadow: range === 'all_time' ? '0 2px 8px rgba(37,99,235,0.30)' : 'none',
                 }}
                 onClick={() => setRange('all_time')}
               >
@@ -107,19 +121,21 @@ export default function LeaderboardsPage() {
             </div>
 
             {/* Cohort Selector */}
-            <select
-              className="toolbar-select"
-              value={selectedSection ? '' : cohortType}
-              onChange={e => {
-                setCohortType(e.target.value);
-                setSelectedSection('');
-              }}
-              style={{ minWidth: 170 }}
-            >
-              <option value="ALL">🌍 Global (All Users)</option>
-              <option value="INDEPENDENT">👤 Independent / Self-Paced</option>
-              <option value="ENROLLED">🏫 Enrolled in Classes</option>
-            </select>
+            {!isTeacher && (
+              <select
+                className="toolbar-select"
+                value={selectedSection ? '' : cohortType}
+                onChange={e => {
+                  setCohortType(e.target.value);
+                  setSelectedSection('');
+                }}
+                style={{ minWidth: 170 }}
+              >
+                <option value="ALL">🌍 Global (All Users)</option>
+                <option value="INDEPENDENT">👤 Independent / Self-Paced</option>
+                <option value="ENROLLED">🏫 Enrolled in Classes</option>
+              </select>
+            )}
 
             {/* Class Section Selector */}
             <select
@@ -127,82 +143,116 @@ export default function LeaderboardsPage() {
               value={selectedSection}
               onChange={e => {
                 setSelectedSection(e.target.value);
-                if (e.target.value) setCohortType('ALL');
+                if (e.target.value) setCohortType(isTeacher ? 'ENROLLED' : 'ALL');
               }}
-              style={{ minWidth: 150 }}
+              style={{ minWidth: 160 }}
             >
-              <option value="">Specific Section...</option>
-              {sections.map(s => (
-                <option key={s.section_id} value={s.section_id}>{s.section_name}</option>
-              ))}
+              <option value="">{isTeacher ? '🌟 All My Classes' : (cohortType === 'INDEPENDENT' ? 'Classes N/A (Self-Paced)' : '🌐 All Classrooms')}</option>
+              {sections.map(s => {
+                const sId = s.section_id || s.sectionId;
+                const sName = s.section_name || s.sectionName;
+                return (
+                  <option key={sId} value={sId}>{sName}</option>
+                );
+              })}
             </select>
           </div>
         </header>
 
         {error && <div className="alert alert--error" onClick={() => setError('')}>{error}</div>}
 
+        {/* ── Active Class Scope Banner ─────────────────────────────────── */}
+        {selectedSection && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(37,99,235,0.08), rgba(29,78,216,0.04))',
+            border: '1.5px solid rgba(37,99,235,0.3)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '14px 20px',
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: '1.4rem' }}>🏆</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e40af' }}>
+                  Leaderboard Filtered by: {sections.find(s => (s.section_id || s.sectionId) === selectedSection)?.section_name || sections.find(s => (s.section_id || s.sectionId) === selectedSection)?.sectionName || 'Selected Class'}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#3b82f6', marginTop: 2 }}>
+                  Showing class-scoped point totals, class accuracy rates, and rankings for students in this classroom.
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedSection('')}
+              style={{
+                padding: '6px 14px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                color: '#1d4ed8',
+                background: '#fff',
+                border: '1px solid rgba(37,99,235,0.3)',
+                borderRadius: 8,
+                cursor: 'pointer',
+              }}
+            >
+              ✕ {isTeacher ? 'Reset to All My Classes' : 'Reset to Global View'}
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div className="auth-loading" style={{ minHeight: 350 }}><div className="spinner" /></div>
         ) : data ? (
           <div>
             {/* Gamification Summary KPIs */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-              gap: 16,
-              marginBottom: 28,
-            }}>
-              <div style={{
-                background: 'var(--glass-bg)',
-                borderRadius: 'var(--radius-md)',
-                padding: '20px 24px',
-                border: '1px solid var(--color-border)',
-                boxShadow: 'var(--shadow-card)',
+            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+              <div className="kpi-card" style={{
+                '--kpi-gradient': 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                '--kpi-blob': 'rgba(59,130,246,0.07)', '--kpi-color': '#3b82f6', '--kpi-glow': 'rgba(59,130,246,0.28)'
               }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                  Total Points Earned
+                <div className="kpi-card__header">
+                  <span className="kpi-card__label">Total Points Earned</span>
+                  <div className="kpi-card__icon-bubble">⭐</div>
                 </div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-accent-1)', marginTop: 4 }}>
-                  {data.gamification_summary?.total_points_awarded?.toLocaleString() ?? 0}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-dim)', marginTop: 4 }}>
-                  Avg {data.gamification_summary?.average_points_per_active_learner ?? 0} pts per student
+                <div className="kpi-card__value">{data.gamification_summary?.total_points_awarded?.toLocaleString() ?? 0}</div>
+                <div className="kpi-card__footer">
+                  <span className="kpi-card__subtitle">Avg {data.gamification_summary?.average_points_per_active_learner ?? 0} pts/student</span>
                 </div>
               </div>
 
-              <div style={{
-                background: 'var(--glass-bg)',
-                borderRadius: 'var(--radius-md)',
-                padding: '20px 24px',
-                border: '1px solid var(--color-border)',
-                boxShadow: 'var(--shadow-card)',
+              <div className="kpi-card" style={{
+                '--kpi-gradient': 'linear-gradient(135deg, #06b6d4, #0891b2)',
+                '--kpi-blob': 'rgba(6,182,212,0.07)', '--kpi-color': '#0891b2', '--kpi-glow': 'rgba(6,182,212,0.28)'
               }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                  Practice Sessions Completed
+                <div className="kpi-card__header">
+                  <span className="kpi-card__label">Practice Sessions</span>
+                  <div className="kpi-card__icon-bubble">🎮</div>
                 </div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#06b6d4', marginTop: 4 }}>
-                  {data.gamification_summary?.total_sessions_played?.toLocaleString() ?? 0}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-dim)', marginTop: 4 }}>
-                  Total practice runs logged
+                <div className="kpi-card__value">{data.gamification_summary?.total_sessions_played?.toLocaleString() ?? 0}</div>
+                <div className="kpi-card__footer">
+                  <span className="kpi-card__subtitle">Total practice runs logged</span>
                 </div>
               </div>
 
-              <div style={{
-                background: 'var(--glass-bg)',
-                borderRadius: 'var(--radius-md)',
-                padding: '20px 24px',
-                border: '1px solid var(--color-border)',
-                boxShadow: 'var(--shadow-card)',
+              <div className="kpi-card" style={{
+                '--kpi-gradient': 'linear-gradient(135deg, #f59e0b, #d97706)',
+                '--kpi-blob': 'rgba(245,158,11,0.07)', '--kpi-color': '#d97706', '--kpi-glow': 'rgba(245,158,11,0.28)'
               }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                  Badges &amp; Medals Unlocked
+                <div className="kpi-card__header">
+                  <span className="kpi-card__label">Badges Unlocked</span>
+                  <div className="kpi-card__icon-bubble">🏅</div>
                 </div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b', marginTop: 4 }}>
-                  {data.gamification_summary?.total_badges_unlocked?.toLocaleString() ?? 0}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-dim)', marginTop: 4 }}>
-                  🥇 {data.gamification_summary?.badge_tier_counts?.PERFECT_GOLD || 0} Perfect • 🥈 {data.gamification_summary?.badge_tier_counts?.GOLD || 0} Gold
+                <div className="kpi-card__value">{data.gamification_summary?.total_badges_unlocked?.toLocaleString() ?? 0}</div>
+                <div className="kpi-card__footer">
+                  <span className="kpi-card__subtitle">
+                    🥇 {data.gamification_summary?.badge_tier_counts?.PERFECT_GOLD || 0} Perfect
+                    · 🥈 {data.gamification_summary?.badge_tier_counts?.GOLD || 0} Gold
+                  </span>
                 </div>
               </div>
             </div>
@@ -213,7 +263,7 @@ export default function LeaderboardsPage() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
                 gap: 16,
-                marginBottom: 32,
+                marginBottom: 28,
               }}>
                 {top3.map((entry) => (
                   <div
@@ -221,40 +271,39 @@ export default function LeaderboardsPage() {
                     onClick={() => setDetailLearnerId(entry.learner_id)}
                     style={{
                       background: entry.rank === 1
-                        ? 'linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(254, 240, 138, 0.04) 100%)'
-                        : 'var(--glass-bg)',
-                      border: entry.rank === 1 ? '1.5px solid #eab308' : '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-md)',
+                        ? 'linear-gradient(135deg, rgba(234, 179, 8, 0.10) 0%, rgba(254, 240, 138, 0.04) 100%)'
+                        : 'var(--color-surface)',
+                      border: entry.rank === 1 ? '1.5px solid rgba(234,179,8,0.50)' : '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-lg)',
                       padding: 20,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 16,
-                      transition: 'transform 0.2s',
+                      transition: 'all 0.18s',
+                      boxShadow: 'var(--shadow-card)',
                     }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                   >
-                    <div style={{ fontSize: '2.4rem' }}>
+                    <div style={{ fontSize: '2.4rem', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.15))' }}>
                       {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : '🥉'}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--color-text-main)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '1.0rem', color: 'var(--color-text-main)' }}>
                           {entry.display_name}
                         </span>
                         {entry.independent ? (
-                          <span style={{ fontSize: '0.7rem', background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
-                            Self-Paced
-                          </span>
+                          <span className="status-pill status-pill--info" style={{ fontSize: '0.68rem' }}>Self-Paced</span>
                         ) : (
-                          <span style={{ fontSize: '0.7rem', background: 'rgba(124, 77, 255, 0.15)', color: 'var(--color-primary)', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
-                            {entry.section_name}
-                          </span>
+                          <span className="status-pill status-pill--neutral" style={{ fontSize: '0.68rem' }}>{entry.section_name}</span>
                         )}
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)', marginTop: 4 }}>
-                        Tier: <strong>{entry.tier}</strong> • {entry.overall_accuracy}% acc
+                      <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                        Tier: <strong>{entry.tier}</strong> · {entry.overall_accuracy}% acc
                       </div>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-accent-1)', marginTop: 6 }}>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary-mid)', marginTop: 6 }}>
                         {entry.points?.toLocaleString()} pts
                       </div>
                     </div>
@@ -263,23 +312,16 @@ export default function LeaderboardsPage() {
               </div>
             )}
 
-            {/* Complete Leaderboard Table */}
-            <div style={{
-              background: 'var(--glass-bg)',
-              borderRadius: 'var(--radius-md)',
-              padding: 24,
-              border: '1px solid var(--color-border)',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--color-text-main)' }}>
-                  📋 {range === 'weekly' ? 'This Week’s Top Learners' : 'All-Time Global Rankings'}
-                </h3>
-                <span className="table-meta" style={{ margin: 0 }}>
-                  Showing Top {data.leaderboard?.length || 0} participants
-                </span>
+            <div className="section-card" style={{ marginBottom: 0 }}>
+              <div className="section-card__header">
+                <div className="section-card__title">
+                  📋 {range === 'weekly' ? "This Week's Top Learners" : (selectedSection ? 'Classroom Rankings' : 'All-Time Rankings')}
+                  {selectedSection && ` — ${sections.find(s => (s.section_id || s.sectionId) === selectedSection)?.section_name || sections.find(s => (s.section_id || s.sectionId) === selectedSection)?.sectionName || 'Classroom'}`}
+                </div>
+                <span className="chart-card__period">Top {data.leaderboard?.length || 0} participants</span>
               </div>
 
-              <div className="accounts-table-wrap">
+              <div className="accounts-table-wrap" style={{ marginBottom: 0 }}>
                 <table className="accounts-table">
                   <thead>
                     <tr>
@@ -308,20 +350,21 @@ export default function LeaderboardsPage() {
                           <RankBadge rank={entry.rank} />
                         </td>
                         <td>
-                          <strong>{entry.display_name}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                            <div style={{
+                              width: 30, height: 30, borderRadius: '50%',
+                              background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                              display: 'grid', placeItems: 'center',
+                              color: '#fff', fontSize: '0.75rem', fontWeight: 700, flexShrink: 0,
+                            }}>
+                              {entry.display_name?.charAt(0)?.toUpperCase() || '?'}
+                            </div>
+                            <strong style={{ color: 'var(--color-text)' }}>{entry.display_name}</strong>
+                          </div>
                         </td>
                         <td>
                           {entry.independent ? (
-                            <span style={{
-                              fontSize: '0.75rem',
-                              background: 'rgba(6, 182, 212, 0.12)',
-                              color: '#06b6d4',
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              fontWeight: 600,
-                            }}>
-                              Self-Paced
-                            </span>
+                            <span className="status-pill status-pill--info">Self-Paced</span>
                           ) : (
                             <span className="text-muted">{entry.section_name}</span>
                           )}
@@ -330,33 +373,22 @@ export default function LeaderboardsPage() {
                           {entry.grade_level ? entry.grade_level.replace('_', ' ') : '—'}
                         </td>
                         <td>
-                          <span style={{
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: 4,
-                            background: entry.tier === 'MASTERED'
-                              ? 'rgba(74, 222, 128, 0.15)'
-                              : entry.tier === 'PROGRESSING'
-                              ? 'rgba(250, 204, 21, 0.15)'
-                              : 'rgba(148, 163, 184, 0.15)',
-                            color: entry.tier === 'MASTERED'
-                              ? 'var(--color-success)'
-                              : entry.tier === 'PROGRESSING'
-                              ? '#ca8a04'
-                              : 'var(--color-text-muted)',
-                          }}>
+                          <span className={`status-pill ${
+                            entry.tier === 'MASTERED' ? 'status-pill--success'
+                            : entry.tier === 'PROGRESSING' ? 'status-pill--warning'
+                            : 'status-pill--neutral'
+                          }`}>
                             {entry.tier}
                           </span>
                         </td>
-                        <td style={{ fontWeight: 600 }}>
+                        <td style={{ fontWeight: 700 }}>
                           {entry.overall_accuracy != null ? `${entry.overall_accuracy.toFixed(1)}%` : '0%'}
                         </td>
                         <td>
-                          <span style={{ fontSize: '0.85rem' }}>🏅 {entry.badges_count || 0}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>🏅 {entry.badges_count || 0}</span>
                         </td>
                         <td>
-                          <span style={{ fontWeight: 800, color: 'var(--color-accent-1)', fontSize: '1rem' }}>
+                          <span style={{ fontWeight: 800, color: 'var(--primary-mid)', fontSize: '1rem' }}>
                             {entry.points?.toLocaleString()} pts
                           </span>
                         </td>
@@ -381,6 +413,10 @@ export default function LeaderboardsPage() {
         {detailLearnerId && (
           <LearnerDetailModal
             learnerId={detailLearnerId}
+            classContext={selectedSection ? {
+              classId: selectedSection,
+              className: sections.find(s => (s.section_id || s.sectionId) === selectedSection)?.section_name || sections.find(s => (s.section_id || s.sectionId) === selectedSection)?.sectionName,
+            } : null}
             onClose={() => setDetailLearnerId(null)}
             onResetProgress={() => { setDetailLearnerId(null); }}
             onEditProfile={() => { setDetailLearnerId(null); }}

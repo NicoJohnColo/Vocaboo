@@ -18,6 +18,9 @@ public class AdminLearnerDetailResponse {
     @JsonProperty("learner_id")
     private UUID learnerId;
 
+    @JsonProperty("user_id")
+    private String userId;
+
     @JsonProperty("display_name")
     private String displayName;
 
@@ -38,6 +41,9 @@ public class AdminLearnerDetailResponse {
 
     @JsonProperty("pos_focus")
     private String posFocus;
+
+    @JsonProperty("avatar")
+    private String avatar;
 
     @JsonProperty("is_active")
     private Boolean isActive;
@@ -100,8 +106,44 @@ public class AdminLearnerDetailResponse {
     @JsonProperty("cumulative_reviews")
     private List<CumulativeReviewPerformanceDetail> cumulativeReviews;
 
+    // ── Class Performance Scope (When viewed within a class/section context) ──
+    @JsonProperty("class_id")
+    private UUID classId;
+
+    @JsonProperty("class_name")
+    private String className;
+
+    @JsonProperty("class_code")
+    private String classCode;
+
+    @JsonProperty("class_points")
+    private Integer classPoints;
+
+    @JsonProperty("class_accuracy")
+    private BigDecimal classAccuracy;
+
+    @JsonProperty("class_mastery_level")
+    private String classMasteryLevel;
+
+    @JsonProperty("class_sessions_played")
+    private Integer classSessionsPlayed;
+
+    // ── Part of Speech (POS) Mastery Breakdown ──
+    @JsonProperty("pos_breakdown")
+    private List<PosAccuracyDetail> posBreakdown;
+
+    // ── Full Word Diagnostic List (All words practiced with POS and accuracy) ──
+    @JsonProperty("all_words")
+    private List<LearnerWordPerformanceDetail> allWords;
+
+    // ── All Enrolled Classes for this Learner ──
+    @JsonProperty("enrolled_classes")
+    private List<EnrolledClassDetail> enrolledClasses;
+
     // Explicit Getters for AdminLearnerDetailResponse
     public UUID getLearnerId() { return learnerId; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
     public String getDisplayName() { return displayName; }
     public Integer getAge() { return age; }
     public String getGradeLevel() { return gradeLevel; }
@@ -109,6 +151,7 @@ public class AdminLearnerDetailResponse {
     public String getSectionName() { return sectionName; }
     public String getLanguagePreference() { return languagePreference; }
     public String getPosFocus() { return posFocus; }
+    public String getAvatar() { return avatar != null ? avatar : "prof1.jpg"; }
     public Boolean getIsActive() { return isActive; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
@@ -128,6 +171,16 @@ public class AdminLearnerDetailResponse {
     public BigDecimal getAvgCumulativeScore() { return avgCumulativeScore; }
     public String getBestCumulativeBadge() { return bestCumulativeBadge; }
     public List<CumulativeReviewPerformanceDetail> getCumulativeReviews() { return cumulativeReviews; }
+    public UUID getClassId() { return classId; }
+    public String getClassName() { return className; }
+    public String getClassCode() { return classCode; }
+    public Integer getClassPoints() { return classPoints; }
+    public BigDecimal getClassAccuracy() { return classAccuracy; }
+    public String getClassMasteryLevel() { return classMasteryLevel; }
+    public Integer getClassSessionsPlayed() { return classSessionsPlayed; }
+    public List<PosAccuracyDetail> getPosBreakdown() { return posBreakdown; }
+    public List<LearnerWordPerformanceDetail> getAllWords() { return allWords; }
+    public List<EnrolledClassDetail> getEnrolledClasses() { return enrolledClasses; }
 
     public static AdminLearnerDetailResponseBuilder builder() {
         return new AdminLearnerDetailResponseBuilder();
@@ -135,6 +188,7 @@ public class AdminLearnerDetailResponse {
 
     public static class AdminLearnerDetailResponseBuilder {
         private UUID learnerId;
+        private String userId;
         private String displayName;
         private Integer age;
         private String gradeLevel;
@@ -142,6 +196,7 @@ public class AdminLearnerDetailResponse {
         private String sectionName;
         private String languagePreference;
         private String posFocus;
+        private String avatar;
         private Boolean isActive;
         private OffsetDateTime createdAt;
         private OffsetDateTime updatedAt;
@@ -161,8 +216,23 @@ public class AdminLearnerDetailResponse {
         private BigDecimal avgCumulativeScore;
         private String bestCumulativeBadge;
         private List<CumulativeReviewPerformanceDetail> cumulativeReviews;
+        private UUID classId;
+        private String className;
+        private String classCode;
+        private Integer classPoints;
+        private BigDecimal classAccuracy;
+        private String classMasteryLevel;
+        private Integer classSessionsPlayed;
+        private List<PosAccuracyDetail> posBreakdown;
+        private List<LearnerWordPerformanceDetail> allWords;
+        private List<EnrolledClassDetail> enrolledClasses;
+
+        public AdminLearnerDetailResponseBuilder classId(UUID classId) { this.classId = classId; return this; }
+        public AdminLearnerDetailResponseBuilder className(String className) { this.className = className; return this; }
+        public AdminLearnerDetailResponseBuilder classCode(String classCode) { this.classCode = classCode; return this; }
 
         public AdminLearnerDetailResponseBuilder learnerId(UUID learnerId) { this.learnerId = learnerId; return this; }
+        public AdminLearnerDetailResponseBuilder userId(String userId) { this.userId = userId; return this; }
         public AdminLearnerDetailResponseBuilder displayName(String displayName) { this.displayName = displayName; return this; }
         public AdminLearnerDetailResponseBuilder age(Integer age) { this.age = age; return this; }
         public AdminLearnerDetailResponseBuilder gradeLevel(String gradeLevel) { this.gradeLevel = gradeLevel; return this; }
@@ -170,6 +240,7 @@ public class AdminLearnerDetailResponse {
         public AdminLearnerDetailResponseBuilder sectionName(String sectionName) { this.sectionName = sectionName; return this; }
         public AdminLearnerDetailResponseBuilder languagePreference(String languagePreference) { this.languagePreference = languagePreference; return this; }
         public AdminLearnerDetailResponseBuilder posFocus(String posFocus) { this.posFocus = posFocus; return this; }
+        public AdminLearnerDetailResponseBuilder avatar(String avatar) { this.avatar = avatar; return this; }
         public AdminLearnerDetailResponseBuilder isActive(Boolean isActive) { this.isActive = isActive; return this; }
         public AdminLearnerDetailResponseBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
         public AdminLearnerDetailResponseBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
@@ -189,10 +260,18 @@ public class AdminLearnerDetailResponse {
         public AdminLearnerDetailResponseBuilder avgCumulativeScore(BigDecimal avgCumulativeScore) { this.avgCumulativeScore = avgCumulativeScore; return this; }
         public AdminLearnerDetailResponseBuilder bestCumulativeBadge(String bestCumulativeBadge) { this.bestCumulativeBadge = bestCumulativeBadge; return this; }
         public AdminLearnerDetailResponseBuilder cumulativeReviews(List<CumulativeReviewPerformanceDetail> cumulativeReviews) { this.cumulativeReviews = cumulativeReviews; return this; }
+        public AdminLearnerDetailResponseBuilder classPoints(Integer classPoints) { this.classPoints = classPoints; return this; }
+        public AdminLearnerDetailResponseBuilder classAccuracy(BigDecimal classAccuracy) { this.classAccuracy = classAccuracy; return this; }
+        public AdminLearnerDetailResponseBuilder classMasteryLevel(String classMasteryLevel) { this.classMasteryLevel = classMasteryLevel; return this; }
+        public AdminLearnerDetailResponseBuilder classSessionsPlayed(Integer classSessionsPlayed) { this.classSessionsPlayed = classSessionsPlayed; return this; }
+        public AdminLearnerDetailResponseBuilder posBreakdown(List<PosAccuracyDetail> posBreakdown) { this.posBreakdown = posBreakdown; return this; }
+        public AdminLearnerDetailResponseBuilder allWords(List<LearnerWordPerformanceDetail> allWords) { this.allWords = allWords; return this; }
+        public AdminLearnerDetailResponseBuilder enrolledClasses(List<EnrolledClassDetail> enrolledClasses) { this.enrolledClasses = enrolledClasses; return this; }
 
         public AdminLearnerDetailResponse build() {
             AdminLearnerDetailResponse r = new AdminLearnerDetailResponse();
             r.learnerId = this.learnerId;
+            r.userId = this.userId;
             r.displayName = this.displayName;
             r.age = this.age;
             r.gradeLevel = this.gradeLevel;
@@ -200,6 +279,7 @@ public class AdminLearnerDetailResponse {
             r.sectionName = this.sectionName;
             r.languagePreference = this.languagePreference;
             r.posFocus = this.posFocus;
+            r.avatar = this.avatar != null ? this.avatar : "prof1.jpg";
             r.isActive = this.isActive;
             r.createdAt = this.createdAt;
             r.updatedAt = this.updatedAt;
@@ -219,6 +299,16 @@ public class AdminLearnerDetailResponse {
             r.avgCumulativeScore = this.avgCumulativeScore;
             r.bestCumulativeBadge = this.bestCumulativeBadge;
             r.cumulativeReviews = this.cumulativeReviews;
+            r.classId = this.classId;
+            r.className = this.className;
+            r.classCode = this.classCode;
+            r.classPoints = this.classPoints;
+            r.classAccuracy = this.classAccuracy;
+            r.classMasteryLevel = this.classMasteryLevel;
+            r.classSessionsPlayed = this.classSessionsPlayed;
+            r.posBreakdown = this.posBreakdown;
+            r.allWords = this.allWords;
+            r.enrolledClasses = this.enrolledClasses;
             return r;
         }
     }
@@ -400,11 +490,20 @@ public class AdminLearnerDetailResponse {
         @JsonProperty("cebuano_meaning")
         private String cebuanoMeaning;
 
+        @JsonProperty("part_of_speech")
+        private String partOfSpeech;
+
         @JsonProperty("lesson_title")
         private String lessonTitle;
 
         @JsonProperty("accuracy")
         private BigDecimal accuracy;
+
+        @JsonProperty("lesson_accuracy")
+        private BigDecimal lessonAccuracy;
+
+        @JsonProperty("lifetime_accuracy")
+        private BigDecimal lifetimeAccuracy;
 
         @JsonProperty("total_attempts")
         private Integer totalAttempts;
@@ -431,6 +530,8 @@ public class AdminLearnerDetailResponse {
         public String getCebuanoMeaning() { return cebuanoMeaning; }
         public String getLessonTitle() { return lessonTitle; }
         public BigDecimal getAccuracy() { return accuracy; }
+        public BigDecimal getLessonAccuracy() { return lessonAccuracy != null ? lessonAccuracy : accuracy; }
+        public BigDecimal getLifetimeAccuracy() { return lifetimeAccuracy != null ? lifetimeAccuracy : accuracy; }
         public Integer getCorrectCount() { return correctCount; }
         public Integer getIncorrectCount() { return incorrectCount; }
         public Integer getDemeritPoints() { return demeritPoints; }
@@ -442,8 +543,11 @@ public class AdminLearnerDetailResponse {
             private UUID wordId;
             private String englishWord;
             private String cebuanoMeaning;
+            private String partOfSpeech;
             private String lessonTitle;
             private BigDecimal accuracy;
+            private BigDecimal lessonAccuracy;
+            private BigDecimal lifetimeAccuracy;
             private Integer totalAttempts;
             private Integer correctCount;
             private Integer incorrectCount;
@@ -455,8 +559,11 @@ public class AdminLearnerDetailResponse {
             public LearnerWordPerformanceDetailBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
             public LearnerWordPerformanceDetailBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
             public LearnerWordPerformanceDetailBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+            public LearnerWordPerformanceDetailBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
             public LearnerWordPerformanceDetailBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
             public LearnerWordPerformanceDetailBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+            public LearnerWordPerformanceDetailBuilder lessonAccuracy(BigDecimal lessonAccuracy) { this.lessonAccuracy = lessonAccuracy; return this; }
+            public LearnerWordPerformanceDetailBuilder lifetimeAccuracy(BigDecimal lifetimeAccuracy) { this.lifetimeAccuracy = lifetimeAccuracy; return this; }
             public LearnerWordPerformanceDetailBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
             public LearnerWordPerformanceDetailBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
             public LearnerWordPerformanceDetailBuilder incorrectCount(Integer incorrectCount) { this.incorrectCount = incorrectCount; return this; }
@@ -470,8 +577,11 @@ public class AdminLearnerDetailResponse {
                 d.wordId = this.wordId;
                 d.englishWord = this.englishWord;
                 d.cebuanoMeaning = this.cebuanoMeaning;
+                d.partOfSpeech = this.partOfSpeech;
                 d.lessonTitle = this.lessonTitle;
                 d.accuracy = this.accuracy;
+                d.lessonAccuracy = this.lessonAccuracy != null ? this.lessonAccuracy : this.accuracy;
+                d.lifetimeAccuracy = this.lifetimeAccuracy != null ? this.lifetimeAccuracy : this.accuracy;
                 d.totalAttempts = this.totalAttempts;
                 d.correctCount = this.correctCount;
                 d.incorrectCount = this.incorrectCount;
@@ -565,6 +675,150 @@ public class AdminLearnerDetailResponse {
                 d.totalAttempts = this.totalAttempts;
                 d.sessionStatus = this.sessionStatus;
                 d.completedAt = this.completedAt;
+                return d;
+            }
+        }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PosAccuracyDetail {
+        @JsonProperty("part_of_speech")
+        private String partOfSpeech;
+
+        @JsonProperty("total_words")
+        private Integer totalWords;
+
+        @JsonProperty("total_attempts")
+        private Integer totalAttempts;
+
+        @JsonProperty("correct_count")
+        private Integer correctCount;
+
+        @JsonProperty("accuracy")
+        private BigDecimal accuracy;
+
+        public String getPartOfSpeech() { return partOfSpeech; }
+        public Integer getTotalWords() { return totalWords; }
+        public Integer getTotalAttempts() { return totalAttempts; }
+        public Integer getCorrectCount() { return correctCount; }
+        public BigDecimal getAccuracy() { return accuracy; }
+
+        public void setPartOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; }
+        public void setTotalWords(Integer totalWords) { this.totalWords = totalWords; }
+        public void setTotalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; }
+        public void setCorrectCount(Integer correctCount) { this.correctCount = correctCount; }
+        public void setAccuracy(BigDecimal accuracy) { this.accuracy = accuracy; }
+
+        public static PosAccuracyDetailBuilder builder() { return new PosAccuracyDetailBuilder(); }
+
+        public static class PosAccuracyDetailBuilder {
+            private String partOfSpeech;
+            private Integer totalWords;
+            private Integer totalAttempts;
+            private Integer correctCount;
+            private BigDecimal accuracy;
+
+            public PosAccuracyDetailBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
+            public PosAccuracyDetailBuilder totalWords(Integer totalWords) { this.totalWords = totalWords; return this; }
+            public PosAccuracyDetailBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
+            public PosAccuracyDetailBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
+            public PosAccuracyDetailBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+
+            public PosAccuracyDetail build() {
+                PosAccuracyDetail p = new PosAccuracyDetail();
+                p.partOfSpeech = this.partOfSpeech;
+                p.totalWords = this.totalWords != null ? this.totalWords : 0;
+                p.totalAttempts = this.totalAttempts != null ? this.totalAttempts : 0;
+                p.correctCount = this.correctCount != null ? this.correctCount : 0;
+                p.accuracy = this.accuracy != null ? this.accuracy : BigDecimal.ZERO;
+                return p;
+            }
+        }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class EnrolledClassDetail {
+        @JsonProperty("class_id")
+        private UUID classId;
+
+        @JsonProperty("class_name")
+        private String className;
+
+        @JsonProperty("class_code")
+        private String classCode;
+
+        @JsonProperty("teacher_name")
+        private String teacherName;
+
+        @JsonProperty("class_points")
+        private Integer classPoints;
+
+        @JsonProperty("class_accuracy")
+        private BigDecimal classAccuracy;
+
+        @JsonProperty("class_mastery_level")
+        private String classMasteryLevel;
+
+        @JsonProperty("class_sessions_played")
+        private Integer classSessionsPlayed;
+
+        public UUID getClassId() { return classId; }
+        public String getClassName() { return className; }
+        public String getClassCode() { return classCode; }
+        public String getTeacherName() { return teacherName; }
+        public Integer getClassPoints() { return classPoints; }
+        public BigDecimal getClassAccuracy() { return classAccuracy; }
+        public String getClassMasteryLevel() { return classMasteryLevel; }
+        public Integer getClassSessionsPlayed() { return classSessionsPlayed; }
+
+        public void setClassId(UUID classId) { this.classId = classId; }
+        public void setClassName(String className) { this.className = className; }
+        public void setClassCode(String classCode) { this.classCode = classCode; }
+        public void setTeacherName(String teacherName) { this.teacherName = teacherName; }
+        public void setClassPoints(Integer classPoints) { this.classPoints = classPoints; }
+        public void setClassAccuracy(BigDecimal classAccuracy) { this.classAccuracy = classAccuracy; }
+        public void setClassMasteryLevel(String classMasteryLevel) { this.classMasteryLevel = classMasteryLevel; }
+        public void setClassSessionsPlayed(Integer classSessionsPlayed) { this.classSessionsPlayed = classSessionsPlayed; }
+
+        public static EnrolledClassDetailBuilder builder() { return new EnrolledClassDetailBuilder(); }
+
+        public static class EnrolledClassDetailBuilder {
+            private UUID classId;
+            private String className;
+            private String classCode;
+            private String teacherName;
+            private Integer classPoints;
+            private BigDecimal classAccuracy;
+            private String classMasteryLevel;
+            private Integer classSessionsPlayed;
+
+            public EnrolledClassDetailBuilder classId(UUID classId) { this.classId = classId; return this; }
+            public EnrolledClassDetailBuilder className(String className) { this.className = className; return this; }
+            public EnrolledClassDetailBuilder classCode(String classCode) { this.classCode = classCode; return this; }
+            public EnrolledClassDetailBuilder teacherName(String teacherName) { this.teacherName = teacherName; return this; }
+            public EnrolledClassDetailBuilder classPoints(Integer classPoints) { this.classPoints = classPoints; return this; }
+            public EnrolledClassDetailBuilder classAccuracy(BigDecimal classAccuracy) { this.classAccuracy = classAccuracy; return this; }
+            public EnrolledClassDetailBuilder classMasteryLevel(String classMasteryLevel) { this.classMasteryLevel = classMasteryLevel; return this; }
+            public EnrolledClassDetailBuilder classSessionsPlayed(Integer classSessionsPlayed) { this.classSessionsPlayed = classSessionsPlayed; return this; }
+
+            public EnrolledClassDetail build() {
+                EnrolledClassDetail d = new EnrolledClassDetail();
+                d.classId = this.classId;
+                d.className = this.className;
+                d.classCode = this.classCode;
+                d.teacherName = this.teacherName;
+                d.classPoints = this.classPoints != null ? this.classPoints : 0;
+                d.classAccuracy = this.classAccuracy != null ? this.classAccuracy : BigDecimal.ZERO;
+                d.classMasteryLevel = this.classMasteryLevel != null ? this.classMasteryLevel : "LEARNING";
+                d.classSessionsPlayed = this.classSessionsPlayed != null ? this.classSessionsPlayed : 0;
                 return d;
             }
         }

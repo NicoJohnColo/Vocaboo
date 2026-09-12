@@ -16,6 +16,10 @@ public interface LearnerRepository extends JpaRepository<Learner, UUID>, JpaSpec
     boolean existsByDisplayNameIgnoreCase(String displayName);
     boolean existsByDisplayNameIgnoreCaseAndLearnerIdNot(String displayName, UUID learnerId);
 
+    Optional<Learner> findByUserId(String userId);
+    Optional<Learner> findByUserIdIgnoreCase(String userId);
+    boolean existsByUserId(String userId);
+
     List<Learner> findBySectionSectionId(UUID sectionId);
     List<Learner> findBySectionSectionIdAndIsActiveTrue(UUID sectionId);
     List<Learner> findBySectionIsNullAndIsActiveTrue();

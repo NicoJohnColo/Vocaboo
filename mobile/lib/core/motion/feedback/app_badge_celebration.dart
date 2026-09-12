@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../motion_tokens.dart';
 import '../typography_tokens.dart';
+import '../../../widgets/app_3d_button.dart';
 
 /// Modal dialog and celebration banner for badge unlocks, streak records,
 /// and level completion tailored for 9-12 year old learners.
@@ -246,20 +247,14 @@ class _AppBadgeCelebrationState extends State<AppBadgeCelebration>
               const SizedBox(height: 24),
 
               // Dismiss Action Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: widget.onDismiss,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0EA5E9),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                    elevation: 0,
-                    textStyle: AppTypography.button.copyWith(fontSize: 16),
-                  ),
-                  child: Text(widget.buttonLabel),
-                ),
+              App3DButton(
+                text: widget.buttonLabel,
+                onPressed: widget.onDismiss,
+                variant: App3DButtonVariant.primary,
+                height: 52.0,
+                depth: 5.0,
+                isFullWidth: true,
+                borderRadius: 18,
               ),
             ],
           ),

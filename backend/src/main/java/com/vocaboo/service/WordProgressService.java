@@ -29,6 +29,7 @@ public class WordProgressService {
     private final LearnerMasteryRepository masteryRepository;
     private final DifficultyProgressRepository difficultyProgressRepository;
     private final PracticeResultRepository practiceResultRepository;
+    private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
 
     @Transactional
     public ProgressResponse updateProgress(UUID sessionId, ProgressRequest request) {
@@ -129,7 +130,9 @@ public class WordProgressService {
                             .build());
 
             lessonStatus.setStatus(LessonStatus.UNLOCKED);
-            lessonStatus.setMasteryScore(score);
+            if (lessonStatus.getMasteryScore() == null || score.compareTo(lessonStatus.getMasteryScore()) > 0) {
+                lessonStatus.setMasteryScore(score);
+            }
             lessonStatus.setAttempts(lessonStatus.getAttempts() + 1);
             lessonStatus.setCompletedAt(OffsetDateTime.now());
             lessonStatusRepository.save(lessonStatus);
@@ -185,7 +188,8 @@ public class WordProgressService {
                     perf.setIncorrectCount(perf.getIncorrectCount() + 1);
                 }
                 double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
-                perf.setAccuracy(BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP));
+                BigDecimal candidateAcc = BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP);
+                perf.setAccuracy(candidateAcc);
                 perf.setLastPracticedAt(OffsetDateTime.now());
                 performanceRepository.save(perf);
             }
@@ -202,8 +206,9 @@ public class WordProgressService {
                             .totalPoints(0)
                             .build());
 
-            long completedSessionsCount = summaryRepository.findByLearnerLearnerId(session.getLearner().getLearnerId()).size();
-            mastery.setTotalSessionsPlayed((int) completedSessionsCount);
+            int completedSessionsCount = summaryRepository.findByLearnerLearnerId(session.getLearner().getLearnerId()).size();
+            int currentSessions = mastery.getTotalSessionsPlayed() != null ? mastery.getTotalSessionsPlayed() : 0;
+            mastery.setTotalSessionsPlayed(Math.max(currentSessions, Math.max(1, completedSessionsCount)));
             mastery.setTotalQuestionsAnswered(mastery.getTotalQuestionsAnswered() + totalWordCount);
             mastery.setTotalCorrectAnswers(mastery.getTotalCorrectAnswers() + (int) correctWordsCount);
 
@@ -239,8 +244,17 @@ public class WordProgressService {
     }
 
     private void unlockNextLesson(Lesson completedLesson, Learner learner) {
-        // Find lessons in the same category
-        List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdOrderByLessonOrderAsc(completedLesson.getCategory().getCategoryId());
+        final java.util.Set<UUID> enrolledClassIds = (learner != null && learner.getLearnerId() != null)
+                ? classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learner.getLearnerId(), "ACTIVE").stream()
+                        .map(e -> e.getClassroom().getClassId())
+                        .collect(java.util.stream.Collectors.toSet())
+                : java.util.Collections.emptySet();
+
+        // Find published accessible lessons in the same category
+        List<Lesson> lessons = lessonRepository.findByCategoryCategoryIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(
+                completedLesson.getCategory().getCategoryId(), "PUBLISHED").stream()
+                .filter(l -> l.getClassroom() == null || enrolledClassIds.contains(l.getClassroom().getClassId()))
+                .collect(java.util.stream.Collectors.toList());
         
         int nextOrder = completedLesson.getLessonOrder() + 1;
         lessons.stream()

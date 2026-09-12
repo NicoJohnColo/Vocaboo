@@ -27,9 +27,18 @@ public class SessionSummaryService {
     private final LearnerMasteryRepository masteryRepository;
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final DifficultyProgressRepository difficultyProgressRepository;
+    private final ClassPerformanceService classPerformanceService;
+    private final com.vocaboo.repository.ClassroomRepository classroomRepository;
 
     @Transactional
     public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId, Double reviewScore, Boolean isPerfectFirstAttempt) {
+        return saveSessionSummary(learnerId, sessionId, lessonId, reviewScore, isPerfectFirstAttempt, null);
+    }
+
+    @Transactional
+    public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId,
+                                              Double reviewScore, Boolean isPerfectFirstAttempt,
+                                              UUID classroomContextId) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
         Lesson lesson = lessonRepository.findById(lessonId)
@@ -51,17 +60,22 @@ public class SessionSummaryService {
             }
         }
 
+        List<PracticeResult> results = resultRepository.findBySessionSessionId(sessionId);
+        long sessionCorrect = results.stream().filter(r -> Boolean.TRUE.equals(r.getIsCorrect())).count();
+        long sessionTotal = results.size();
+        Double sessionAttemptAcc = sessionTotal > 0 ? ((double) sessionCorrect / sessionTotal * 100.0) : null;
+
         BigDecimal accuracy = BigDecimal.ZERO;
         if (reviewScore != null && reviewScore > 0) {
             accuracy = BigDecimal.valueOf(reviewScore).setScale(2, RoundingMode.HALF_UP);
+        } else if (sessionAttemptAcc != null) {
+            accuracy = BigDecimal.valueOf(sessionAttemptAcc).setScale(2, RoundingMode.HALF_UP);
         } else if (attempts > 0) {
             accuracy = BigDecimal.valueOf((double) correct / attempts * 100.0)
                     .setScale(2, RoundingMode.HALF_UP);
         }
 
         int demerits = incorrect * 2;
-
-        List<PracticeResult> results = resultRepository.findBySessionSessionId(sessionId);
         int basePoints = results.stream().mapToInt(PracticeResult::getPoints).sum();
 
         LearnerLessonStatus lessonStatus = lessonStatusRepository
@@ -81,6 +95,13 @@ public class SessionSummaryService {
             lessonStatusRepository.save(lessonStatus);
         }
         
+        // Resolve class context for tagging transactions
+        String contextType = classroomContextId != null ? "CLASS" : "GLOBAL";
+        com.vocaboo.entity.Classroom classroomEntity = null;
+        if (classroomContextId != null) {
+            classroomEntity = classroomRepository.findById(classroomContextId).orElse(null);
+        }
+        
         // Add delta base points to transaction if > 0
         if (deltaBasePoints > 0) {
             PointTransaction tx = PointTransaction.builder()
@@ -88,6 +109,8 @@ public class SessionSummaryService {
                     .actionType(PointActionType.CORRECT_ANSWER)
                     .pointsAwarded(deltaBasePoints)
                     .relatedSessionId(sessionId)
+                    .contextType(contextType)
+                    .classroom(classroomEntity)
                     .createdAt(OffsetDateTime.now())
                     .build();
             pointTransactionRepository.save(tx);
@@ -109,6 +132,8 @@ public class SessionSummaryService {
                         .actionType(PointActionType.LESSON_COMPLETE)
                         .pointsAwarded(200)
                         .relatedSessionId(sessionId)
+                        .contextType(contextType)
+                        .classroom(classroomEntity)
                         .createdAt(OffsetDateTime.now())
                         .build();
                 pointTransactionRepository.save(tx);
@@ -119,9 +144,42 @@ public class SessionSummaryService {
             lessonStatus.setCompletedAt(OffsetDateTime.now());
         }
 
-        if (accuracy != null) {
-            if (lessonStatus.getMasteryScore() == null || accuracy.compareTo(lessonStatus.getMasteryScore()) >= 0) {
-                lessonStatus.setMasteryScore(accuracy);
+        List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
+        int totalLessonAttempts = 0;
+        int totalLessonCorrect = 0;
+        double wordAccSum = 0.0;
+        int wordsWithAcc = 0;
+        for (VocabularyWord lw : lessonWords) {
+            WordPerformance wp = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, lw.getWordId()).orElse(null);
+            if (wp != null && wp.getTotalAttempts() > 0) {
+                totalLessonAttempts += wp.getTotalAttempts();
+                totalLessonCorrect += wp.getCorrectCount();
+                if (wp.getAccuracy() != null && wp.getAccuracy().doubleValue() > 0) {
+                    wordAccSum += wp.getAccuracy().doubleValue();
+                    wordsWithAcc++;
+                } else if (wp.getTotalAttempts() > 0) {
+                    wordAccSum += ((double) wp.getCorrectCount() / wp.getTotalAttempts() * 100.0);
+                    wordsWithAcc++;
+                }
+            }
+        }
+
+        // Total accuracy of the lesson is the average of the actual overridden word accuracies
+        double wholeLessonAvg = wordsWithAcc > 0 
+                ? (wordAccSum / wordsWithAcc) 
+                : (totalLessonAttempts > 0 ? ((double) totalLessonCorrect / totalLessonAttempts * 100.0) : 0.0);
+        BigDecimal wholeLessonAcc = BigDecimal.valueOf(wholeLessonAvg).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal candidateScore = wholeLessonAcc;
+        if (candidateScore.compareTo(BigDecimal.ZERO) == 0 && reviewScore != null && reviewScore > 0) {
+            candidateScore = BigDecimal.valueOf(reviewScore).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        // Update lesson mastery score to the high watermark (best preserved score)
+        if (candidateScore.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal existingMastery = lessonStatus.getMasteryScore();
+            if (existingMastery == null || candidateScore.compareTo(existingMastery) > 0) {
+                lessonStatus.setMasteryScore(candidateScore);
             }
         }
         lessonStatus.setUpdatedAt(OffsetDateTime.now());
@@ -138,6 +196,8 @@ public class SessionSummaryService {
                     .actionType(PointActionType.PERFECT_SESSION)
                     .pointsAwarded(100)
                     .relatedSessionId(sessionId)
+                    .contextType(contextType)
+                    .classroom(classroomEntity)
                     .createdAt(OffsetDateTime.now())
                     .build();
             pointTransactionRepository.save(tx);
@@ -155,13 +215,18 @@ public class SessionSummaryService {
                             .totalSessionsPlayed(0)
                             .totalCorrectAnswers(0)
                             .totalQuestionsAnswered(0)
-                            .overallAccuracy(BigDecimal.ZERO)
+                            .overallAccuracy(java.math.BigDecimal.ZERO)
                             .wordsMasteredCount(0)
                             .totalPoints(0)
                             .createdAt(OffsetDateTime.now())
                             .build());
             mastery.setTotalPoints(mastery.getTotalPoints() + totalNewPoints);
             masteryRepository.save(mastery);
+
+            // Double-write bonus points to class performance if in class context
+            if (classroomContextId != null) {
+                classPerformanceService.addBonusPoints(learnerId, classroomContextId, bonusPoints);
+            }
         }
 
         int totalPointsEarned = basePoints + bonusPoints; // For summary object display
@@ -176,10 +241,12 @@ public class SessionSummaryService {
                 .correctPronunciations(correct)
                 .incorrectPronunciations(incorrect)
                 .totalAttempts(attempts)
-                .accuracyRate(accuracy)
+                .accuracyRate(candidateScore)
                 .demeritPoints(demerits)
                 .pointsEarned(totalPointsEarned)
                 .starsEarned(starsEarned)
+                .contextType(classroomContextId != null ? "CLASS" : "GLOBAL")
+                .classroom(classroomEntity)
                 .build();
 
         return summaryRepository.save(summary);
@@ -187,6 +254,6 @@ public class SessionSummaryService {
 
     @Transactional
     public SessionSummary saveSessionSummary(UUID learnerId, UUID sessionId, UUID lessonId) {
-        return saveSessionSummary(learnerId, sessionId, lessonId, null, null);
+        return saveSessionSummary(learnerId, sessionId, lessonId, null, null, null);
     }
 }

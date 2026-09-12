@@ -23,10 +23,48 @@ import java.util.UUID;
 public class AdminSectionController {
 
     private final AdminSectionService adminSectionService;
+    private final com.vocaboo.repository.ClassroomRepository classroomRepository;
+    private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
 
     @GetMapping
-    public ResponseEntity<List<AdminSectionResponse>> getAllClasses() {
-        return ResponseEntity.ok(adminSectionService.getAllSections());
+    public ResponseEntity<List<AdminSectionResponse>> getAllClasses(Authentication auth) {
+        List<com.vocaboo.entity.Classroom> classrooms;
+        if (isTeacher(auth)) {
+            UUID teacherId = parseAdminId(auth);
+            classrooms = classroomRepository.findByTeacherTeacherIdOrderByNameAsc(teacherId);
+        } else {
+            classrooms = classroomRepository.findAllByOrderByNameAsc();
+        }
+
+        List<AdminSectionResponse> list = classrooms.stream().map(c -> {
+            long enrolled = classEnrollmentRepository.countByClassroomClassIdAndStatus(c.getClassId(), "ACTIVE");
+            return AdminSectionResponse.builder()
+                    .sectionId(c.getClassId())
+                    .sectionName(c.getName())
+                    .totalLearners(enrolled)
+                    .activeLearners(enrolled)
+                    .createdAt(c.getCreatedAt())
+                    .updatedAt(c.getUpdatedAt())
+                    .build();
+        }).collect(java.util.stream.Collectors.toList());
+
+        if (!isTeacher(auth)) {
+            List<AdminSectionResponse> legacy = adminSectionService.getAllSections();
+            for (AdminSectionResponse sec : legacy) {
+                boolean exists = list.stream().anyMatch(item -> item.getSectionId().equals(sec.getSectionId()));
+                if (!exists) {
+                    list.add(sec);
+                }
+            }
+        }
+
+        list.sort((a, b) -> {
+            String na = a.getSectionName() != null ? a.getSectionName() : "";
+            String nb = b.getSectionName() != null ? b.getSectionName() : "";
+            return na.compareToIgnoreCase(nb);
+        });
+
+        return ResponseEntity.ok(list);
     }
 
     @GetMapping("/{id}")
@@ -77,5 +115,11 @@ public class AdminSectionController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private boolean isTeacher(Authentication auth) {
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
     }
 }

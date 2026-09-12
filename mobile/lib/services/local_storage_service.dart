@@ -13,6 +13,7 @@ enum ActivityFormat {
   wordScramble,
   imageLabeling,
   trueOrFalse,
+  hintToWord,
 }
 
 enum ReinforcementStatus {
@@ -49,9 +50,16 @@ class PracticeItemModel {
   final String? difficultyLevel;
   /// Whether hints/cebuano meaning are shown (LEARNING tier only).
   final bool showHint;
+  /// Language to use for hint rendering: CEBUANO, ENGLISH, CEBUANO_ENGLISH, or NONE.
+  final String hintLanguage;
   /// For SENTENCE_ARRANGEMENT at LEARNING tier: the pre-placed word token.
   final String? anchoredWord;
   final String? eligibleActivityTypes;
+  /// For HINT_TO_WORD: clue text and clue type (e.g. CEBUANO_SENTENCE, ENGLISH_DEFINITION, ENGLISH_SYNONYM)
+  final String? hintToWordClue;
+  final String? hintToWordClueType;
+  final String? hintDefinition;
+  final String? hintCebuanoSentence;
 
   PracticeItemModel({
     required this.wordId,
@@ -81,7 +89,12 @@ class PracticeItemModel {
     this.difficultyLevel,
     this.hintText,
     this.showHint = false,
+    this.hintLanguage = 'CEBUANO',
     this.anchoredWord,
+    this.hintToWordClue,
+    this.hintToWordClueType,
+    this.hintDefinition,
+    this.hintCebuanoSentence,
   });
 
   Map<String, dynamic> toJson() {
@@ -112,7 +125,12 @@ class PracticeItemModel {
       'difficultyLevel': difficultyLevel,
       'hintText': hintText,
       'showHint': showHint,
+      'hintLanguage': hintLanguage,
       'anchoredWord': anchoredWord,
+      'hintToWordClue': hintToWordClue,
+      'hintToWordClueType': hintToWordClueType,
+      'hintDefinition': hintDefinition,
+      'hintCebuanoSentence': hintCebuanoSentence,
     };
   }
 
@@ -148,7 +166,12 @@ class PracticeItemModel {
       difficultyLevel: json['difficultyLevel'] as String?,
       hintText: json['hintText'] ?? json['explanationText'] ?? json['explanation'],
       showHint: json['showHint'] == true || json['showHints'] == true || json['showExplanation'] == true || json['showExplanations'] == true,
+      hintLanguage: (json['hintLanguage'] as String?) ?? 'CEBUANO',
       anchoredWord: json['anchoredWord'] as String?,
+      hintToWordClue: json['hintToWordClue'] as String?,
+      hintToWordClueType: json['hintToWordClueType'] as String?,
+      hintDefinition: _readString(json, 'hintDefinition', 'hint_definition', 'hintEn'),
+      hintCebuanoSentence: _readString(json, 'hintCebuanoSentence', 'hint_cebuano_sentence', 'hintCeb'),
     );
   }
 
@@ -324,6 +347,9 @@ class LocalStorageService {
     int currentIndex, {
     int? completedScreens,
     int? plannedScreens,
+    Map<String, String>? wordDifficulties,
+    Map<String, int>? maxWordTierPoints,
+    double? maxProgress,
   }) async {
     await init();
     final data = {
@@ -331,6 +357,9 @@ class LocalStorageService {
       'currentIndex': currentIndex,
       'completedScreens': completedScreens,
       'plannedScreens': plannedScreens,
+      'wordDifficulties': wordDifficulties,
+      'maxWordTierPoints': maxWordTierPoints,
+      'maxProgress': maxProgress,
     };
     await _prefs!.setString('practice_session_state_$sessionId', json.encode(data));
   }
@@ -367,6 +396,9 @@ class LocalStorageService {
       'currentIndex': decoded['currentIndex'] as int,
       'completedScreens': decoded['completedScreens'] as int?,
       'plannedScreens': decoded['plannedScreens'] as int?,
+      'wordDifficulties': (decoded['wordDifficulties'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, v.toString())),
+      'maxWordTierPoints': (decoded['maxWordTierPoints'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, (v as num).toInt())),
+      'maxProgress': (decoded['maxProgress'] as num?)?.toDouble(),
     };
   }
 
@@ -468,18 +500,95 @@ class LocalStorageService {
   }
 
   // --- Active Lesson Session Resuming ---
-  static Future<void> saveActiveLessonSession(String lessonId, String sessionId, String redirectPath) async {
+  static Future<void> saveActiveLessonSession(
+    String lessonId,
+    String sessionId,
+    String redirectPath, {
+    String? posFocus,
+    List<Map<String, dynamic>>? allWords,
+    List<String>? knownWordIds,
+    List<String>? unknownWordIds,
+    String? categoryId,
+    String? lessonTitle,
+  }) async {
     await init();
     await _prefs!.setString('active_session_id_$lessonId', sessionId);
     await _prefs!.setString('active_session_route_$lessonId', redirectPath);
+    await _prefs!.setString('last_active_lesson_id', lessonId);
+    await _prefs!.setInt('last_active_session_timestamp', DateTime.now().millisecondsSinceEpoch);
+    if (posFocus != null) {
+      await _prefs!.setString('active_session_pos_$lessonId', posFocus);
+    }
+    if (allWords != null && allWords.isNotEmpty) {
+      await _prefs!.setString('active_session_words_$lessonId', json.encode(allWords));
+    }
+    if (knownWordIds != null) {
+      await _prefs!.setStringList('active_session_known_$lessonId', knownWordIds);
+    }
+    if (unknownWordIds != null) {
+      await _prefs!.setStringList('active_session_unknown_$lessonId', unknownWordIds);
+    }
+    if (categoryId != null && categoryId.isNotEmpty) {
+      await _prefs!.setString('active_session_cat_$lessonId', categoryId);
+    }
+    if (lessonTitle != null && lessonTitle.isNotEmpty) {
+      await _prefs!.setString('active_session_title_$lessonId', lessonTitle);
+    }
   }
 
-  static Future<Map<String, String>?> getActiveLessonSession(String lessonId) async {
+  static Future<Map<String, dynamic>?> getActiveLessonSession(String lessonId) async {
     await init();
     final sid = _prefs!.getString('active_session_id_$lessonId');
     final route = _prefs!.getString('active_session_route_$lessonId');
     if (sid != null && route != null) {
-      return {'sessionId': sid, 'redirectPath': route};
+      final pos = _prefs!.getString('active_session_pos_$lessonId');
+      final wordsRaw = _prefs!.getString('active_session_words_$lessonId');
+      List<Map<String, dynamic>>? words;
+      if (wordsRaw != null) {
+        try {
+          final decoded = json.decode(wordsRaw) as List<dynamic>;
+          words = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        } catch (_) {}
+      }
+      final known = _prefs!.getStringList('active_session_known_$lessonId');
+      final unknown = _prefs!.getStringList('active_session_unknown_$lessonId');
+      final catId = _prefs!.getString('active_session_cat_$lessonId');
+      final title = _prefs!.getString('active_session_title_$lessonId');
+
+      return {
+        'lessonId': lessonId,
+        'sessionId': sid,
+        'redirectPath': route,
+        'posFocus': pos,
+        'allWords': words,
+        'knownWordIds': known,
+        'unknownWordIds': unknown,
+        'categoryId': catId,
+        'lessonTitle': title,
+      };
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> getLatestActiveLessonSession() async {
+    await init();
+    final lastLessonId = _prefs!.getString('last_active_lesson_id');
+    if (lastLessonId != null && lastLessonId.isNotEmpty) {
+      final session = await getActiveLessonSession(lastLessonId);
+      if (session != null) {
+        return session;
+      }
+    }
+    // Fallback: search all active_session_id_ keys in prefs
+    final allKeys = _prefs!.getKeys();
+    for (final key in allKeys) {
+      if (key.startsWith('active_session_id_')) {
+        final lessonId = key.substring('active_session_id_'.length);
+        final session = await getActiveLessonSession(lessonId);
+        if (session != null) {
+          return session;
+        }
+      }
     }
     return null;
   }
@@ -488,6 +597,16 @@ class LocalStorageService {
     await init();
     await _prefs!.remove('active_session_id_$lessonId');
     await _prefs!.remove('active_session_route_$lessonId');
+    await _prefs!.remove('active_session_pos_$lessonId');
+    await _prefs!.remove('active_session_words_$lessonId');
+    await _prefs!.remove('active_session_known_$lessonId');
+    await _prefs!.remove('active_session_unknown_$lessonId');
+    await _prefs!.remove('active_session_cat_$lessonId');
+    await _prefs!.remove('active_session_title_$lessonId');
+    if (_prefs!.getString('last_active_lesson_id') == lessonId) {
+      await _prefs!.remove('last_active_lesson_id');
+      await _prefs!.remove('last_active_session_timestamp');
+    }
   }
 
   // --- Cumulative Review Completion ---
@@ -572,12 +691,18 @@ class LocalStorageService {
     };
   }
 
-  static Future<void> saveLessonScore(String lessonId, double score) async {
+  static Future<void> saveLessonScore(String lessonId, double score, {bool force = false}) async {
     await init();
+    await _prefs!.setDouble('lesson_${lessonId}_latest_score', score);
     final existing = _prefs!.getDouble('lesson_${lessonId}_score');
-    if (existing == null || score >= existing || score == 0.0) {
+    if (force || existing == null || score > existing) {
       await _prefs!.setDouble('lesson_${lessonId}_score', score);
     }
+  }
+
+  static Future<double?> getLatestLessonScore(String lessonId) async {
+    await init();
+    return _prefs!.getDouble('lesson_${lessonId}_latest_score');
   }
 
   static Future<double?> getLessonScore(String lessonId) async {
@@ -657,5 +782,190 @@ class LocalStorageService {
         await _prefs!.remove(key);
       }
     }
+  }
+
+  // --- Sandbox Session History ---
+
+  static const String _kSandboxSessionsKey = 'sandbox_saved_sessions_v1';
+
+  static Future<void> saveSandboxSession(Map<String, dynamic> session) async {
+    await init();
+    final list = await getSandboxSessions();
+    final sessionId = session['sessionId']?.toString() ?? session['id']?.toString();
+    if (sessionId == null || sessionId.isEmpty) return;
+
+    // Remove existing if any, and insert latest at top
+    list.removeWhere((s) => (s['sessionId']?.toString() ?? s['id']?.toString()) == sessionId);
+    list.insert(0, session);
+
+    final rawJson = json.encode(list);
+    await _prefs!.setString(_kSandboxSessionsKey, rawJson);
+  }
+
+  static Future<List<Map<String, dynamic>>> getSandboxSessions() async {
+    await init();
+    final rawJson = _prefs!.getString(_kSandboxSessionsKey);
+    if (rawJson == null || rawJson.trim().isEmpty) {
+      return [];
+    }
+    try {
+      final decoded = json.decode(rawJson);
+      if (decoded is List) {
+        return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  static Future<Map<String, dynamic>?> getSandboxSession(String sessionId) async {
+    final list = await getSandboxSessions();
+    try {
+      return list.firstWhere(
+        (s) => (s['sessionId']?.toString() ?? s['id']?.toString()) == sessionId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> updateSandboxSessionMastery(
+    String sessionId, {
+    int? masteredCount,
+    int? totalCount,
+    String? lessonId,
+    bool? isCompleted,
+  }) async {
+    final list = await getSandboxSessions();
+    final index = list.indexWhere((s) => (s['sessionId']?.toString() ?? s['id']?.toString()) == sessionId);
+    if (index == -1) return;
+
+    final session = Map<String, dynamic>.from(list[index]);
+    if (masteredCount != null) {
+      session['masteredCount'] = masteredCount;
+    }
+    if (totalCount != null) {
+      session['totalCount'] = totalCount;
+    }
+    if (isCompleted == true) {
+      session['completedAt'] = DateTime.now().toIso8601String();
+    }
+    if (lessonId != null && lessonId.isNotEmpty) {
+      final nodeProgress = Map<String, dynamic>.from(session['nodeProgress'] ?? {});
+      nodeProgress[lessonId] = {
+        'mastered': masteredCount ?? 0,
+        'total': totalCount ?? 0,
+        'completed': isCompleted ?? false,
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+      session['nodeProgress'] = nodeProgress;
+    }
+
+    list[index] = session;
+    await init();
+    await _prefs!.setString(_kSandboxSessionsKey, json.encode(list));
+  }
+
+  static Future<void> deleteSandboxSession(String sessionId) async {
+    await init();
+    final list = await getSandboxSessions();
+    list.removeWhere((s) => (s['sessionId']?.toString() ?? s['id']?.toString()) == sessionId);
+    await _prefs!.setString(_kSandboxSessionsKey, json.encode(list));
+  }
+
+  // --- Weekly Activity & Streak Tracking ---
+  static String _streakKey(String? learnerId) =>
+      learnerId != null && learnerId.isNotEmpty ? 'learner_highest_weekly_streak_$learnerId' : 'learner_highest_weekly_streak';
+
+  static String _datesKey(String? learnerId) =>
+      learnerId != null && learnerId.isNotEmpty ? 'active_activity_dates_$learnerId' : 'active_activity_dates';
+
+  static String _nationalityKey(String? learnerId) =>
+      learnerId != null && learnerId.isNotEmpty ? 'learner_nationality_$learnerId' : 'learner_nationality';
+
+  static Future<int> getWeeklyHighestStreak({String? learnerId}) async {
+    await init();
+    final stored = _prefs!.getInt(_streakKey(learnerId));
+    if (stored != null && stored > 0) {
+      return stored;
+    }
+    final activeDays = await getActiveActivityDates(learnerId: learnerId, addTodayIfMissing: false);
+    if (activeDays.isNotEmpty) {
+      // Compute actual consecutive streak from active dates
+      final now = DateTime.now();
+      final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final yesterday = now.subtract(const Duration(days: 1));
+      final yesterdayStr = '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+
+      DateTime? checkDay;
+      if (activeDays.contains(todayStr)) {
+        checkDay = now;
+      } else if (activeDays.contains(yesterdayStr)) {
+        checkDay = yesterday;
+      }
+
+      if (checkDay != null) {
+        int streak = 1;
+        var prev = checkDay.subtract(const Duration(days: 1));
+        while (activeDays.contains('${prev.year}-${prev.month.toString().padLeft(2, '0')}-${prev.day.toString().padLeft(2, '0')}')) {
+          streak++;
+          prev = prev.subtract(const Duration(days: 1));
+        }
+        return streak;
+      }
+    }
+    return 0;
+  }
+
+  static Future<void> saveLearnerActivityData(String learnerId, List<String> activeDates, int currentStreak) async {
+    await init();
+    if (learnerId.isEmpty) return;
+    await _prefs!.setStringList(_datesKey(learnerId), activeDates);
+    await _prefs!.setInt(_streakKey(learnerId), currentStreak);
+  }
+
+  static Future<void> recordActivityStreak(int sessionStreak, {String? learnerId}) async {
+    await init();
+    final key = _streakKey(learnerId);
+    final currentMax = _prefs!.getInt(key) ?? 0;
+    if (sessionStreak > currentMax) {
+      await _prefs!.setInt(key, sessionStreak);
+    }
+    await recordDailyActivity(learnerId: learnerId);
+  }
+
+  static Future<void> recordDailyActivity({String? learnerId}) async {
+    await init();
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final key = _datesKey(learnerId);
+    final currentList = _prefs!.getStringList(key) ?? <String>[];
+    if (!currentList.contains(dateStr)) {
+      currentList.add(dateStr);
+      await _prefs!.setStringList(key, currentList);
+    }
+  }
+
+  static Future<Set<String>> getActiveActivityDates({String? learnerId, bool addTodayIfMissing = false}) async {
+    await init();
+    if (addTodayIfMissing) {
+      await recordDailyActivity(learnerId: learnerId);
+    }
+    final key = _datesKey(learnerId);
+    final currentList = _prefs!.getStringList(key) ?? <String>[];
+    return currentList.toSet();
+  }
+
+  // --- Nationality Preferences ---
+  static Future<String> getNationality({String? learnerId}) async {
+    await init();
+    final userVal = _prefs!.getString(_nationalityKey(learnerId));
+    if (userVal != null && userVal.isNotEmpty) return userVal;
+    return _prefs!.getString('learner_nationality') ?? 'Philippines';
+  }
+
+  static Future<void> setNationality(String nationality, {String? learnerId}) async {
+    await init();
+    await _prefs!.setString(_nationalityKey(learnerId), nationality);
+    await _prefs!.setString('learner_nationality', nationality);
   }
 }

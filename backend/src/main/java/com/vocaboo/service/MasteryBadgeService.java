@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -32,21 +34,20 @@ public class MasteryBadgeService {
         String earnedBadge;
         if (sessionAccuracy >= 90.0) {
             earnedBadge = "GOLD";
-        } else if (sessionAccuracy >= 80.0) {
+        } else if (sessionAccuracy >= 75.0) {
             earnedBadge = "SILVER";
         } else {
             earnedBadge = "BRONZE";
         }
 
-        // Save if it's the highest tier earned
         List<RewardData> existingRewards = rewardRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
-        int maxExistingTier = 0;
-        for (RewardData reward : existingRewards) {
-            maxExistingTier = Math.max(maxExistingTier, getBadgeTier(reward.getBadgeType()));
-        }
-
         int newTier = getBadgeTier(earnedBadge);
-        if (newTier > maxExistingTier || existingRewards.isEmpty()) {
+        int existingTier = existingRewards.stream()
+                .map(r -> getBadgeTier(r.getBadgeType()))
+                .max(Integer::compareTo)
+                .orElse(0);
+
+        if (existingRewards.isEmpty() || newTier >= existingTier) {
             if (!existingRewards.isEmpty()) {
                 rewardRepository.deleteAll(existingRewards);
                 rewardRepository.flush();
@@ -58,9 +59,10 @@ public class MasteryBadgeService {
                     .badgeType(earnedBadge)
                     .build()
             );
+            return earnedBadge;
         }
 
-        return earnedBadge;
+        return existingRewards.get(0).getBadgeType();
     }
 
     @Transactional
@@ -70,18 +72,35 @@ public class MasteryBadgeService {
 
         int totalCorrect = 0;
         int totalAttempts = 0;
+        double wordAccSum = 0.0;
+        int wordsWithAcc = 0;
         if (allLessonWords != null) {
             for (VocabularyWord word : allLessonWords) {
                 WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, word.getWordId())
                         .orElse(null);
-                if (perf != null) {
+                if (perf != null && perf.getTotalAttempts() > 0) {
                     totalCorrect += perf.getCorrectCount();
                     totalAttempts += perf.getTotalAttempts();
+                    if (perf.getAccuracy() != null && perf.getAccuracy().doubleValue() > 0) {
+                        wordAccSum += perf.getAccuracy().doubleValue();
+                        wordsWithAcc++;
+                    } else if (perf.getTotalAttempts() > 0) {
+                        wordAccSum += ((double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0);
+                        wordsWithAcc++;
+                    }
                 }
             }
         }
 
-        boolean hasAttempted = totalAttempts > 0 || (lls != null && lls.getMasteryScore() != null);
+        boolean hasAttempted = totalAttempts > 0 || wordsWithAcc > 0;
+        double cumulativeAccuracy = wordsWithAcc > 0
+                ? (wordAccSum / wordsWithAcc)
+                : (hasAttempted ? (totalCorrect * 100.0 / totalAttempts) : 0.0);
+        if (!hasAttempted && lls != null && lls.getMasteryScore() != null) {
+            cumulativeAccuracy = lls.getMasteryScore().doubleValue();
+            hasAttempted = true;
+        }
+
         if (!hasAttempted) {
             List<RewardData> unearnedRewards = rewardRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
             if (!unearnedRewards.isEmpty()) {
@@ -91,23 +110,19 @@ public class MasteryBadgeService {
             return null;
         }
 
-        double accuracy = 0.0;
-        if (totalAttempts > 0) {
-            accuracy = (totalCorrect * 100.0 / totalAttempts);
-        }
-
-        if (lls != null && lls.getMasteryScore() != null && lls.getMasteryScore().doubleValue() > accuracy) {
-            accuracy = lls.getMasteryScore().doubleValue();
-        }
-
-        if (allLessonWords != null && !allLessonWords.isEmpty()) {
-            long masteredCount = difficultyRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
-            if (masteredCount >= allLessonWords.size() && accuracy < 90.0) {
-                accuracy = 97.5;
+        double bestScore = (lls != null && lls.getMasteryScore() != null) ? lls.getMasteryScore().doubleValue() : 0.0;
+        BigDecimal targetScore = java.math.BigDecimal.valueOf(cumulativeAccuracy).setScale(2, java.math.RoundingMode.HALF_UP);
+        if (lls != null) {
+            // High-score rule: only override if new cumulative accuracy is higher than existing mastery score
+            if (lls.getMasteryScore() == null || targetScore.compareTo(lls.getMasteryScore()) > 0) {
+                lls.setMasteryScore(targetScore);
+                lessonStatusRepository.save(lls);
+                bestScore = targetScore.doubleValue();
             }
         }
 
-        return calculateAndSaveBadge(learnerId, lessonId, accuracy);
+        double effectiveAccuracy = Math.max(cumulativeAccuracy, bestScore);
+        return calculateAndSaveBadge(learnerId, lessonId, effectiveAccuracy);
     }
 
     private int getBadgeTier(String badge) {

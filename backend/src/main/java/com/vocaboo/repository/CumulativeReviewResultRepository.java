@@ -11,4 +11,12 @@ import java.util.UUID;
 public interface CumulativeReviewResultRepository extends JpaRepository<CumulativeReviewResult, UUID> {
     List<CumulativeReviewResult> findBySessionId(UUID sessionId);
     List<CumulativeReviewResult> findBySessionIdAndWordWordId(UUID sessionId, UUID wordId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("DELETE FROM CumulativeReviewResult r WHERE r.session.id = :sessionId")
+    void deleteBySessionId(@org.springframework.data.repository.query.Param("sessionId") UUID sessionId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("DELETE FROM CumulativeReviewResult r WHERE r.session.learner.learnerId = :learnerId")
+    void deleteBySessionLearnerLearnerId(@org.springframework.data.repository.query.Param("learnerId") UUID learnerId);
 }

@@ -23,6 +23,8 @@ public class AdminSectionService {
     private final SectionRepository sectionRepository;
     private final LearnerRepository learnerRepository;
     private final AdminAuditLogRepository auditLogRepository;
+    private final com.vocaboo.repository.ClassroomRepository classroomRepository;
+    private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
 
     public List<AdminSectionResponse> getAllSections() {
         List<Section> sections = sectionRepository.findAllByOrderBySectionNameAsc();
@@ -114,13 +116,51 @@ public class AdminSectionService {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found: " + learnerId));
 
-        Section section = null;
+        String assignedTargetName = null;
         if (sectionId != null) {
-            section = sectionRepository.findById(sectionId)
-                    .orElseThrow(() -> new IllegalArgumentException("Section not found: " + sectionId));
+            Optional<Section> secOpt = sectionRepository.findById(sectionId);
+            if (secOpt.isPresent()) {
+                Section section = secOpt.get();
+                learner.setSection(section);
+                assignedTargetName = section.getSectionName();
+            } else {
+                com.vocaboo.entity.Classroom classroom = classroomRepository.findById(sectionId)
+                        .orElseThrow(() -> new IllegalArgumentException("Section or Class not found: " + sectionId));
+                assignedTargetName = classroom.getName();
+                
+                // Enroll in class_enrollments
+                java.util.Optional<com.vocaboo.entity.ClassEnrollment> existingOpt = 
+                        classEnrollmentRepository.findByClassroomClassIdAndLearnerLearnerId(classroom.getClassId(), learner.getLearnerId());
+                if (existingOpt.isPresent()) {
+                    com.vocaboo.entity.ClassEnrollment enrollment = existingOpt.get();
+                    enrollment.setStatus("ACTIVE");
+                    classEnrollmentRepository.save(enrollment);
+                } else {
+                    com.vocaboo.entity.ClassEnrollment enrollment = com.vocaboo.entity.ClassEnrollment.builder()
+                            .classroom(classroom)
+                            .learner(learner)
+                            .status("ACTIVE")
+                            .invitedByTeacher(classroom.getTeacher())
+                            .build();
+                    classEnrollmentRepository.save(enrollment);
+                }
+
+                // Sync grade level if indicated in class name
+                String cName = classroom.getName();
+                if (cName != null) {
+                    if (cName.contains("Grade 4") || cName.contains("Grade_4")) {
+                        learner.setGradeLevel(com.vocaboo.entity.GradeLevel.GRADE_4);
+                    } else if (cName.contains("Grade 5") || cName.contains("Grade_5")) {
+                        learner.setGradeLevel(com.vocaboo.entity.GradeLevel.GRADE_5);
+                    } else if (cName.contains("Grade 6") || cName.contains("Grade_6")) {
+                        learner.setGradeLevel(com.vocaboo.entity.GradeLevel.GRADE_6);
+                    }
+                }
+            }
+        } else {
+            learner.setSection(null);
         }
 
-        learner.setSection(section);
         learnerRepository.save(learner);
 
         if (adminId != null) {
@@ -128,7 +168,7 @@ public class AdminSectionService {
                     .adminId(adminId)
                     .action("ASSIGN_SECTION")
                     .targetId(learnerId)
-                    .details(section != null ? "Assigned to section: " + section.getSectionName() : "Unassigned from section")
+                    .details(assignedTargetName != null ? "Assigned to section/class: " + assignedTargetName : "Unassigned from section/class")
                     .build());
         }
     }

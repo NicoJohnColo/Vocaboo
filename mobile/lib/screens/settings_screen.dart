@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../constants/app_avatars.dart';
+import '../core/motion/typography_tokens.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
 import '../services/localization_service.dart';
+import '../widgets/app_avatar.dart';
+import '../widgets/app_3d_bottom_nav_bar.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,100 +20,124 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _formatLanguagePreference(String? pref) {
     if (pref == 'CEBUANO_TO_ENGLISH') return 'Cebuano';
     if (pref == 'FULL_ENGLISH') return 'English';
-    if (pref == 'CEBUANO_ENGLISH_MIXED') return 'Mixed';
+    if (pref == 'CEBUANO_ENGLISH_MIXED') return 'Bislish (Mixed)';
     return pref ?? 'English';
   }
 
-  Color _getAvatarColor(String name) {
-    if (name.isEmpty) return const Color(0xFF0EA5E9);
-    final colors = [
-      const Color(0xFF0EA5E9), // Sky Blue
-      const Color(0xFF10B981), // Emerald
-      const Color(0xFF8B5CF6), // Purple
-      const Color(0xFFF59E0B), // Amber
-      const Color(0xFFEC4899), // Pink
-      const Color(0xFF6366F1), // Indigo
-      const Color(0xFF14B8A6), // Teal
-      const Color(0xFFF97316), // Orange
-    ];
-    final hash = name.codeUnits.fold(0, (sum, c) => sum + c);
-    return colors[hash % colors.length];
-  }
-
-  String _getInitials(String name) {
-    if (name.isEmpty) return '?';
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2 && parts[1].isNotEmpty) {
-      return '${parts[0][0].toUpperCase()}${parts[1][0].toUpperCase()}';
-    }
-    return parts[0][0].toUpperCase();
+  String _formatGrade(String? grade) {
+    if (grade == null || grade.isEmpty) return 'Grade 4';
+    if (grade == 'GRADE_4') return 'Grade 4';
+    if (grade == 'GRADE_5') return 'Grade 5';
+    if (grade == 'GRADE_6') return 'Grade 6';
+    return grade.replaceAll('_', ' ');
   }
 
   void _showEditProfileDialog(BuildContext context, AuthProvider auth, String? pref) {
     final nameController = TextEditingController(text: auth.learner?.displayName ?? '');
+    final ageController = TextEditingController(text: '${auth.learner?.age ?? 9}');
+    String selectedGrade = auth.learner?.gradeLevel ?? 'GRADE_4';
     final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          LocalizationService.translate(pref, 'edit_profile'),
-          style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w800),
-        ),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: LocalizationService.translate(pref, 'display_name'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            LocalizationService.translate(pref, 'edit_profile'),
+            style: TextStyle(fontFamily: AppTypography.displayFontFamily, fontWeight: FontWeight.w800),
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.translate(pref, 'display_name'),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return LocalizationService.translate(pref, 'name_empty');
+                    }
+                    return null;
+                  },
                 ),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return LocalizationService.translate(pref, 'name_empty');
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(LocalizationService.translate(pref, 'cancel')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F172A),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: ageController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.translate(pref, 'age'),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  validator: (v) {
+                    final age = int.tryParse(v ?? '');
+                    if (age == null || age < 9 || age > 12) {
+                      return 'Age must be between 9 and 12';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedGrade,
+                  decoration: InputDecoration(
+                    labelText: 'Grade Level',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'GRADE_4', child: Text('Grade 4')),
+                    DropdownMenuItem(value: 'GRADE_5', child: Text('Grade 5')),
+                    DropdownMenuItem(value: 'GRADE_6', child: Text('Grade 6')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() => selectedGrade = val);
+                    }
+                  },
+                ),
+              ],
             ),
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              final success = await auth.updateProfile(
-                nameController.text.trim(),
-                auth.learner?.age ?? 9,
-              );
-              if (!ctx.mounted) return;
-              Navigator.of(ctx).pop();
-              if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(LocalizationService.translate(pref, 'profile_updated'))),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(auth.error ?? 'Error')),
-                );
-              }
-            },
-            child: Text(LocalizationService.translate(pref, 'save_changes')),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(LocalizationService.translate(pref, 'cancel')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F172A),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                final age = int.parse(ageController.text.trim());
+                final success = await auth.updateProfile(
+                  nameController.text.trim(),
+                  age,
+                  gradeLevel: selectedGrade,
+                );
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                if (success) {
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(LocalizationService.translate(pref, 'profile_updated'))),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(auth.error ?? 'Error')),
+                  );
+                }
+              },
+              child: Text(LocalizationService.translate(pref, 'save_changes')),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -126,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           LocalizationService.translate(pref, 'change_pin'),
-          style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w800),
+          style: TextStyle(fontFamily: AppTypography.displayFontFamily, fontWeight: FontWeight.w800),
         ),
         content: Form(
           key: formKey,
@@ -225,7 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           LocalizationService.translate(pref, 'confirm_reset_title'),
-          style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w800, color: Color(0xFFEF4444)),
+          style: TextStyle(fontFamily: AppTypography.displayFontFamily, fontWeight: FontWeight.w800, color: const Color(0xFFEF4444)),
         ),
         content: Text(LocalizationService.translate(pref, 'confirm_reset_body')),
         actions: [
@@ -260,11 +288,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.only(top: 24, bottom: 8),
       child: Text(
         title,
-        style: const TextStyle(
-          fontFamily: 'Outfit',
+        style: TextStyle(
+          fontFamily: AppTypography.bodyFontFamily,
           fontSize: 12,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF94A3B8),
+          color: const Color(0xFF94A3B8),
           letterSpacing: 1.2,
         ),
       ),
@@ -299,11 +327,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           title: Text(
             title,
-            style: const TextStyle(
-              fontFamily: 'Outfit',
-              fontWeight: FontWeight.w600,
+            style: TextStyle(
+              fontFamily: AppTypography.displayFontFamily,
+              fontWeight: FontWeight.w700,
               fontSize: 15,
-              color: Color(0xFF0F172A),
+              color: const Color(0xFF0F172A),
             ),
           ),
           subtitle: subtitle != null
@@ -330,11 +358,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         elevation: 0,
         title: Text(
           LocalizationService.translate(pref, 'settings'),
-          style: const TextStyle(
-            fontFamily: 'Outfit',
-            fontWeight: FontWeight.w900,
+          style: TextStyle(
+            fontFamily: AppTypography.displayFontFamily,
+            fontWeight: FontWeight.w800,
             fontSize: 24,
-            color: Color(0xFF06A6FF),
+            color: const Color(0xFF06A6FF),
           ),
         ),
         leading: IconButton(
@@ -357,47 +385,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               // Profile header
               Center(
-                child: Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _getAvatarColor(learner?.displayName ?? ''),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _getAvatarColor(learner?.displayName ?? '').withValues(alpha: 0.25),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      _getInitials(learner?.displayName ?? ''),
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+                child: AppAvatar(
+                  avatar: learner?.avatar,
+                  name: learner?.displayName,
+                  size: 110,
+                  borderWidth: 3.5,
+                  borderColor: const Color(0xFF0EA5E9),
+                  showEditBadge: true,
+                  onTap: () async {
+                    final chosen = await AvatarPickerSheet.show(context);
+                    if (chosen != null && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(LocalizationService.translate(pref, 'avatar_updated')),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 24),
               Text(
                 learner?.displayName ?? 'Learner',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: 'Outfit',
+                style: TextStyle(
+                  fontFamily: AppTypography.displayFontFamily,
                   fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F172A),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                'Age ${learner?.age ?? '-'} • ${_formatLanguagePreference(learner?.languagePreference)}',
+                '${_formatGrade(learner?.gradeLevel)} • Age ${learner?.age ?? '-'} • ${_formatLanguagePreference(learner?.languagePreference)}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
               ),
@@ -406,9 +427,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // ACCOUNT section
               _sectionHeader(LocalizationService.translate(pref, 'account_section')),
               _settingsTile(
+                icon: Icons.face_rounded,
+                title: LocalizationService.translate(pref, 'change_avatar'),
+                subtitle: AppAvatars.getLabel(learner?.avatar),
+                onTap: () async {
+                  final chosen = await AvatarPickerSheet.show(context);
+                  if (chosen != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(LocalizationService.translate(pref, 'avatar_updated')),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              _settingsTile(
                 icon: Icons.person_outline,
                 title: LocalizationService.translate(pref, 'edit_profile'),
-                subtitle: '${learner?.displayName ?? ''}, ${LocalizationService.translate(pref, 'age')} ${learner?.age ?? ''}',
+                subtitle: '${learner?.displayName ?? ''}, ${_formatGrade(learner?.gradeLevel)}, ${LocalizationService.translate(pref, 'age')} ${learner?.age ?? ''}',
                 onTap: () => _showEditProfileDialog(context, auth, pref),
               ),
               _settingsTile(
@@ -435,7 +472,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.science_outlined,
                 title: LocalizationService.translate(pref, 'sandbox_mode'),
                 subtitle: LocalizationService.translate(pref, 'sandbox_mode_desc'),
-                onTap: () => GoRouter.of(context).push('/sandbox'),
+                onTap: () => GoRouter.of(context).push(
+                  '/loading',
+                  extra: {
+                    'duration': 5000,
+                    'redirectPath': '/sandbox',
+                  },
+                ),
               ),
 
               const SizedBox(height: 24),
@@ -459,6 +502,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: const App3DBottomNavBar(
+        currentPath: '/settings',
       ),
     );
   }

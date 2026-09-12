@@ -21,6 +21,9 @@ public class Learner {
     @Column(name = "learner_id", updatable = false, nullable = false)
     private UUID learnerId;
 
+    @Column(name = "user_id", unique = true, length = 11)
+    private String userId;
+
     @Column(name = "display_name", nullable = false, length = 100)
     private String displayName;
 
@@ -50,11 +53,15 @@ public class Learner {
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(name = "grade_level", columnDefinition = "grade_level_enum")
-    private GradeLevel gradeLevel;
+    @Builder.Default
+    private GradeLevel gradeLevel = GradeLevel.GRADE_4;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "section_id")
     private Section section;
+
+    @Column(name = "avatar", length = 100)
+    private String avatar;
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default
@@ -70,6 +77,14 @@ public class Learner {
 
     public UUID getLearnerId() {
         return learnerId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public LanguageMedium getLanguagePreference() {
@@ -132,6 +147,19 @@ public class Learner {
         this.posFocus = posFocus;
     }
 
+    public String getAvatar() {
+        if (avatar != null && !avatar.trim().isEmpty()) {
+            return avatar;
+        }
+        if (learnerId != null) {
+            return "prof" + (Math.abs(learnerId.hashCode()) % 9 + 1) + ".jpg";
+        }
+        if (displayName != null && !displayName.trim().isEmpty()) {
+            return "prof" + (Math.abs(displayName.hashCode()) % 9 + 1) + ".jpg";
+        }
+        return "prof" + (java.util.concurrent.ThreadLocalRandom.current().nextInt(9) + 1) + ".jpg";
+    }
+    public void setAvatar(String avatar) { this.avatar = avatar; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
     public String getPinHash() { return pinHash; }
     public void setPinHash(String pinHash) { this.pinHash = pinHash; }
@@ -142,42 +170,63 @@ public class Learner {
     public static LearnerBuilder builder() { return new LearnerBuilder(); }
 
     public static class LearnerBuilder {
+        private UUID learnerId;
+        private String userId;
         private String displayName;
         private Integer age;
         private String pinHash;
         private GradeLevel gradeLevel;
         private Section section;
+        private String avatar;
         private LanguageMedium languagePreference = LanguageMedium.FULL_ENGLISH;
         private String posFocus = "ALL";
         private Boolean isActive = true;
         private Boolean onboardingComplete = false;
         private Boolean masteryApplyImmediately = true;
+        private OffsetDateTime createdAt;
+        private OffsetDateTime updatedAt;
 
+        public LearnerBuilder learnerId(UUID learnerId) { this.learnerId = learnerId; return this; }
+        public LearnerBuilder userId(String userId) { this.userId = userId; return this; }
         public LearnerBuilder displayName(String displayName) { this.displayName = displayName; return this; }
         public LearnerBuilder age(Integer age) { this.age = age; return this; }
         public LearnerBuilder pinHash(String pinHash) { this.pinHash = pinHash; return this; }
         public LearnerBuilder gradeLevel(GradeLevel gradeLevel) { this.gradeLevel = gradeLevel; return this; }
         public LearnerBuilder section(Section section) { this.section = section; return this; }
+        public LearnerBuilder avatar(String avatar) { this.avatar = avatar; return this; }
         public LearnerBuilder languagePreference(LanguageMedium languagePreference) { this.languagePreference = languagePreference; return this; }
         public LearnerBuilder posFocus(String posFocus) { this.posFocus = posFocus; return this; }
         public LearnerBuilder isActive(Boolean isActive) { this.isActive = isActive; return this; }
         public LearnerBuilder onboardingComplete(Boolean onboardingComplete) { this.onboardingComplete = onboardingComplete; return this; }
         public LearnerBuilder masteryApplyImmediately(Boolean masteryApplyImmediately) { this.masteryApplyImmediately = masteryApplyImmediately; return this; }
+        public LearnerBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public LearnerBuilder updatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public Learner build() {
             Learner l = new Learner();
+            l.learnerId = this.learnerId;
+            l.userId = this.userId;
             l.displayName = this.displayName;
             l.age = this.age;
             l.pinHash = this.pinHash;
             l.gradeLevel = this.gradeLevel;
             l.section = this.section;
+            if (this.avatar != null && !this.avatar.trim().isEmpty()) {
+                l.avatar = this.avatar;
+            } else if (this.learnerId != null) {
+                l.avatar = "prof" + (Math.abs(this.learnerId.hashCode()) % 9 + 1) + ".jpg";
+            } else if (this.displayName != null && !this.displayName.trim().isEmpty()) {
+                l.avatar = "prof" + (Math.abs(this.displayName.hashCode()) % 9 + 1) + ".jpg";
+            } else {
+                l.avatar = "prof" + (java.util.concurrent.ThreadLocalRandom.current().nextInt(9) + 1) + ".jpg";
+            }
             l.languagePreference = this.languagePreference;
             l.posFocus = this.posFocus;
             l.isActive = this.isActive;
             l.onboardingComplete = this.onboardingComplete;
             l.masteryApplyImmediately = this.masteryApplyImmediately;
-            l.createdAt = OffsetDateTime.now();
-            l.updatedAt = OffsetDateTime.now();
+            l.createdAt = this.createdAt != null ? this.createdAt : OffsetDateTime.now();
+            l.updatedAt = this.updatedAt != null ? this.updatedAt : OffsetDateTime.now();
             return l;
         }
     }

@@ -4,26 +4,38 @@ import AdminNav from '../components/AdminNav';
 import VocabularyTable from '../components/VocabularyTable';
 import { AddVocabularyModal, EditVocabularyModal } from '../components/VocabWordModals';
 import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog';
+import BulkImportModal from '../components/BulkImportModal';
+import ConfusablePairsModal from '../components/ConfusablePairsModal';
 import { VocabularyService } from '../services/VocabularyService';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
 export default function VocabularyListPage() {
+  const { admin } = useAdminAuth();
+  const isTeacher = admin?.role?.toLowerCase() === 'teacher' || admin?.role?.toUpperCase() === 'ROLE_TEACHER';
+
   const { lessonId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state;
   const lesson = locationState?.lesson;
 
+  const isTeacherLesson = Boolean(lesson?.class_id || (lesson?.is_global === false));
+  const isReadOnly = !isTeacher && isTeacherLesson;
+
   const [words, setWords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [modal, setModal] = useState(locationState?.autoAdd ? 'add' : null);
+  const [modal, setModal] = useState(
+    locationState?.autoAdd ? 'add' :
+    locationState?.openModal ? locationState.openModal : null
+  );
 
   useEffect(() => {
-    if (locationState?.autoAdd) {
-      navigate('.', { replace: true, state: { ...locationState, autoAdd: false } });
+    if (locationState?.autoAdd || locationState?.openModal) {
+      navigate('.', { replace: true, state: { ...locationState, autoAdd: false, openModal: null } });
     }
-  }, [locationState?.autoAdd, navigate, locationState]);
+  }, [locationState?.autoAdd, locationState?.openModal, navigate, locationState]);
 
   const [selected, setSelected] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -118,16 +130,67 @@ export default function VocabularyListPage() {
         {error   && <div className="alert alert--error"   onClick={() => setError('')}>{error}</div>}
         {success && <div className="alert alert--success">{success}</div>}
 
+        {isReadOnly && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(100, 116, 139, 0.08), rgba(71, 85, 105, 0.04))',
+            border: '1.5px solid rgba(100, 116, 139, 0.25)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '12px 18px',
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}>
+            <span style={{ fontSize: '1.3rem' }}>👁️</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#334155' }}>
+                Teacher-Authored Classroom Lesson (View-Only Mode)
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                This lesson is authored for a specific classroom. Administrators have view-only access to vocabulary words and cannot add, edit, or delete words.
+              </div>
+            </div>
+          </div>
+        )}
+
         <VocabularyTable
           words={words}
           lessonTitle={lesson?.lesson_title ?? ''}
-          onAdd={() => openModal('add')}
-          onEdit={w => openModal('edit', w)}
-          onDelete={w => openModal('delete', w)}
-          onBulkImport={() => navigate(`/lessons/${lessonId}/bulk-import`, { state: { lesson } })}
-          onConfusablePairs={() => navigate(`/lessons/${lessonId}/confusable-pairs`, { state: { lesson } })}
+          onAdd={() => !isReadOnly && openModal('add')}
+          onEdit={w => !isReadOnly && openModal('edit', w)}
+          onDelete={w => !isReadOnly && openModal('delete', w)}
+          onBulkImport={() => !isReadOnly && openModal('bulk-import')}
+          onConfusablePairs={() => !isReadOnly && openModal('confusable-pairs')}
           loading={loading}
+          readOnly={isReadOnly}
         />
+
+        {modal === 'bulk-import' && (
+          <BulkImportModal
+            lessonId={lessonId}
+            lesson={lesson}
+            onClose={closeModal}
+            onSuccess={() => {
+              load();
+              flash('Vocabulary imported successfully!');
+            }}
+          />
+        )}
+
+        {modal === 'confusable-pairs' && (
+          <ConfusablePairsModal
+            lessonId={lessonId}
+            lesson={lesson}
+            onClose={() => {
+              closeModal();
+              load();
+            }}
+            onUpdated={() => {
+              load();
+            }}
+            readOnly={isReadOnly}
+          />
+        )}
 
         {modal === 'add' && (
           <AddVocabularyModal
@@ -151,7 +214,7 @@ export default function VocabularyListPage() {
               example_sentence_cebuano: selected.example_sentence_cebuano ?? '',
               audio_asset_path: selected.audio_asset_path ?? '',
               image_asset_path: selected.image_asset_path ?? '',
-              eligible_activity_types: selected.eligible_activity_types ?? 'MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;TRUE_OR_FALSE',
+              eligible_activity_types: selected.eligible_activity_types ?? 'MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;TRUE_OR_FALSE;HINT_TO_WORD',
               distractor_pool: selected.distractor_pool ?? '',
               fill_blank_sentence: selected.fill_blank_sentence ?? '',
               tile_sentence: selected.tile_sentence ?? '',
@@ -160,6 +223,8 @@ export default function VocabularyListPage() {
               audio_text_english: selected.audio_text_english ?? '',
               phonological_tip_key: selected.phonological_tip_key ?? '',
               is_confusable_pair_member: selected.is_confusable_pair_member ?? false,
+              hint_definition: selected.hint_definition ?? '',
+              hint_cebuano_sentence: selected.hint_cebuano_sentence ?? '',
             }}
             onSubmit={handleUpdate}
             onClose={closeModal}

@@ -8,13 +8,15 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/lesson_provider.dart';
+import '../services/localization_service.dart';
 import '../services/tts_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/scoring_service.dart';
 import '../widgets/mascot_visual.dart';
 import '../widgets/custom_image_viewer.dart';
-import '../widgets/cebuano_text_highlighter.dart';
+import '../core/motion/motion.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Widget
@@ -276,6 +278,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
         'sentenceArrangementTokens': item['sentenceArrangementTokens'],
         'imageAssetPath': item['imageAssetPath'],
         'partOfSpeech': item['partOfSpeech'] ?? '',
+        'explanationText': firstNonEmpty(item, ['explanationText', 'explanation_text', 'explanation', 'hintText', 'hint_text', 'hint']),
       };
     }).where((it) => (it['wordId'] ?? '').toString().isNotEmpty).toList();
 
@@ -543,6 +546,10 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   }
 
   void _handleContinue() {
+    // Guard: do not advance if the answer was never checked.
+    // This prevents unconditional progression in edge cases where
+    // _handleContinue fires before _checkAnswer has set _checked = true.
+    if (!_checked) return;
     setState(() {
       _currentIndex++;
       _prepareCurrentActivityState();
@@ -689,15 +696,38 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       return;
     }
 
+    final correctCount = _results.values.where((c) => c).length;
+    final totalCount = _results.isNotEmpty ? _results.length : _normalizedReviewItems.length;
+
     context.go(
-      '/session/${widget.sessionId}/lesson-score',
+      '/session/${widget.sessionId}/cumulative-summary',
       extra: {
         'sessionId': widget.sessionId,
         'lessonId': widget.lessonId ?? '',
         'categoryId': widget.categoryId,
-        'lessonTitle': 'Lesson Complete',
+        'lessonTitle': 'Cumulative Review Complete',
+        'correct': correctCount,
+        'total': totalCount,
+        'score': score,
+        'missedWordIds': _wordWrongAttempts.entries
+            .where((e) => e.value > 0)
+            .map((e) => e.key)
+            .toList(),
         'allWords': _normalizedReviewItems,
-        'overallScore': score,
+        'wordBreakdown': _normalizedReviewItems.map((item) {
+          final id = (item['wordId'] ?? item['id'] ?? '').toString();
+          final mistakes = _wordWrongAttempts[id] ?? 0;
+          return {
+            'wordId': id,
+            'word': (item['englishWord'] ?? item['word'] ?? id).toString(),
+            'englishWord': (item['englishWord'] ?? item['word'] ?? id).toString(),
+            'cebuanoTranslation': (item['cebuanoTranslation'] ?? item['meaning'] ?? '').toString(),
+            'partOfSpeech': (item['partOfSpeech'] ?? item['pos'] ?? '').toString(),
+            'wrongAttempts': mistakes,
+            'isMastered': mistakes == 0,
+            'points': ScoringService.calculateWordScore(mistakes),
+          };
+        }).toList(),
         'isPerfectFirstAttempt': _isPerfectFirstAttempt,
         'reviewAttemptCount': _reviewAttemptCount,
         'isSandbox': widget.isSandbox,
@@ -757,138 +787,197 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       opacity: Tween<double>(begin: 1, end: 0).animate(_entryFadeController),
       child: Scaffold(
         backgroundColor: Colors.white,
-        body: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Top: close / skip
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                        onPressed: () => context.go('/home'),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: _dismissCountdown,
-                        child: const Text(
-                          'Start Now',
-                          style: TextStyle(
-                            color: Color(0xFF4338CA),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top bar: close / skip
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      elevation: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 22),
+                          onPressed: () => context.go('/home'),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    App3DButton.primary(
+                      onPressed: _dismissCountdown,
+                      height: 44,
+                      depth: 3.5,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      icon: Icons.arrow_forward_rounded,
+                      text: 'Start Now',
+                    ),
+                  ],
                 ),
+              ),
 
-                const Spacer(),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Mascot container with crisp white circular plate
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF06A6FF).withValues(alpha: 0.12),
+                                blurRadius: 32,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: const MascotVisual(type: MascotType.starry, size: 110),
+                        ),
+                        const SizedBox(height: 24),
 
-                // Mascot
-                const MascotVisual(type: MascotType.starry, size: 120),
-                const SizedBox(height: 24),
+                        // Badge Pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F9FF),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: const Color(0xFFBAE6FD), width: 1.5),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('🏆 ', style: TextStyle(fontSize: 12)),
+                              Text(
+                                'MODULE 4 · CUMULATIVE REVIEW',
+                                style: AppTypography.baloo2(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF0284C7),
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
 
-                // Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEDE9FE),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFDDD6FE)),
-                  ),
-                  child: const Text(
-                    'MODULE 4 · FINAL EVALUATION',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF4338CA),
-                      letterSpacing: 1.4,
+                        // Title
+                        Text(
+                          "Let's see what you've learned!",
+                          textAlign: TextAlign.center,
+                          style: AppTypography.baloo2(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0F172A),
+                            letterSpacing: -0.3,
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Review your vocabulary across all activity formats. Take your time!',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.nunito(
+                            fontSize: 14,
+                            color: const Color(0xFF64748B),
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // Countdown ring
+                        Container(
+                          width: 90,
+                          height: 90,
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              AnimatedBuilder(
+                                animation: _countdownRingController,
+                                builder: (_, _) => SizedBox(
+                                  width: 78,
+                                  height: 78,
+                                  child: CircularProgressIndicator(
+                                    value: 1.0 - _countdownRingController.value,
+                                    strokeWidth: 6,
+                                    backgroundColor: const Color(0xFFE2E8F0),
+                                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF06A6FF)),
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '$_countdown',
+                                style: AppTypography.baloo2(
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF0F172A),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Starting in…',
+                          style: AppTypography.nunito(
+                            fontSize: 13,
+                            color: const Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+              ),
 
-                // Title
-                const Text(
-                  "Let's see what you've learned!",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                    height: 1.3,
-                  ),
+              // Bottom activity indicators
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24, top: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _activityPill(Icons.image_rounded, 'Image'),
+                    const SizedBox(width: 10),
+                    _activityPill(Icons.edit_note_rounded, 'Fill-in'),
+                    const SizedBox(width: 10),
+                    _activityPill(Icons.sort_rounded, 'Build'),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 40),
-                  child: Text(
-                    'You will be tested across all three activity types. Take your time.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B), height: 1.5),
-                  ),
-                ),
-
-                const SizedBox(height: 36),
-
-                // Countdown ring
-                SizedBox(
-                  width: 96,
-                  height: 96,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      AnimatedBuilder(
-                        animation: _countdownRingController,
-                        builder: (_, _) => CircularProgressIndicator(
-                          value: 1.0 - _countdownRingController.value,
-                          strokeWidth: 6,
-                          backgroundColor: const Color(0xFFE2E8F0),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4338CA)),
-                        ),
-                      ),
-                      Text(
-                        '$_countdown',
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Starting in…',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
-                ),
-
-                const Spacer(),
-
-                // Activity indicators
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 36),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _activityPill(Icons.image_outlined, 'Image'),
-                      const SizedBox(width: 10),
-                      _activityPill(Icons.edit_outlined, 'Fill-in'),
-                      const SizedBox(width: 10),
-                      _activityPill(Icons.sort_rounded, 'Build'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -897,18 +986,32 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
   Widget _activityPill(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: const Color(0xFF4338CA), size: 14),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.w600)),
+          Icon(icon, color: const Color(0xFF06A6FF), size: 16),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: AppTypography.nunito(
+              color: const Color(0xFF334155),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
@@ -987,22 +1090,12 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
               const SizedBox(height: 36),
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _restartModule4,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4338CA),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Try Again',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
+              App3DButton.primary(
+                onPressed: _restartModule4,
+                height: 54,
+                depth: 5.0,
+                isFullWidth: true,
+                text: 'Try Again',
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -1073,6 +1166,9 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       return null;
     }
 
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final pref = auth.learner?.languagePreference;
+
     if (!_showFeedback) {
       return Container(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -1080,28 +1176,24 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           color: Colors.white,
           border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
         ),
-        child: ElevatedButton(
+        child: App3DButton(
           onPressed: _isActionEnabled() ? _checkAnswer : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF4338CA),
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: const Color(0xFFE2E8F0),
-            disabledForegroundColor: const Color(0xFF94A3B8),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 0,
-          ),
-          child: const Text('CHECK', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+          variant: App3DButtonVariant.primary,
+          height: 54,
+          depth: 5.0,
+          isFullWidth: true,
+          text: LocalizationService.translate(pref, 'check').toUpperCase(),
         ),
       );
     }
 
     final Color panelBg = _isAnswerCorrect ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2);
     final Color textColor = _isAnswerCorrect ? const Color(0xFF15803D) : const Color(0xFFB91C1C);
-    final Color btnBg = _isAnswerCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
     final learnerStatement = getLearnerStatement();
     final correctStatement = getCorrectStatement();
+
+    final correctFeedback = LocalizationService.translate(pref, 'feedback_correct');
+    final incorrectFeedback = LocalizationService.translate(pref, 'feedback_incorrect');
 
     return Container(
       color: panelBg,
@@ -1125,17 +1217,17 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                     Text(
                       _isAnswerCorrect
                           ? (((_wordWrongAttempts[item['wordId']] ?? 0) > 0)
-                              ? 'Correct (+5 pts)'
+                              ? '$correctFeedback (+5 pts)'
                               : (fmt == 'SENTENCE_RECONSTRUCTION'
-                                  ? 'Correct (+15 pts)'
-                                  : 'Correct (+10 pts)'))
-                          : 'Incorrect (0 pts)',
+                                  ? '$correctFeedback (+15 pts)'
+                                  : '$correctFeedback (+10 pts)'))
+                          : '$incorrectFeedback (0 pts)',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
                     ),
                     if (learnerStatement != null) ...[
                       const SizedBox(height: 3),
                       Text(
-                        'Your answer: "$learnerStatement"',
+                        '${LocalizationService.translate(pref, 'your_answer')} "$learnerStatement"',
                         style: TextStyle(fontSize: 13, color: textColor.withValues(alpha: 0.85)),
                       ),
                     ],
@@ -1143,8 +1235,8 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                       const SizedBox(height: 3),
                       Text(
                         correctStatement != null
-                            ? 'Correct: "$correctStatement"'
-                            : 'Correct answer: $_lastCorrectAnswer',
+                            ? '${LocalizationService.translate(pref, 'correct_answer_label')} "$correctStatement"'
+                            : '${LocalizationService.translate(pref, 'correct_answer_label')} $_lastCorrectAnswer',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor),
                       ),
                     ],
@@ -1154,17 +1246,13 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             ],
           ),
           const SizedBox(height: 14),
-          ElevatedButton(
+          App3DButton(
             onPressed: _handleContinue,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: btnBg,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 0,
-            ),
-            child: const Text('CONTINUE', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+            variant: _isAnswerCorrect ? App3DButtonVariant.success : App3DButtonVariant.danger,
+            height: 54,
+            depth: 5.0,
+            isFullWidth: true,
+            text: LocalizationService.translate(pref, 'continue').toUpperCase(),
           ),
         ],
       ),
@@ -1179,10 +1267,10 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFFEDE9FE) : Colors.white,
+        color: selected ? const Color(0xFFF0F9FF) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: selected ? const Color(0xFF4338CA) : const Color(0xFFCBD5E1),
+          color: selected ? const Color(0xFF0EA5E9) : const Color(0xFFCBD5E1),
           width: 1.5,
         ),
         boxShadow: selected
@@ -1200,7 +1288,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w700,
-          color: selected ? const Color(0xFF4338CA) : const Color(0xFF0F172A),
+          color: selected ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
         ),
       ),
     );
@@ -1228,9 +1316,9 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
         textColor = const Color(0xFFB91C1C);
       }
     } else if (isSelected) {
-      cardBg = const Color(0xFFEDE9FE);
-      borderColor = const Color(0xFF4338CA);
-      textColor = const Color(0xFF4338CA);
+      cardBg = const Color(0xFFF0F9FF);
+      borderColor = const Color(0xFF0EA5E9);
+      textColor = const Color(0xFF0284C7);
     }
 
     return Padding(
@@ -1260,10 +1348,10 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected && !_checked ? const Color(0xFF4338CA) : const Color(0xFFCBD5E1),
+                    color: isSelected && !_checked ? const Color(0xFF0EA5E9) : const Color(0xFFCBD5E1),
                     width: 2,
                   ),
-                  color: isSelected && !_checked ? const Color(0xFF4338CA) : Colors.transparent,
+                  color: isSelected && !_checked ? const Color(0xFF0EA5E9) : Colors.transparent,
                 ),
                 child: Center(
                   child: Text(
@@ -1283,6 +1371,22 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textColor),
                 ),
               ),
+              Material(
+                color: Colors.transparent,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _playAudio(option),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6.0),
+                    child: Icon(
+                      Icons.volume_up_rounded,
+                      color: isSelected && !_checked ? const Color(0xFF06A6FF) : const Color(0xFF94A3B8),
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1290,57 +1394,78 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     );
   }
 
-  Widget _buildCebuanoGuideBox({
-    required String text,
-    String? highlightWord,
-    bool showFlag = true,
+  Widget _buildEnglishHintBox({
+    required Map<String, dynamic> item,
   }) {
-    if (text.trim().isEmpty) return const SizedBox.shrink();
+    final explanation = (item['explanationText'] ?? item['explanation'] ?? item['hintText'] ?? item['hint'] ?? '').toString().trim();
+    
+    // Only display if real explanationText / hint exists from the database/bulk-import table
+    if (explanation.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final pos = (item['partOfSpeech'] ?? item['pos'] ?? '').toString().trim();
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F9FF),
+        color: const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFBAE6FD), width: 1.5),
+        border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (showFlag) ...[
-            const Text('🇵🇭', style: TextStyle(fontSize: 20)),
-            const SizedBox(width: 12),
-          ],
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: const BoxDecoration(
+              color: Color(0xFFDCFCE7),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.lightbulb_rounded, color: Color(0xFF16A34A), size: 18),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Bisaya Translation:',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0284C7),
-                    letterSpacing: 0.8,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'HINT / EXPLANATION',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF15803D),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    if (pos.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDCFCE7),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          pos.toUpperCase(),
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF166534)),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 4),
-                CebuanoTextHighlighter(
-                  text: text.replaceAll('**', ''),
-                  highlightWord: highlightWord?.replaceAll('**', ''),
+                const SizedBox(height: 3),
+                Text(
+                  explanation,
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                    height: 1.4,
-                  ),
-                  highlightStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0369A1),
-                    decoration: TextDecoration.underline,
-                    decorationColor: Color(0xFF0284C7),
-                    decorationThickness: 2,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                    height: 1.35,
                   ),
                 ),
               ],
@@ -1353,7 +1478,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
   Widget _buildImageMatching(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
-    final definition = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
     final imagePath = (item['imageAssetPath'] ?? '').toString();
     if (imagePath.isEmpty) return _buildMultipleChoice(item);
 
@@ -1395,8 +1519,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           ),
         ),
         const SizedBox(height: 16),
-        _buildCebuanoGuideBox(text: definition, highlightWord: definition),
-        const SizedBox(height: 20),
+        _buildEnglishHintBox(item: item),
         ..._currentMcOptions.asMap().entries.map((e) => _buildOptionRow(
           index: e.key,
           option: e.value,
@@ -1410,8 +1533,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   Widget _buildFillInBlank(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
     final sentence = (item['fitbSentence'] ?? item['example'] ?? '').toString();
-    final definition = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
-    final cebSentence = (item['exampleSentenceCebuano'] ?? item['exampleCebuano'] ?? definition).toString();
 
     String displaySentence = sentence;
     if (displaySentence.contains(RegExp(r'\{blank\}|\[blank\]|<blank>', caseSensitive: false))) {
@@ -1441,22 +1562,44 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                displaySentence,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), height: 1.4),
+              Expanded(
+                child: Text(
+                  displaySentence,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), height: 1.4),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: const Color(0xFFF0F9FF),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    final rawSentence = sentence.isNotEmpty ? sentence : displaySentence;
+                    final rx = RegExp(r'_{2,}|-{2,}|\[_\]|\{blank\}|\[blank\]|<blank>', caseSensitive: false);
+                    final typed = _typingController.text.trim();
+                    String toSpeak;
+                    if (typed.isNotEmpty) {
+                      toSpeak = rawSentence.contains(rx) ? rawSentence.replaceAll(rx, typed) : '$rawSentence $typed';
+                    } else {
+                      toSpeak = rawSentence.contains(rx) ? rawSentence.replaceAll(rx, 'blank') : rawSentence;
+                    }
+                    _playAudio(toSpeak);
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF), size: 20),
+                  ),
+                ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        _buildCebuanoGuideBox(
-          text: cebSentence.isNotEmpty ? cebSentence : definition,
-          highlightWord: definition,
-        ),
-        const SizedBox(height: 20),
+        _buildEnglishHintBox(item: item),
         TextField(
           controller: _typingController,
           enabled: !_checked,
@@ -1471,7 +1614,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF4338CA), width: 2.5)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2.5)),
           ),
         ),
         const SizedBox(height: 14),
@@ -1480,8 +1623,8 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           icon: const Icon(Icons.volume_up_rounded, size: 20),
           label: const Text('Hear word', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF4338CA),
-            side: const BorderSide(color: Color(0xFF4338CA), width: 1.5),
+            foregroundColor: const Color(0xFF06A6FF),
+            side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
@@ -1524,9 +1667,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
     }
 
-    final cebSentence = (item['exampleSentenceCebuano'] ?? item['exampleCebuano'] ?? item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
-    final definition = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
-
     Widget buildLockedChip(String text) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -1554,13 +1694,8 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           'BUILD THE SENTENCE',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
         ),
-        const SizedBox(height: 8),
-        _buildCebuanoGuideBox(
-          text: cebSentence,
-          highlightWord: definition,
-          showFlag: true,
-        ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        _buildEnglishHintBox(item: item),
         // Assembled Sentence Area
         const Text(
           'Your Sentence:',
@@ -1575,7 +1710,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _assembledWords.isNotEmpty ? const Color(0xFF4338CA) : const Color(0xFFE2E8F0),
+              color: _assembledWords.isNotEmpty ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
               width: 2,
             ),
           ),
@@ -1629,9 +1764,14 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           Row(
             children: [
               IconButton(
-                onPressed: () => _playAudio(answerTokens.join(' ')),
-                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF4338CA)),
-                tooltip: 'Listen to sentence',
+                onPressed: () {
+                  final previewText = [..._arrangementPrefix, ..._assembledWords, ..._arrangementSuffix].join(' ').trim();
+                  if (previewText.isNotEmpty) {
+                    _playAudio(previewText);
+                  }
+                },
+                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
+                tooltip: 'Listen to preview',
               ),
               Expanded(
                 child: Text(
@@ -1647,7 +1787,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
   Widget _buildMultipleChoice(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
-    final definition = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1656,9 +1795,8 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           'CHOOSE THE CORRECT WORD',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
         ),
-        const SizedBox(height: 12),
-        _buildCebuanoGuideBox(text: definition, highlightWord: definition),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+        _buildEnglishHintBox(item: item),
         const Text(
           'Select the matching English word:',
           style: TextStyle(fontSize: 15, color: Color(0xFF334155), fontWeight: FontWeight.w700),
@@ -1676,8 +1814,8 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           icon: const Icon(Icons.volume_up_rounded, size: 20),
           label: const Text('Hear word', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF4338CA),
-            side: const BorderSide(color: Color(0xFF4338CA), width: 1.5),
+            foregroundColor: const Color(0xFF06A6FF),
+            side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
@@ -1687,7 +1825,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   }
 
   Widget _buildMatching(Map<String, dynamic> item) {
-    final prompt = (item['cebuanoMeaning'] ?? item['definition'] ?? '').toString();
     final choices = _matchingOptions.isNotEmpty ? _matchingOptions : _buildMatchingOptions(item);
 
     return Column(
@@ -1698,8 +1835,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
         ),
         const SizedBox(height: 12),
-        _buildCebuanoGuideBox(text: prompt, highlightWord: prompt),
-        const SizedBox(height: 20),
+        _buildEnglishHintBox(item: item),
         const Text(
           'Select the matching English word:',
           style: TextStyle(fontSize: 15, color: Color(0xFF334155), fontWeight: FontWeight.w700),
@@ -1713,7 +1849,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _selectedMatchingWord != null ? const Color(0xFF4338CA) : const Color(0xFFCBD5E1),
+              color: _selectedMatchingWord != null ? const Color(0xFF0EA5E9) : const Color(0xFFCBD5E1),
               width: 2,
             ),
           ),
@@ -1740,10 +1876,10 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFEDE9FE) : Colors.white,
+                  color: isSelected ? const Color(0xFFF0F9FF) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isSelected ? const Color(0xFF4338CA) : const Color(0xFFCBD5E1),
+                    color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFFCBD5E1),
                     width: 2,
                   ),
                   boxShadow: [
@@ -1759,7 +1895,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
-                    color: isSelected ? const Color(0xFF4338CA) : const Color(0xFF334155),
+                    color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF334155),
                   ),
                 ),
               ),
@@ -1826,19 +1962,10 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                         onPressed: () => context.go('/home'),
                       ),
                       Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween<double>(end: progressVal),
-                            duration: const Duration(milliseconds: 500),
-                            curve: Curves.easeOutCubic,
-                            builder: (_, val, _) => LinearProgressIndicator(
-                              value: val,
-                              minHeight: 10,
-                              backgroundColor: const Color(0xFFE2E8F0),
-                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4338CA)),
-                            ),
-                          ),
+                        child: App3DProgressBar(
+                          value: progressVal,
+                          height: 22.0,
+                          showLabel: false,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1866,7 +1993,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF4338CA),
+                              color: const Color(0xFF06A6FF),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -1907,30 +2034,39 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEDE9FE),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: const Text(
-                                      'MODULE 4 · FINAL EVALUATION',
-                                      style: TextStyle(
-                                        fontSize: 8.5,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFF4338CA),
-                                        letterSpacing: 0.8,
+                                  Flexible(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF0F9FF),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: const Text(
+                                        'MODULE 4 · EVALUATION',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 8.5,
+                                          fontWeight: FontWeight.w900,
+                                          color: Color(0xFF0284C7),
+                                          letterSpacing: 0.6,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                  const Spacer(),
-                                  Text(
-                                    _activityLabel(fmt),
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF64748B),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      _activityLabel(fmt),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF64748B),
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1963,7 +2099,12 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                child: _buildCurrentActivity(),
+                child: AppQuestionTransition(
+                  child: KeyedSubtree(
+                    key: ValueKey('cum_review_${_currentIndex}_${_queue.isNotEmpty && _currentIndex < _queue.length ? _queue[_currentIndex]['wordId'] : _currentIndex}'),
+                    child: _buildCurrentActivity(),
+                  ),
+                ),
               ),
             ),
 
@@ -2068,7 +2209,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                 ElevatedButton(
                   onPressed: () => context.go('/home'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4338CA),
+                    backgroundColor: const Color(0xFF06A6FF),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2089,7 +2230,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     if (_loading) {
       return const Scaffold(
         backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF4338CA))),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF06A6FF))),
       );
     }
 

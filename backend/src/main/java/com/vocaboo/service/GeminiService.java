@@ -131,7 +131,14 @@ public class GeminiService {
             + "  \"sentence_completion_blank\": \"string\",\n"
             + "  \"sentence_completion_options\": [\"string\", \"string\", \"string\", \"string\"]\n"
             + "}\n"
-            + "Rules: use standard Cebuano orthography, make the Cebuano meaning a real translation, never reuse or transliterate the English word as the meaning, keep content age-appropriate, and ensure the matching set includes the target word plus related words.";
+            + "Rules:\n"
+            + "1. When writing bilingual translations, explanations, and phonological tips, write in natural Bislish — the informal way Cebuano speakers code-switch between Cebuano and English in everyday conversation.\n"
+            + "2. Blend Cebuano and English naturally within the same sentence, the way a native Cebuano-English bilingual speaker actually talks (e.g. \"Kani nga prutas kay 'apple' sa English. Ganahan ka mokaon ani?\").\n"
+            + "3. Keep common English words (numbers, technical terms, everyday nouns like 'phone', 'computer', 'okay', 'sure') in English, since that is how Cebuano speakers naturally talk.\n"
+            + "4. Use Cebuano for connectors, particles, and everyday phrasing (e.g. 'bitaw', 'kay', 'man gud', 'ba', 'diay', 'unya', 'na', 'kaayo').\n"
+            + "5. Keep the tone casual, friendly, and conversational for young learners (aged 9-12).\n"
+            + "6. Do NOT alternate by translating each sentence twice with slashes (e.g. do not write 'HELLO / KUMUSTA') — mix them naturally within a single sentence.\n"
+            + "7. Ensure the Cebuano meaning is an accurate translation, never reuse or transliterate the English word as the meaning, and ensure the matching set includes the target word plus related words.";
 
     public SandboxWordDto generateSandboxLesson(String userInput) {
         String normalizedInput = validateSandboxInput(userInput);

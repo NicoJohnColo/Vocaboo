@@ -4,6 +4,7 @@ import 'app_router.dart';
 import 'core/motion/motion.dart';
 import 'providers/auth_provider.dart';
 import 'providers/lesson_provider.dart';
+import 'providers/class_provider.dart';
 
 import 'services/tts_service.dart';
 
@@ -18,6 +19,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ClassProvider()),
         ChangeNotifierProxyProvider<AuthProvider, LessonProvider>(
           create: (_) => LessonProvider(null),
           update: (_, auth, previous) {
@@ -48,7 +50,7 @@ class VocabooApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: 'Outfit',
+        fontFamily: AppTypography.bodyFontFamily,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF0EA5E9),
           primary: const Color(0xFF0EA5E9),
@@ -61,11 +63,39 @@ class VocabooApp extends StatelessWidget {
           onSurface: const Color(0xFF0F172A),
           brightness: Brightness.light,
         ),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         cardTheme: const CardThemeData(
           color: Colors.white,
-          elevation: 2,
+          elevation: 0,
+          margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(16)),
+            borderRadius: BorderRadius.all(Radius.circular(20)),
+            side: BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+          ),
+        ),
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Colors.white,
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(24)),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          elevation: 12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          centerTitle: false,
+          titleTextStyle: AppTypography.baloo2(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF06A6FF),
           ),
         ),
         textTheme: AppTypography.createTextTheme(),

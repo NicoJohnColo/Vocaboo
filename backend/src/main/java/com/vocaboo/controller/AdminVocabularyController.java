@@ -29,6 +29,7 @@ public class AdminVocabularyController {
 
     private final VocabularyManagementService vocabularyManagementService;
     private final BulkImportService bulkImportService;
+    private final com.vocaboo.repository.LessonRepository lessonRepository;
 
     /**
      * GET /api/admin/lessons/{lessonId}/vocabulary — List words in lesson
@@ -44,7 +45,9 @@ public class AdminVocabularyController {
     @PostMapping
     public ResponseEntity<AdminVocabularyResponse> addWord(
             @PathVariable UUID lessonId,
-            @Valid @RequestBody AddVocabularyRequest req) {
+            @Valid @RequestBody AddVocabularyRequest req,
+            Authentication auth) {
+        checkLessonModifyPermission(lessonId, auth);
         AdminVocabularyResponse created = vocabularyManagementService.addWord(lessonId, req);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -56,7 +59,9 @@ public class AdminVocabularyController {
     public ResponseEntity<AdminVocabularyResponse> updateWord(
             @PathVariable UUID lessonId,
             @PathVariable UUID wordId,
-            @Valid @RequestBody UpdateVocabularyRequest req) {
+            @Valid @RequestBody UpdateVocabularyRequest req,
+            Authentication auth) {
+        checkLessonModifyPermission(lessonId, auth);
         return ResponseEntity.ok(vocabularyManagementService.updateWord(lessonId, wordId, req));
     }
 
@@ -66,7 +71,9 @@ public class AdminVocabularyController {
     @DeleteMapping("/{wordId}")
     public ResponseEntity<Void> deleteWord(
             @PathVariable UUID lessonId,
-            @PathVariable UUID wordId) {
+            @PathVariable UUID wordId,
+            Authentication auth) {
+        checkLessonModifyPermission(lessonId, auth);
         vocabularyManagementService.deleteWord(lessonId, wordId);
         return ResponseEntity.noContent().build();
     }
@@ -80,6 +87,7 @@ public class AdminVocabularyController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "dryRun", defaultValue = "false") boolean dryRun,
             Authentication auth) throws IOException {
+        checkLessonModifyPermission(lessonId, auth);
         UUID adminId = UUID.fromString(auth.getName());
         Map<String, Object> result = bulkImportService.parseAndImportCSV(lessonId, file.getInputStream(), adminId, dryRun);
         return ResponseEntity.ok(result);
@@ -90,11 +98,58 @@ public class AdminVocabularyController {
      */
     @GetMapping("/bulk-import/template")
     public ResponseEntity<byte[]> downloadTemplate(@PathVariable UUID lessonId) {
-        String csv = bulkImportService.getCsvTemplate();
-        byte[] bytes = csv.getBytes();
+        String csv = bulkImportService.getCsvTemplate(lessonId);
+        byte[] bytes = csv.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        String filename = "vocabulary_import_template.csv";
+        com.vocaboo.entity.Lesson lesson = lessonRepository.findById(lessonId).orElse(null);
+        if (lesson != null && lesson.getLessonTitle() != null && !lesson.getLessonTitle().isBlank()) {
+            String sanitized = lesson.getLessonTitle()
+                    .toLowerCase()
+                    .replaceAll("[^a-z0-9]+", "_")
+                    .replaceAll("^_+|_+$", "");
+            if (!sanitized.isBlank()) {
+                filename = "lesson_" + sanitized + "_template.csv";
+            }
+        }
+
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("text/csv"));
-        headers.setContentDispositionFormData("attachment", "vocabulary_import_template.csv");
+        headers.setContentType(MediaType.parseMediaType("text/csv; charset=UTF-8"));
+        headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment().filename(filename).build());
         return ResponseEntity.ok().headers(headers).body(bytes);
+    }
+
+    private void checkLessonModifyPermission(UUID lessonId, Authentication auth) {
+        com.vocaboo.entity.Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Lesson not found"));
+        boolean isTeacherLesson = lesson.getClassroom() != null
+                || (lesson.getCategory() != null && lesson.getCategory().getTeacher() != null);
+        if (isTeacherLesson) {
+            boolean isTeacher = auth != null && auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
+            if (!isTeacher) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Main admin cannot modify vocabulary words in teacher-authored classroom lessons.");
+            }
+            UUID teacherId = parseTeacherId(auth);
+            UUID ownerTeacherId = lesson.getClassroom() != null && lesson.getClassroom().getTeacher() != null
+                    ? lesson.getClassroom().getTeacher().getTeacherId()
+                    : (lesson.getCategory() != null && lesson.getCategory().getTeacher() != null
+                        ? lesson.getCategory().getTeacher().getTeacherId()
+                        : null);
+            if (teacherId == null || !teacherId.equals(ownerTeacherId)) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "You do not have permission to modify vocabulary words in this lesson.");
+            }
+        }
+    }
+
+    private UUID parseTeacherId(Authentication auth) {
+        if (auth == null || auth.getName() == null) return null;
+        try {
+            return UUID.fromString(auth.getName());
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

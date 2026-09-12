@@ -14,17 +14,22 @@ public class MasteryReviewService {
     private final MasteryBadgeService badgeService;
 
     @Transactional
-    public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId, Double score, Boolean isPerfectFirstAttempt) {
-        SessionSummary summary = summaryService.saveSessionSummary(learnerId, sessionId, lessonId, score, isPerfectFirstAttempt);
-
-        double accuracy = summary.getAccuracyRate() != null ? summary.getAccuracyRate().doubleValue() : (score != null ? score : 0.0);
-        badgeService.calculateAndSaveBadge(learnerId, lessonId, accuracy);
-
+    public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId, Double score,
+                                          Boolean isPerfectFirstAttempt, UUID classroomContextId) {
+        SessionSummary summary = summaryService.saveSessionSummary(
+                learnerId, sessionId, lessonId, score, isPerfectFirstAttempt, classroomContextId);
+        badgeService.calculateAndSaveBadge(learnerId, lessonId);
         return summary;
     }
 
     @Transactional
+    public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId, Double score,
+                                          Boolean isPerfectFirstAttempt) {
+        return completeSession(learnerId, sessionId, lessonId, score, isPerfectFirstAttempt, null);
+    }
+
+    @Transactional
     public SessionSummary completeSession(UUID learnerId, UUID sessionId, UUID lessonId) {
-        return completeSession(learnerId, sessionId, lessonId, null, null);
+        return completeSession(learnerId, sessionId, lessonId, null, null, null);
     }
 }

@@ -23,7 +23,8 @@ public class BulkImportService {
 
     private static final String CSV_HEADER =
             "english_word,cebuano_meaning,part_of_speech,grade_level,example_sentence_english,example_sentence_cebuano,audio_path,image_path," +
-            "distractor_pool,fill_blank_sentence,tile_sentence,explanation_text,audio_text_cebuano,audio_text_english,context_paragraph,activity_type";
+            "distractor_pool,fill_blank_sentence,tile_sentence,explanation_text,audio_text_cebuano,audio_text_english,context_paragraph,eligible_activity_types," +
+            "hint_definition,hint_cebuano_sentence";
 
     private final LessonRepository lessonRepository;
     private final VocabularyWordRepository wordRepository;
@@ -81,10 +82,13 @@ public class BulkImportService {
                 String audioTextCebuano   = cols.length > 12 ? cols[12].trim() : "";
                 String audioTextEnglish   = cols.length > 13 ? cols[13].trim() : "";
                 String contextParagraph   = cols.length > 14 ? cols[14].trim() : "";
-                // eligible_activity_types: column 15 (optional). Valid: MULTIPLE_CHOICE, FILL_IN_BLANK, MATCHING, SENTENCE_ARRANGEMENT, WORD_SCRAMBLE, IMAGE_LABELING, TRUE_OR_FALSE
+                // eligible_activity_types: column 15 (optional). Valid: MULTIPLE_CHOICE, FILL_IN_BLANK, MATCHING, SENTENCE_ARRANGEMENT, WORD_SCRAMBLE, IMAGE_LABELING, TRUE_OR_FALSE, HINT_TO_WORD
                 String eligibleActivityTypes = cols.length > 15 ? cols[15].trim() : "";
+                // Hint-to-word activity fields (columns 16 and 17, both optional)
+                String hintDefinition       = cols.length > 16 ? cols[16].trim() : "";
+                String hintCebuanoSentence  = cols.length > 17 ? cols[17].trim() : "";
                 if (eligibleActivityTypes.isBlank()) {
-                    eligibleActivityTypes = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
+                    eligibleActivityTypes = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD";
                 }
                 
                 // Basic validation: ensure uppercase and keep only supported activity names
@@ -140,6 +144,8 @@ public class BulkImportService {
                         .explanationText(explanationText.isBlank() ? null : explanationText)
                         .audioTextCebuano(audioTextCebuano.isBlank() ? null : audioTextCebuano)
                         .audioTextEnglish(audioTextEnglish.isBlank() ? null : audioTextEnglish)
+                        .hintDefinition(hintDefinition.isBlank() ? null : hintDefinition)
+                        .hintCebuanoSentence(hintCebuanoSentence.isBlank() ? null : hintCebuanoSentence)
                         .eligibleActivityTypes(eligibleActivityTypes)
                         .build();
 
@@ -184,26 +190,79 @@ public class BulkImportService {
         return result;
     }
 
-    /** Returns CSV template as a string */
+    /** Returns CSV template as a string (default / no lesson specified) */
     public String getCsvTemplate() {
-        return CSV_HEADER + "\n" +
-               "Pencil,Lapis,NOUN,GRADE_3_4," +
-               "\"I use a pencil to write in class.\",\"Naggamit ko og lapis sa pagsulat sa klase.\",,," +
-               "eraser;ruler;scissors," +
-               "\"I use a {BLANK} to write in class.\"," +
-               "\"I use a pencil to write in class.\"," +
-               "\"Think of a long thin writing tool.\"," +
-               "\"Lapis. Naggamit ko og lapis sa pagsulat sa klase.\"," +
-               "\"Pencil. I use a pencil to write in class.\"," +
-               "\"I prepare my school bag before leaving. I put my pencil and notebook inside it.\"\n" +
-               "Notebook,Kuwaderno,NOUN,GRADE_3_4," +
-               "\"I write my lessons in a notebook.\",\"Nagsulat ko sa akong kuwaderno.\",,," +
-               "journal;folder;binder," +
-               "\"I write my lessons in a {BLANK}.\"," +
-               "\"I write my lessons in a notebook.\"," +
-               "\"Think of a book you write notes in.\"," +
-               "\"Kuwaderno. Nagsulat ko sa akong kuwaderno.\"," +
-               "\"Notebook. I write my lessons in a notebook.\",\"\"\n";
+        return getCsvTemplate(null);
+    }
+
+    /**
+     * Returns CSV template tailored to a specific lesson if provided.
+     * Includes diverse, production-ready sample rows across NOUN, VERB, and ADJECTIVE
+     * with all 16 columns properly formatted and validated against English dictionary rules.
+     */
+    public String getCsvTemplate(UUID lessonId) {
+        String grade = "GRADE_4";
+        String contextStory = "The teacher prepares a clean classroom for the lesson. A student uses a sharp pencil to write words carefully in a notebook.";
+
+        if (lessonId != null) {
+            Lesson lesson = lessonRepository.findById(lessonId).orElse(null);
+            if (lesson != null) {
+                if (lesson.getGradeLevel() != null) {
+                    grade = lesson.getGradeLevel().name();
+                }
+                if (lesson.getContextParagraph() != null && !lesson.getContextParagraph().isBlank()) {
+                    contextStory = lesson.getContextParagraph().trim();
+                }
+            }
+        }
+
+        // Clean context story for CSV (escape any double quotes and newlines)
+        String escapedStory = "\"" + contextStory.replace("\"", "\"\"").replace("\r\n", " ").replace("\n", " ") + "\"";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(CSV_HEADER).append("\n");
+
+        // 1. NOUN Example (Pencil / Lapis) - Row 1 supplies the full interconnected context paragraph for the lesson
+        sb.append("Pencil,Lapis,NOUN,").append(grade).append(",")
+          .append("\"I use a pencil to write in class.\",\"Naggamit ko og lapis sa pagsulat sa klase.\",")
+          .append("/assets/audio/words/pencil.mp3,/assets/images/words/pencil.png,")
+          .append("eraser;ruler;marker,")
+          .append("\"I use a {BLANK} to write in class.\",")
+          .append("\"I use a pencil to write in class.\",")
+          .append("\"A slender tool with graphite inside used for writing and drawing.\",")
+          .append("\"Lapis. Naggamit ko og lapis sa pagsulat sa klase.\",")
+          .append("\"Pencil. I use a pencil to write in class.\",")
+          .append(escapedStory).append(",")
+          .append("\"MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD\",")
+          .append("\"a tool with graphite used for writing\",\"Usa ka gamit nga may carbon para isulat\"\n");
+
+        // 2. VERB Example (Write / Sulat) - context_paragraph left empty; each word does not have individual story
+        sb.append("Write,Sulat,VERB,").append(grade).append(",")
+          .append("\"Students write notes during the lesson.\",\"Ang mga estudyante nagsulat og mga nota sa leksyon.\",")
+          .append("/assets/audio/words/write.mp3,/assets/images/words/write.png,")
+          .append("read;listen;speak,")
+          .append("\"Students {BLANK} notes during the lesson.\",")
+          .append("\"Students write notes during the lesson.\",")
+          .append("\"To form letters or words on paper with a pen or pencil.\",")
+          .append("\"Sulat. Ang mga estudyante nagsulat og mga nota sa leksyon.\",")
+          .append("\"Write. Students write notes during the lesson.\",,")
+          .append("\"MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD\",")
+          .append("\"to form letters or words on paper\",\"Paghimo og mga letra o pulong sa papel\"\n");
+
+        // 3. ADJECTIVE Example (Sharp / Hait) - context_paragraph left empty; each word does not have individual story
+        sb.append("Sharp,Hait,ADJECTIVE,").append(grade).append(",")
+          .append("\"Be careful with the sharp point of the pencil.\",\"Pag-amping sa hait nga tumoy sa lapis.\",")
+          .append("/assets/audio/words/sharp.mp3,/assets/images/words/sharp.png,")
+          .append("dull;blunt;soft,")
+          .append("\"Be careful with the {BLANK} point of the pencil.\",")
+          .append("\"Be careful with the sharp point of the pencil.\",")
+          .append("\"Having a fine edge or point that can cut or pierce easily.\",")
+          .append("\"Hait. Pag-amping sa hait nga tumoy sa lapis.\",")
+          .append("\"Sharp. Be careful with the sharp point of the pencil.\",,")
+          .append("\"MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;SENTENCE_ARRANGEMENT;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD\",")
+          .append("\"having a thin edge or point that can cut easily\",\"Adunay nipis nga tumoy nga makaputol dayon\"\n");
+
+        return sb.toString();
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────
@@ -217,7 +276,7 @@ public class BulkImportService {
         // Note: we do NOT check cebuano_meaning against the English dictionary — many valid Cebuano
         // words (e.g. lapis, bag, nota, hait) coincidentally appear in English dictionaries.
         if (!Set.of("NOUN","VERB","ADJECTIVE").contains(pos)) rowErrors.add("part_of_speech must be NOUN, VERB, or ADJECTIVE");
-        if (!Set.of("GRADE_3_4","GRADE_5_6","GRADE_6").contains(grade)) rowErrors.add("grade_level must be GRADE_3_4, GRADE_5_6, or GRADE_6");
+        if (!Set.of("GRADE_4","GRADE_5","GRADE_6").contains(grade)) rowErrors.add("grade_level must be GRADE_4, GRADE_5, or GRADE_6");
         if (exampleEn.length() < 10 || exampleEn.length() > 500) rowErrors.add("example_sentence_english must be 10-500 chars");
 
         // Validate English example sentence: meaningful words must be in English dictionary

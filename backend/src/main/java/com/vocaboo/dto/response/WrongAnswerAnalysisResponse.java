@@ -89,10 +89,60 @@ public class WrongAnswerAnalysisResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    public static class ProblemWordDetail {
+        private UUID wordId;
+        private String englishWord;
+        private String cebuanoMeaning;
+        private int errorCount;
+        private int demeritPoints;
+        private int mistakeCount;
+        private int affectedLearners;
+
+        public static ProblemWordDetailBuilder builder() { return new ProblemWordDetailBuilder(); }
+
+        public static class ProblemWordDetailBuilder {
+            private UUID wordId;
+            private String englishWord;
+            private String cebuanoMeaning;
+            private int errorCount;
+            private int demeritPoints;
+            private int mistakeCount;
+            private int affectedLearners;
+
+            public ProblemWordDetailBuilder wordId(UUID wordId) { this.wordId = wordId; return this; }
+            public ProblemWordDetailBuilder englishWord(String englishWord) { this.englishWord = englishWord; return this; }
+            public ProblemWordDetailBuilder cebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; return this; }
+            public ProblemWordDetailBuilder errorCount(int errorCount) { this.errorCount = errorCount; return this; }
+            public ProblemWordDetailBuilder demeritPoints(int demeritPoints) { this.demeritPoints = demeritPoints; return this; }
+            public ProblemWordDetailBuilder mistakeCount(int mistakeCount) { this.mistakeCount = mistakeCount; return this; }
+            public ProblemWordDetailBuilder affectedLearners(int affectedLearners) { this.affectedLearners = affectedLearners; return this; }
+
+            public ProblemWordDetail build() {
+                ProblemWordDetail p = new ProblemWordDetail();
+                p.wordId = this.wordId;
+                p.englishWord = this.englishWord;
+                p.cebuanoMeaning = this.cebuanoMeaning;
+                p.errorCount = this.errorCount;
+                p.demeritPoints = this.demeritPoints;
+                p.mistakeCount = this.mistakeCount;
+                p.affectedLearners = this.affectedLearners;
+                return p;
+            }
+        }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class CurriculumGapDetail {
         private UUID lessonId;
         private String lessonTitle;
         private String categoryName;
+
+        /** Specific words in this lesson that caused the errors, sorted descending by mistake count. */
+        private List<ProblemWordDetail> problemWords;
 
         /** Number of distinct learners who made at least one error on a word in this lesson. */
         private int affectedLearners;
@@ -111,6 +161,7 @@ public class WrongAnswerAnalysisResponse {
             private UUID lessonId;
             private String lessonTitle;
             private String categoryName;
+            private List<ProblemWordDetail> problemWords;
             private int affectedLearners;
             private int totalErrors;
             private String recommendation;
@@ -118,6 +169,7 @@ public class WrongAnswerAnalysisResponse {
             public CurriculumGapDetailBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
             public CurriculumGapDetailBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
             public CurriculumGapDetailBuilder categoryName(String categoryName) { this.categoryName = categoryName; return this; }
+            public CurriculumGapDetailBuilder problemWords(List<ProblemWordDetail> problemWords) { this.problemWords = problemWords; return this; }
             public CurriculumGapDetailBuilder affectedLearners(int affectedLearners) { this.affectedLearners = affectedLearners; return this; }
             public CurriculumGapDetailBuilder totalErrors(int totalErrors) { this.totalErrors = totalErrors; return this; }
             public CurriculumGapDetailBuilder recommendation(String recommendation) { this.recommendation = recommendation; return this; }
@@ -127,6 +179,7 @@ public class WrongAnswerAnalysisResponse {
                 d.lessonId = this.lessonId;
                 d.lessonTitle = this.lessonTitle;
                 d.categoryName = this.categoryName;
+                d.problemWords = this.problemWords;
                 d.affectedLearners = this.affectedLearners;
                 d.totalErrors = this.totalErrors;
                 d.recommendation = this.recommendation;

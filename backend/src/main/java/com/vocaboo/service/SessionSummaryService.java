@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -119,13 +120,41 @@ public class SessionSummaryService {
         BigDecimal sessionAccuracy = accuracy;
         int bonusPoints = 0;
 
-        // The Lesson Completion Bonus (+200) is ONLY awarded when the entire lesson is completely MASTERED.
-        // It is no longer based on single session accuracy.
+        // Upon session completion for this lesson, promote ONLY the words practiced in this session to MASTERED
+        Set<UUID> sessionWordIds = results.stream()
+                .filter(r -> r.getWord() != null)
+                .map(r -> r.getWord().getWordId())
+                .collect(Collectors.toSet());
+
+        for (VocabularyWord w : allLessonWords) {
+            if (!sessionWordIds.contains(w.getWordId())) {
+                continue; // Do NOT promote unpracticed words!
+            }
+            for (int modNum : new int[]{2, 3}) {
+                DifficultyProgress dp = difficultyProgressRepository
+                        .findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, w.getWordId(), modNum)
+                        .orElseGet(() -> DifficultyProgress.builder()
+                                .learner(learner)
+                                .word(w)
+                                .moduleNumber(modNum)
+                                .consecutiveCorrect(0)
+                                .consecutiveIncorrect(0)
+                                .needsReintroduction(false)
+                                .reintroductionCount(0)
+                                .createdAt(OffsetDateTime.now())
+                                .build());
+                dp.setCurrentLevel(DifficultyLevel.MASTERED);
+                dp.setUpdatedAt(OffsetDateTime.now());
+                difficultyProgressRepository.save(dp);
+            }
+        }
+
+        // The Lesson Completion Bonus (+200) is ONLY awarded when the entire lesson is completely MASTERED across all words.
         long masteredWords = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lessonId);
         long totalWordsForLesson = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId).size();
         
-        if (masteredWords >= totalWordsForLesson) {
-            if (!lessonStatus.getLessonCompletionBonusAwarded()) {
+        if (totalWordsForLesson > 0 && masteredWords >= totalWordsForLesson) {
+            if (!Boolean.TRUE.equals(lessonStatus.getLessonCompletionBonusAwarded())) {
                 bonusPoints += 200;
                 PointTransaction tx = PointTransaction.builder()
                         .learner(learner)
@@ -142,6 +171,10 @@ public class SessionSummaryService {
             }
             lessonStatus.setStatus(LessonStatus.COMPLETED);
             lessonStatus.setCompletedAt(OffsetDateTime.now());
+        } else {
+            // Not all words are mastered yet: lesson remains UNLOCKED, not COMPLETED!
+            lessonStatus.setStatus(LessonStatus.UNLOCKED);
+            lessonStatus.setCompletedAt(null);
         }
 
         List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdOrderByWordOrderAsc(lessonId);
@@ -175,12 +208,14 @@ public class SessionSummaryService {
             candidateScore = BigDecimal.valueOf(reviewScore).setScale(2, RoundingMode.HALF_UP);
         }
 
-        // Update lesson mastery score to the high watermark (best preserved score)
-        if (candidateScore.compareTo(BigDecimal.ZERO) > 0) {
+        // Update lesson mastery score to the high watermark (best preserved score) ONLY when the whole lesson is completed
+        if (lessonStatus.getStatus() == LessonStatus.COMPLETED && candidateScore.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal existingMastery = lessonStatus.getMasteryScore();
             if (existingMastery == null || candidateScore.compareTo(existingMastery) > 0) {
                 lessonStatus.setMasteryScore(candidateScore);
             }
+        } else if (lessonStatus.getStatus() != LessonStatus.COMPLETED) {
+            lessonStatus.setMasteryScore(null);
         }
         lessonStatus.setUpdatedAt(OffsetDateTime.now());
         lessonStatusRepository.save(lessonStatus);

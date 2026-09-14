@@ -11,7 +11,6 @@ export default function EditLessonModal({ lesson, classes = [], isTeacher = fals
     grade_level: lesson.grade_level ?? lesson.gradeLevel ?? 'GRADE_4',
     module2_activities: lesson.module2_activities ?? lesson.module2Activities ?? DEFAULT_CONFIG.module2_activities,
     module3_activities: lesson.module3_activities ?? lesson.module3Activities ?? DEFAULT_CONFIG.module3_activities,
-    module4_activities: lesson.module4_activities ?? lesson.module4Activities ?? DEFAULT_CONFIG.module4_activities,
     upgrade_streak_required: lesson.upgrade_streak_required ?? lesson.upgradeStreakRequired ?? DEFAULT_CONFIG.upgrade_streak_required,
     demotion_threshold: lesson.demotion_threshold ?? lesson.demotionThreshold ?? DEFAULT_CONFIG.demotion_threshold,
     reintroduction_threshold: lesson.reintroduction_threshold ?? lesson.reintroductionThreshold ?? DEFAULT_CONFIG.reintroduction_threshold,

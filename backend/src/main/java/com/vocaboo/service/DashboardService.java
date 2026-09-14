@@ -254,11 +254,19 @@ public class DashboardService {
                 try {
                     UUID lessonUuid = UUID.fromString(idStr.trim());
                     Lesson l = lessonById.get(lessonUuid);
-                    if (l != null) coveredLessons.add(l);
+                    if (l != null && (l.getIsDeleted() == null || !l.getIsDeleted())) {
+                        coveredLessons.add(l);
+                    }
                 } catch (IllegalArgumentException ignored) {
                     // Skip malformed UUIDs
                 }
             }
+
+            // Skip orphaned cumulative review sessions if any linked lesson was deleted
+            if (coveredLessons.isEmpty() || coveredLessons.size() < lessonIdParts.length) {
+                continue;
+            }
+
             coveredLessons.sort(Comparator.comparingInt(l -> l.getLessonOrder() != null ? l.getLessonOrder() : 0));
 
             for (Lesson lesson : coveredLessons) {

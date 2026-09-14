@@ -16,6 +16,7 @@ import '../services/local_storage_service.dart';
 import '../services/scoring_service.dart';
 import '../widgets/mascot_visual.dart';
 import '../widgets/custom_image_viewer.dart';
+import '../widgets/cebuano_text_highlighter.dart';
 import '../core/motion/motion.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,12 +77,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   double? _weightedScore;
 
   // ── queue ─────────────────────────────────────────────────────────────────
-  // Fixed activity order per word: Image → FITB → Sentence Reconstruction
-  static const List<String> _fixedActivityOrder = [
-    'IMAGE_MATCHING',
-    'FILL_IN_THE_BLANK',
-    'SENTENCE_RECONSTRUCTION',
-  ];
 
   final List<Map<String, dynamic>> _queue = [];
   int _currentIndex = 0;
@@ -211,9 +206,14 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
               : (widget.lessonIds ?? []));
 
       for (final lId in targetIds) {
-        final batch = await lessons.loadVocabulary(lId);
-        for (final word in batch) {
-          items.add(word.toJson());
+        final m4Batch = await lessons.loadModule4Review(lId);
+        if (m4Batch.isNotEmpty) {
+          items.addAll(m4Batch);
+        } else {
+          final batch = await lessons.loadVocabulary(lId);
+          for (final word in batch) {
+            items.add(word.toJson());
+          }
         }
       }
 
@@ -279,6 +279,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
         'imageAssetPath': item['imageAssetPath'],
         'partOfSpeech': item['partOfSpeech'] ?? '',
         'explanationText': firstNonEmpty(item, ['explanationText', 'explanation_text', 'explanation', 'hintText', 'hint_text', 'hint']),
+        'activityFormat': item['activityFormat'] ?? item['activity_format'],
       };
     }).where((it) => (it['wordId'] ?? '').toString().isNotEmpty).toList();
 
@@ -289,41 +290,14 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       return lessons.getWordDifficulty(wid).then((level) => diffMap[wid] = level);
     }));
 
-    // Build queue: fixed 3-activity order per word
+    // Build queue: use backend-assigned activityFormat
     _queue.clear();
     _allWordIds = list.map((it) => (it['wordId'] ?? '').toString()).toList();
     for (final item in list) {
       if (widget.isSandbox) {
         _queue.add({...item, 'activityFormat': 'FILL_IN_THE_BLANK'});
       } else {
-        final perWordSet = <String>{};
-        for (final fmt in _fixedActivityOrder) {
-          String resolved = fmt;
-
-          // IMAGE_MATCHING → MULTIPLE_CHOICE if no image asset
-          if (resolved == 'IMAGE_MATCHING') {
-            final hasImage = (item['imageAssetPath'] ?? '').toString().isNotEmpty;
-            if (!hasImage) resolved = 'MULTIPLE_CHOICE';
-          }
-
-          // SENTENCE_RECONSTRUCTION → MULTIPLE_CHOICE if not enough tokens
-          if (resolved == 'SENTENCE_RECONSTRUCTION' &&
-              _sentenceTokens(item).length < 2) {
-            resolved = 'MULTIPLE_CHOICE';
-          }
-
-          // Dedup within this word: fall back to FILL_IN_THE_BLANK then MATCHING
-          if (perWordSet.contains(resolved)) {
-            if (!perWordSet.contains('FILL_IN_THE_BLANK')) {
-              resolved = 'FILL_IN_THE_BLANK';
-            } else if (!perWordSet.contains('MATCHING')) {
-              resolved = 'MATCHING';
-            }
-          }
-
-          perWordSet.add(resolved);
-          _queue.add({...item, 'activityFormat': resolved});
-        }
+        _queue.add({...item});
       }
     }
 
@@ -357,7 +331,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
         .toList();
     if (explicit != null && explicit.length >= 2) return explicit;
 
-    final raw = (item['exampleSentenceEnglish'] ?? item['example'] ?? '').toString().trim();
+    final raw = (item['tileSentence'] ?? item['exampleSentenceEnglish'] ?? item['example'] ?? '').toString().trim();
     if (raw.isEmpty ||
         raw.startsWith('Match the English') ||
         raw.startsWith('What is the Cebuano')) {
@@ -417,42 +391,68 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     final fmt = (item['activityFormat'] ?? 'MULTIPLE_CHOICE').toString();
     if (fmt == 'MATCHING' || fmt == 'TRANSLATION_MATCHING') {
       _matchingOptions = _buildMatchingOptions(item);
-    } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
-      final allTokens = _sentenceTokens(item);
-      final targetWord = (item['word'] ?? '').toString().toLowerCase().trim();
-      int targetIdx = -1;
-      for (int i = 0; i < allTokens.length; i++) {
-        if (allTokens[i].toLowerCase().replaceAll(RegExp(r'[^\w]'), '') == targetWord) {
-          targetIdx = i;
-          break;
+    } else if (fmt == 'SENTENCE_RECONSTRUCTION' || fmt == 'WORD_SCRAMBLE') {
+      if (fmt == 'WORD_SCRAMBLE') {
+        _arrangementPrefix = [];
+        _arrangementTargetTokens = (item['word'] ?? '').toString().trim().split('');
+        _arrangementSuffix = [];
+      } else {
+        final allTokens = _sentenceTokens(item);
+        final targetWord = (item['word'] ?? '').toString().toLowerCase().trim();
+        int targetIdx = -1;
+        for (int i = 0; i < allTokens.length; i++) {
+          if (allTokens[i].toLowerCase().replaceAll(RegExp(r'[^\w]'), '') == targetWord) {
+            targetIdx = i;
+            break;
+          }
         }
-      }
-      if (targetIdx == -1) targetIdx = 0;
+        if (targetIdx == -1) targetIdx = 0;
 
-      int startIndex = 0;
-      int endIndex = allTokens.length - 1;
+        int startIndex = 0;
+        int endIndex = allTokens.length - 1;
 
-      // Pick exactly 3 missing words (window of 3 centered on targetIdx)
-      if (allTokens.length > 3) {
-        if (targetIdx == 0) {
-          startIndex = 0;
-          endIndex = 2;
-        } else if (targetIdx >= allTokens.length - 1) {
-          startIndex = (allTokens.length - 3).clamp(0, allTokens.length - 1);
-          endIndex = allTokens.length - 1;
-        } else {
-          startIndex = (targetIdx - 1).clamp(0, allTokens.length - 3);
-          endIndex = startIndex + 2;
+        // Pick exactly 3 missing words (window of 3 centered on targetIdx)
+        if (allTokens.length > 3) {
+          if (targetIdx == 0) {
+            startIndex = 0;
+            endIndex = 2;
+          } else if (targetIdx >= allTokens.length - 1) {
+            startIndex = (allTokens.length - 3).clamp(0, allTokens.length - 1);
+            endIndex = allTokens.length - 1;
+          } else {
+            startIndex = (targetIdx - 1).clamp(0, allTokens.length - 3);
+            endIndex = startIndex + 2;
+          }
         }
-      }
 
-      _arrangementPrefix = allTokens.sublist(0, startIndex);
-      _arrangementTargetTokens = allTokens.sublist(startIndex, endIndex + 1);
-      _arrangementSuffix = allTokens.sublist(endIndex + 1);
+        _arrangementPrefix = allTokens.sublist(0, startIndex);
+        _arrangementTargetTokens = allTokens.sublist(startIndex, endIndex + 1);
+        _arrangementSuffix = allTokens.sublist(endIndex + 1);
+      }
 
       _scrambledWords.addAll(_arrangementTargetTokens);
       _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_scramble'.hashCode));
       _assembledWords.clear();
+    } else if (fmt == 'FILL_IN_BLANK' || fmt == 'FILL_IN_THE_BLANK') {
+      _typingController.clear();
+    } else if (fmt == 'TRUE_OR_FALSE') {
+      final isTrue = Random('${item['wordId']}_tf'.hashCode).nextBool();
+      final correctDef = (item['definition'] ?? item['cebuanoMeaning'] ?? '').toString();
+      String displayedDef = correctDef;
+      if (!isTrue) {
+        final otherDefs = _normalizedReviewItems
+            .map((e) => (e['definition'] ?? e['cebuanoMeaning'] ?? '').toString())
+            .where((d) => d.isNotEmpty && d != correctDef)
+            .toList();
+        if (otherDefs.isNotEmpty) {
+          displayedDef = otherDefs[Random('${item['wordId']}_alt'.hashCode).nextInt(otherDefs.length)];
+        } else {
+          displayedDef = 'Different meaning';
+        }
+      }
+      item['_tfDisplayedDef'] = displayedDef;
+      item['_tfIsTrue'] = (displayedDef == correctDef);
+      _currentMcOptions = ['True (Tama)', 'False (Sayop)'];
     } else if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
       final correct = (item['word'] ?? '').toString();
       final level = _wordDifficulties[(item['wordId'] ?? '').toString()] ?? 'LEARNING';
@@ -514,7 +514,15 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     bool correct = false;
     String correctAns = '';
 
-    if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
+    if (fmt == 'TRUE_OR_FALSE') {
+      final isExpectedTrue = item['_tfIsTrue'] == true;
+      final chosen = (_selectedOptionIndex != null && _selectedOptionIndex! >= 0 && _selectedOptionIndex! < _currentMcOptions.length)
+          ? _currentMcOptions[_selectedOptionIndex!]
+          : '';
+      final choseTrue = chosen.startsWith('True');
+      correct = (choseTrue == isExpectedTrue);
+      correctAns = isExpectedTrue ? 'True (Tama)' : 'False (Sayop)';
+    } else if (fmt == 'MULTIPLE_CHOICE' || fmt == 'IMAGE_MATCHING') {
       final correctWord = (item['word'] ?? '').toString();
       if (_selectedOptionIndex != null &&
           _selectedOptionIndex! >= 0 &&
@@ -522,14 +530,20 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
         correct = _currentMcOptions[_selectedOptionIndex!] == correctWord;
       }
       correctAns = correctWord;
-    } else if (fmt == 'FILL_IN_THE_BLANK') {
+    } else if (fmt == 'FILL_IN_BLANK' || fmt == 'FILL_IN_THE_BLANK') {
       final correctWord = (item['word'] ?? '').toString();
       correct = _typingController.text.trim().toLowerCase() == correctWord.toLowerCase();
       correctAns = correctWord;
-    } else if (fmt == 'SENTENCE_RECONSTRUCTION') {
-      correct = _assembledWords.join(' ').toLowerCase().trim() ==
-          _arrangementTargetTokens.join(' ').toLowerCase().trim();
-      correctAns = _arrangementTargetTokens.join(' ');
+    } else if (fmt == 'SENTENCE_RECONSTRUCTION' || fmt == 'WORD_SCRAMBLE') {
+      if (fmt == 'WORD_SCRAMBLE') {
+        correct = _assembledWords.join('').toLowerCase().trim() ==
+            _arrangementTargetTokens.join('').toLowerCase().trim();
+        correctAns = _arrangementTargetTokens.join('');
+      } else {
+        correct = _assembledWords.join(' ').toLowerCase().trim() ==
+            _arrangementTargetTokens.join(' ').toLowerCase().trim();
+        correctAns = _arrangementTargetTokens.join(' ');
+      }
     } else if (fmt == 'MATCHING' || fmt == 'TRANSLATION_MATCHING') {
       final correctWord = (item['word'] ?? '').toString();
       correct = _selectedMatchingWord == correctWord;
@@ -766,13 +780,17 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
   MascotType _mascotForFormat(String fmt) {
     switch (fmt) {
+      case 'FILL_IN_BLANK':
       case 'FILL_IN_THE_BLANK':
         return MascotType.sippy;
       case 'MATCHING':
       case 'TRANSLATION_MATCHING':
         return MascotType.toti;
       case 'SENTENCE_RECONSTRUCTION':
+      case 'WORD_SCRAMBLE':
         return MascotType.starry;
+      case 'TRUE_OR_FALSE':
+      case 'MULTIPLE_CHOICE':
       default:
         return MascotType.bibo;
     }
@@ -1122,10 +1140,13 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     switch (fmt) {
       case 'MULTIPLE_CHOICE':
       case 'IMAGE_MATCHING':
+      case 'TRUE_OR_FALSE':
         return _selectedOptionIndex != null;
+      case 'FILL_IN_BLANK':
       case 'FILL_IN_THE_BLANK':
         return _typingController.text.trim().isNotEmpty;
       case 'SENTENCE_RECONSTRUCTION':
+      case 'WORD_SCRAMBLE':
         return _assembledWords.isNotEmpty;
       case 'MATCHING':
       case 'TRANSLATION_MATCHING':
@@ -1142,8 +1163,9 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
     String? getLearnerStatement() {
       if (fmt == 'SENTENCE_RECONSTRUCTION') return _assembledWords.join(' ');
-      if (fmt == 'FILL_IN_THE_BLANK') {
-        final s = (item['fitbSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
+      if (fmt == 'WORD_SCRAMBLE') return _assembledWords.join('');
+      if (fmt == 'FILL_IN_BLANK' || fmt == 'FILL_IN_THE_BLANK') {
+        final s = (item['fitbSentence'] ?? item['fillBlankSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
         final ans = _typingController.text.trim();
         if (s.isNotEmpty) {
           final rx = RegExp(r'_{2,}|-{2,}|\[_\]');
@@ -1155,8 +1177,9 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
     String? getCorrectStatement() {
       if (fmt == 'SENTENCE_RECONSTRUCTION') return _sentenceTokens(item).join(' ');
-      if (fmt == 'FILL_IN_THE_BLANK') {
-        final s = (item['fitbSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
+      if (fmt == 'WORD_SCRAMBLE') return _arrangementTargetTokens.join('');
+      if (fmt == 'FILL_IN_BLANK' || fmt == 'FILL_IN_THE_BLANK') {
+        final s = (item['fitbSentence'] ?? item['fillBlankSentence'] ?? item['sentenceCompletionSentence'] ?? '').toString();
         final a = (item['fitbAnswer'] ?? item['word'] ?? '').toString();
         if (s.isNotEmpty) {
           final rx = RegExp(r'_{2,}|-{2,}|\[_\]');
@@ -1532,7 +1555,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
   Widget _buildFillInBlank(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
-    final sentence = (item['fitbSentence'] ?? item['example'] ?? '').toString();
+    final sentence = (item['fitbSentence'] ?? item['fillBlankSentence'] ?? item['example'] ?? '').toString();
 
     String displaySentence = sentence;
     if (displaySentence.contains(RegExp(r'\{blank\}|\[blank\]|<blank>', caseSensitive: false))) {
@@ -1634,37 +1657,46 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   }
 
   Widget _buildSentenceReconstruction(Map<String, dynamic> item) {
+    final fmt = (item['activityFormat'] ?? 'SENTENCE_RECONSTRUCTION').toString();
     final answerTokens = _sentenceTokens(item);
     if (_scrambledWords.isEmpty && _assembledWords.isEmpty && _arrangementTargetTokens.isEmpty) {
-      final allTokens = answerTokens;
-      final targetWord = (item['word'] ?? '').toString().toLowerCase().trim();
-      int targetIdx = -1;
-      for (int i = 0; i < allTokens.length; i++) {
-        if (allTokens[i].toLowerCase().replaceAll(RegExp(r'[^\w]'), '') == targetWord) {
-          targetIdx = i;
-          break;
+      if (fmt == 'WORD_SCRAMBLE') {
+        _arrangementPrefix = [];
+        _arrangementTargetTokens = (item['word'] ?? '').toString().trim().split('');
+        _arrangementSuffix = [];
+        _scrambledWords.addAll(_arrangementTargetTokens);
+        _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
+      } else {
+        final allTokens = answerTokens;
+        final targetWord = (item['word'] ?? '').toString().toLowerCase().trim();
+        int targetIdx = -1;
+        for (int i = 0; i < allTokens.length; i++) {
+          if (allTokens[i].toLowerCase().replaceAll(RegExp(r'[^\w]'), '') == targetWord) {
+            targetIdx = i;
+            break;
+          }
         }
-      }
-      if (targetIdx == -1) targetIdx = 0;
-      int startIndex = 0;
-      int endIndex = allTokens.length - 1;
-      if (allTokens.length > 3) {
-        if (targetIdx == 0) {
-          startIndex = 0;
-          endIndex = 2;
-        } else if (targetIdx >= allTokens.length - 1) {
-          startIndex = (allTokens.length - 3).clamp(0, allTokens.length - 1);
-          endIndex = allTokens.length - 1;
-        } else {
-          startIndex = (targetIdx - 1).clamp(0, allTokens.length - 3);
-          endIndex = startIndex + 2;
+        if (targetIdx == -1) targetIdx = 0;
+        int startIndex = 0;
+        int endIndex = allTokens.length - 1;
+        if (allTokens.length > 3) {
+          if (targetIdx == 0) {
+            startIndex = 0;
+            endIndex = 2;
+          } else if (targetIdx >= allTokens.length - 1) {
+            startIndex = (allTokens.length - 3).clamp(0, allTokens.length - 1);
+            endIndex = allTokens.length - 1;
+          } else {
+            startIndex = (targetIdx - 1).clamp(0, allTokens.length - 3);
+            endIndex = startIndex + 2;
+          }
         }
+        _arrangementPrefix = allTokens.sublist(0, startIndex);
+        _arrangementTargetTokens = allTokens.sublist(startIndex, endIndex + 1);
+        _arrangementSuffix = allTokens.sublist(endIndex + 1);
+        _scrambledWords.addAll(_arrangementTargetTokens);
+        _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
       }
-      _arrangementPrefix = allTokens.sublist(0, startIndex);
-      _arrangementTargetTokens = allTokens.sublist(startIndex, endIndex + 1);
-      _arrangementSuffix = allTokens.sublist(endIndex + 1);
-      _scrambledWords.addAll(_arrangementTargetTokens);
-      _scrambledWords.shuffle(Random('${item['wordId'] ?? ''}_recon'.hashCode));
     }
 
     Widget buildLockedChip(String text) {
@@ -1690,16 +1722,16 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'BUILD THE SENTENCE',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
+        Text(
+          fmt == 'WORD_SCRAMBLE' ? 'UNSCRAMBLE THE WORD' : 'BUILD THE SENTENCE',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
         ),
         const SizedBox(height: 12),
         _buildEnglishHintBox(item: item),
         // Assembled Sentence Area
-        const Text(
-          'Your Sentence:',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF334155)),
+        Text(
+          fmt == 'WORD_SCRAMBLE' ? 'Your Word:' : 'Your Sentence:',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF334155)),
         ),
         const SizedBox(height: 8),
         Container(
@@ -1760,52 +1792,159 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           )).toList(),
         ),
         const SizedBox(height: 16),
-        if (_assembledWords.isNotEmpty || _arrangementPrefix.isNotEmpty)
-          Row(
-            children: [
-              IconButton(
-                onPressed: () {
-                  final previewText = [..._arrangementPrefix, ..._assembledWords, ..._arrangementSuffix].join(' ').trim();
-                  if (previewText.isNotEmpty) {
-                    _playAudio(previewText);
-                  }
-                },
-                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF)),
-                tooltip: 'Listen to preview',
+        if (_assembledWords.isNotEmpty || _arrangementPrefix.isNotEmpty) ...[
+          Builder(builder: (context) {
+            final targetWord = (item['word'] ?? '').toString();
+            final assembledEnglish = [..._arrangementPrefix, ..._assembledWords, ..._arrangementSuffix].join(' ').trim();
+            final totalTargetCount = _arrangementTargetTokens.isNotEmpty ? _arrangementTargetTokens.length : answerTokens.length;
+            final assembledCount = _assembledWords.length;
+            final fullCebuano = (item['exampleSentenceCebuano'] ?? item['exampleCebuano'] ?? item['cebuanoMeaning'] ?? '').toString().trim();
+            String progressiveCebuano = '';
+            if (fullCebuano.isNotEmpty) {
+              final cebTokens = fullCebuano.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+              if (totalTargetCount > 0 && cebTokens.isNotEmpty) {
+                final ratio = (assembledCount / totalTargetCount).clamp(0.0, 1.0);
+                final revealCount = (ratio * cebTokens.length).ceil().clamp(1, cebTokens.length);
+                progressiveCebuano = (assembledCount >= totalTargetCount)
+                    ? fullCebuano
+                    : '${cebTokens.sublist(0, revealCount).join(' ')}…';
+              } else {
+                progressiveCebuano = fullCebuano;
+              }
+            }
+
+            return Container(
+              margin: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              Expanded(
-                child: Text(
-                  'Preview: ${[..._arrangementPrefix, ..._assembledWords, ..._arrangementSuffix].join(' ')}',
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF64748B), fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // English preview
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          if (assembledEnglish.isNotEmpty) {
+                            _playAudio(assembledEnglish);
+                          }
+                        },
+                        icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF06A6FF), size: 20),
+                        tooltip: 'Listen to preview',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: CebuanoTextHighlighter(
+                          text: 'Preview: $assembledEnglish',
+                          highlightWord: targetWord,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF475569),
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          highlightStyle: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF0284C7),
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w900,
+                            decoration: TextDecoration.underline,
+                            decorationThickness: 2.5,
+                            decorationColor: Color(0xFF0284C7),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (progressiveCebuano.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    // Progressive guided translation
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            if (progressiveCebuano.isNotEmpty) {
+                              _playAudio(progressiveCebuano);
+                            }
+                          },
+                          icon: const Icon(Icons.translate_rounded, color: Color(0xFF0284C7), size: 18),
+                          tooltip: 'Listen to Bisaya guided translation',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CebuanoTextHighlighter(
+                            text: 'Bisaya: $progressiveCebuano',
+                            highlightWord: (item['cebuanoMeaning'] ?? '').toString(),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF0284C7),
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            highlightStyle: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF0369A1),
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w900,
+                              decoration: TextDecoration.underline,
+                              decorationThickness: 2.5,
+                              decorationColor: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
-            ],
-          ),
+            );
+          }),
+        ],
       ],
     );
   }
 
   Widget _buildMultipleChoice(Map<String, dynamic> item) {
     final correct = (item['word'] ?? '').toString();
+    final isTf = (item['activityFormat'] ?? '').toString() == 'TRUE_OR_FALSE';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'CHOOSE THE CORRECT WORD',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
+        Text(
+          isTf ? 'TRUE OR FALSE (TAMA O SAYOP)' : 'CHOOSE THE CORRECT WORD',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 1.0),
         ),
         const SizedBox(height: 16),
         _buildEnglishHintBox(item: item),
-        const Text(
-          'Select the matching English word:',
-          style: TextStyle(fontSize: 15, color: Color(0xFF334155), fontWeight: FontWeight.w700),
+        CebuanoTextHighlighter(
+          text: isTf
+              ? 'Does "${item['word']}" mean "${item['_tfDisplayedDef'] ?? item['definition'] ?? item['cebuanoMeaning']}"?'
+              : 'Select the matching English word:',
+          highlightWord: isTf ? (item['word'] ?? '').toString() : null,
+          style: const TextStyle(fontSize: 15, color: Color(0xFF334155), fontWeight: FontWeight.w700),
+          highlightStyle: const TextStyle(
+            fontSize: 15,
+            color: Color(0xFF0284C7),
+            fontWeight: FontWeight.w900,
+            decoration: TextDecoration.underline,
+            decorationThickness: 2.5,
+            decorationColor: Color(0xFF0284C7),
+          ),
         ),
         const SizedBox(height: 14),
         ..._currentMcOptions.asMap().entries.map((e) => _buildOptionRow(
           index: e.key,
           option: e.value,
-          correct: correct,
+          correct: isTf ? (item['_tfIsTrue'] == true ? 'True (Tama)' : 'False (Sayop)') : correct,
           onTap: _checked ? null : () => setState(() => _selectedOptionIndex = e.key),
         )),
         const SizedBox(height: 12),
@@ -1913,13 +2052,17 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     switch (fmt) {
       case 'IMAGE_MATCHING':
         return _buildImageMatching(item);
+      case 'FILL_IN_BLANK':
       case 'FILL_IN_THE_BLANK':
         return _buildFillInBlank(item);
       case 'SENTENCE_RECONSTRUCTION':
+      case 'WORD_SCRAMBLE':
         return _buildSentenceReconstruction(item);
       case 'MATCHING':
       case 'TRANSLATION_MATCHING':
         return _buildMatching(item);
+      case 'TRUE_OR_FALSE':
+      case 'MULTIPLE_CHOICE':
       default:
         return _buildMultipleChoice(item);
     }
@@ -2122,6 +2265,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     switch (fmt) {
       case 'MULTIPLE_CHOICE':
       case 'IMAGE_MATCHING':
+      case 'TRUE_OR_FALSE':
         return 'Bibo';
       case 'FILL_IN_BLANK':
       case 'FILL_IN_THE_BLANK':
@@ -2130,6 +2274,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       case 'TRANSLATION_MATCHING':
         return 'Toti';
       case 'SENTENCE_RECONSTRUCTION':
+      case 'WORD_SCRAMBLE':
       default:
         return 'Starry';
     }
@@ -2173,9 +2318,13 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   String _activityLabel(String fmt) {
     switch (fmt) {
       case 'IMAGE_MATCHING': return 'Image to Word';
+      case 'FILL_IN_BLANK':
       case 'FILL_IN_THE_BLANK': return 'Fill in the Blank';
+      case 'WORD_SCRAMBLE': return 'Unscramble the Word';
       case 'SENTENCE_RECONSTRUCTION': return 'Build the Sentence';
-      case 'MATCHING': return 'Match the Word';
+      case 'MATCHING':
+      case 'TRANSLATION_MATCHING': return 'Match the Word';
+      case 'TRUE_OR_FALSE': return 'True or False';
       default: return 'Choose the Correct Word';
     }
   }

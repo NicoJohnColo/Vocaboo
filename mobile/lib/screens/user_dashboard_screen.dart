@@ -242,6 +242,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with Automati
             final cumulativeReviewsCompleted = dashboard['cumulativeReviewsCompleted'] as int? ?? 0;
             final bestCumulativeBadge = dashboard['bestCumulativeBadge'] as String?;
             final cumulativeHistory = List<Map<String, dynamic>>.from(dashboard['cumulativeReviewHistory'] ?? []);
+            final completedCumulativeHistory = cumulativeHistory.where((s) => s['sessionStatus'] == 'COMPLETED').toList();
             final sandboxHistory = List<Map<String, dynamic>>.from(dashboard['sandboxHistory'] ?? []);
             final categoryBreakdowns = List<Map<String, dynamic>>.from(dashboard['categoryBreakdowns'] ?? []);
 
@@ -524,7 +525,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with Automati
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (cumulativeHistory.isEmpty)
+                  if (completedCumulativeHistory.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 20),
                       child: Text(
@@ -537,7 +538,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with Automati
                       ),
                     )
                   else ...[
-                    ...cumulativeHistory.take(5).map((session) {
+                    ...completedCumulativeHistory.take(5).map((session) {
                       final status = session['sessionStatus'] as String? ?? 'IN_PROGRESS';
                       final accuracy = (session['accuracyPercent'] as num?)?.toDouble();
                       final badge = session['badgeAwarded'] as String?;

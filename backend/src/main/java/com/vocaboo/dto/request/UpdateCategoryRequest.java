@@ -25,19 +25,7 @@ public class UpdateCategoryRequest {
     @JsonProperty("class_id")
     private java.util.UUID classId;
 
-    public String getCategoryName() {
-        return categoryName;
-    }
+    @JsonProperty("module4_activities")
+    private String module4Activities;
 
-    public String getDescription() {
-        return description;
-    }
-
-    public Integer getSortOrder() {
-        return sortOrder;
-    }
-
-    public java.util.UUID getClassId() {
-        return classId;
-    }
 }

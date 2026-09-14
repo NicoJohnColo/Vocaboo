@@ -813,6 +813,20 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                             wordData['englishWord'] as String? ?? '';
                         final cebuanoMeaning =
                             wordData['cebuanoMeaning'] as String? ?? '';
+                        String partOfSpeech =
+                            (wordData['partOfSpeech'] as String? ?? '').trim();
+                        if (partOfSpeech.isEmpty) {
+                          final match = widget.allWords.where(
+                            (w) =>
+                                (wordData['wordId'] != null &&
+                                    w.wordId == wordData['wordId'].toString()) ||
+                                w.englishWord.trim().toLowerCase() ==
+                                    englishWord.trim().toLowerCase(),
+                          ).firstOrNull;
+                          if (match != null && match.partOfSpeech != null) {
+                            partOfSpeech = match.partOfSpeech!.trim();
+                          }
+                        }
                         final isMastered = tierState == 'MASTERED';
                         final rating = _getWordRatingStyle(wordRating);
                         final double wordAccuracy =
@@ -925,6 +939,8 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                                             color: Color(0xFF0F172A),
                                           ),
                                         ),
+                                        if (partOfSpeech.isNotEmpty)
+                                          _PosBadge(partOfSpeech: partOfSpeech),
                                         if (isRetaken && isImproved)
                                           Container(
                                             padding: const EdgeInsets.symmetric(
@@ -1194,13 +1210,25 @@ class _LessonScoreScreenState extends State<LessonScoreScreen>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      word.englishWord,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF0F172A),
-                                      ),
+                                    Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      children: [
+                                        Text(
+                                          word.englishWord,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF0F172A),
+                                          ),
+                                        ),
+                                        if ((word.partOfSpeech ?? '').trim().isNotEmpty)
+                                          _PosBadge(
+                                            partOfSpeech: word.partOfSpeech!.trim(),
+                                          ),
+                                      ],
                                     ),
                                     Text(
                                       word.cebuanoMeaning,
@@ -1769,6 +1797,89 @@ class _BadgeCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ================================================================
+// POS category badge
+// ================================================================
+class _PosBadge extends StatelessWidget {
+  final String partOfSpeech;
+  const _PosBadge({required this.partOfSpeech});
+
+  static String normalize(String raw) {
+    final upper = raw.trim().toUpperCase();
+    if (upper.startsWith('NOUN') || upper == 'N') return 'NOUN';
+    if (upper.startsWith('VERB') || upper == 'V') return 'VERB';
+    if (upper.startsWith('ADJ')) return 'ADJECTIVE';
+    if (upper.startsWith('ADV')) return 'ADVERB';
+    if (upper.startsWith('PRON')) return 'PRONOUN';
+    if (upper.startsWith('PREP')) return 'PREPOSITION';
+    if (upper.startsWith('CONJ')) return 'CONJUNCTION';
+    return upper;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = normalize(partOfSpeech);
+    Color textColor;
+    Color bgColor;
+    Color borderColor;
+
+    switch (normalized) {
+      case 'NOUN':
+        textColor = const Color(0xFF0369A1);
+        bgColor = const Color(0xFFE0F2FE);
+        borderColor = const Color(0xFFBAE6FD);
+        break;
+      case 'VERB':
+        textColor = const Color(0xFF15803D);
+        bgColor = const Color(0xFFDCFCE7);
+        borderColor = const Color(0xFF86EFAC);
+        break;
+      case 'ADJECTIVE':
+        textColor = const Color(0xFFB45309);
+        bgColor = const Color(0xFFFEF3C7);
+        borderColor = const Color(0xFFFDE68A);
+        break;
+      case 'ADVERB':
+        textColor = const Color(0xFF7C3AED);
+        bgColor = const Color(0xFFEDE9FE);
+        borderColor = const Color(0xFFDDD6FE);
+        break;
+      case 'PRONOUN':
+        textColor = const Color(0xFFBE185D);
+        bgColor = const Color(0xFFFCE7F3);
+        borderColor = const Color(0xFFFBCFE8);
+        break;
+      case 'PREPOSITION':
+        textColor = const Color(0xFFC2410C);
+        bgColor = const Color(0xFFFFEDD5);
+        borderColor = const Color(0xFFFED7AA);
+        break;
+      default:
+        textColor = const Color(0xFF475569);
+        bgColor = const Color(0xFFF1F5F9);
+        borderColor = const Color(0xFFCBD5E1);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      child: Text(
+        normalized,
+        style: TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          color: textColor,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }

@@ -68,7 +68,17 @@ class ImageMatchingWidget extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(option, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                      child: Text(
+                        option,
+                        style: TextStyle(
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          fontSize: 16,
+                          color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF1E293B),
+                          decoration: isSelected ? TextDecoration.underline : TextDecoration.none,
+                          decorationColor: const Color(0xFF0284C7),
+                          decorationThickness: 2.0,
+                        ),
+                      ),
                     ),
                     Material(
                       color: Colors.transparent,

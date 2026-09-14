@@ -154,6 +154,12 @@ export default function LessonManagementPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               className="btn btn--ghost btn--sm"
+              onClick={() => navigate('/cumulative')}
+            >
+              🎓 Cumulative Review
+            </button>
+            <button
+              className="btn btn--ghost btn--sm"
               onClick={() => navigate('/categories')}
             >
               🗂️ Categories

@@ -148,6 +148,7 @@ public class DatabaseSeeder implements CommandLineRunner {
             jdbcTemplate.execute("ALTER TABLE vocabulary_categories ADD COLUMN IF NOT EXISTS teacher_id UUID DEFAULT NULL REFERENCES teachers(teacher_id) ON DELETE CASCADE");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_vocabulary_categories_teacher_id ON vocabulary_categories(teacher_id)");
             jdbcTemplate.execute("ALTER TABLE vocabulary_categories DROP CONSTRAINT IF EXISTS vocabulary_categories_category_name_key");
+            jdbcTemplate.execute("ALTER TABLE vocabulary_categories ADD COLUMN IF NOT EXISTS module4_activities VARCHAR(500) DEFAULT 'MULTIPLE_CHOICE;MATCHING;FILL_IN_BLANK;WORD_SCRAMBLE;SENTENCE_RECONSTRUCTION;TRUE_OR_FALSE'");
         } catch (Exception e) {
             // Already updated or constraint absent
         }

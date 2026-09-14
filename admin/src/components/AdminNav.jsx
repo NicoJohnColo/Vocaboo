@@ -72,6 +72,12 @@ const Icons = {
       <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
+  Award: () => (
+    <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="6" />
+      <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+    </svg>
+  ),
   LogOut: () => (
     <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -88,6 +94,7 @@ const NAV_ITEMS = [
   { to: '/learners',          label: 'User Management',       Icon: Icons.Users,      section: 'Management' },
   { to: '/reports',           label: 'Reports & Exports',     Icon: Icons.BarChart,   section: 'Management' },
   { to: '/lessons',           label: 'Lesson Management',     Icon: Icons.Book,       section: 'Curriculum' },
+  { to: '/cumulative',        label: 'Cumulative Review',     Icon: Icons.Award,      section: 'Curriculum' },
   { to: '/categories',        label: 'Categories',            Icon: Icons.Tag,        section: 'Curriculum' },
   { to: '/wrong-answers',     label: 'Wrong Answer Analysis', Icon: Icons.Search,     section: 'Curriculum' },
   { to: '/accounts',          label: 'Admin Accounts',        Icon: Icons.Shield,     section: 'System', adminOnly: true },

@@ -484,26 +484,26 @@ public class PracticeSessionService {
         }).count();
 
         List<PracticeSession> sessions = sessionRepository.findByLearnerLearnerId(learnerId);
-        int practiceSessionsCount = sessions != null ? sessions.size() : 0;
+        int completedPracticeCount = sessions != null
+                ? (int) sessions.stream().filter(s -> s.getCompletedAt() != null).count()
+                : 0;
         List<CumulativeReviewSession> cumSessions = cumulativeReviewSessionRepository != null
                 ? cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId)
                 : Collections.emptyList();
-        int cumSessionsCount = cumSessions != null ? cumSessions.size() : 0;
+        int completedCumCount = cumSessions != null
+                ? (int) cumSessions.stream().filter(cs -> "COMPLETED".equalsIgnoreCase(cs.getSessionStatus()) || cs.getEndTime() != null).count()
+                : 0;
         int summaryCount = summaryRepository != null
                 ? summaryRepository.findByLearnerLearnerId(learnerId).size()
                 : 0;
-        int recordedTotalSessions = practiceSessionsCount + cumSessionsCount + summaryCount;
+        int recordedTotalSessions = Math.max(completedPracticeCount, summaryCount) + completedCumCount;
 
         LearnerMastery mastery = masteryRepository.findByLearnerLearnerId(learnerId)
                 .orElseGet(() -> LearnerMastery.builder()
                         .learner(learner)
                         .build());
 
-        int currentMasterySessions = mastery.getTotalSessionsPlayed() != null ? mastery.getTotalSessionsPlayed() : 0;
-        int resolvedSessions = Math.max(currentMasterySessions, recordedTotalSessions);
-        if (resolvedSessions == 0 && (totalQuestions > 0 || masteredCount > 0)) {
-            resolvedSessions = 1;
-        }
+        int resolvedSessions = recordedTotalSessions;
 
         mastery.setTotalQuestionsAnswered(totalQuestions);
         mastery.setTotalCorrectAnswers(totalCorrect);
@@ -546,23 +546,23 @@ public class PracticeSessionService {
 
         long masteredCount = difficultyProgressRepository.countTotalMasteredWordsByLearner(learnerId);
 
-        // Dynamically compute total sessions played across all session types
+        // Dynamically compute total sessions played across completed session types only
         List<PracticeSession> practiceSessions = sessionRepository.findByLearnerLearnerId(learnerId);
-        int practiceSessionCount = practiceSessions != null ? practiceSessions.size() : 0;
+        int completedPracticeCount = practiceSessions != null
+                ? (int) practiceSessions.stream().filter(s -> s.getCompletedAt() != null).count()
+                : 0;
         List<CumulativeReviewSession> cumSessions = cumulativeReviewSessionRepository != null
                 ? cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId)
                 : Collections.emptyList();
-        int cumSessionCount = cumSessions != null ? cumSessions.size() : 0;
+        int completedCumCount = cumSessions != null
+                ? (int) cumSessions.stream().filter(cs -> "COMPLETED".equalsIgnoreCase(cs.getSessionStatus()) || cs.getEndTime() != null).count()
+                : 0;
         int summaryCount = summaryRepository != null
                 ? summaryRepository.findByLearnerLearnerId(learnerId).size()
                 : 0;
 
-        int recordedTotalSessions = practiceSessionCount + cumSessionCount + summaryCount;
-        int currentMasterySessions = mastery.getTotalSessionsPlayed() != null ? mastery.getTotalSessionsPlayed() : 0;
-        int resolvedSessions = Math.max(currentMasterySessions, recordedTotalSessions);
-        if (resolvedSessions == 0 && (totalQuestions > 0 || masteredCount > 0)) {
-            resolvedSessions = 1;
-        }
+        int recordedTotalSessions = Math.max(completedPracticeCount, summaryCount) + completedCumCount;
+        int resolvedSessions = recordedTotalSessions;
 
         mastery.setTotalQuestionsAnswered(totalQuestions);
         mastery.setTotalCorrectAnswers(totalCorrect);
@@ -679,16 +679,12 @@ public class PracticeSessionService {
                 }
             }
 
-            // Lifetime accuracy of the lesson across all attempts
-                double lifetimeLessonRatio = totalLessonAttempts > 0
+            // Lesson session accuracy
+            double lifetimeLessonRatio = totalLessonAttempts > 0
                     ? ((double) totalLessonCorrect / totalLessonAttempts * 100.0)
                     : 0.0;
             BigDecimal accuracy = BigDecimal.valueOf(lifetimeLessonRatio).setScale(2, RoundingMode.HALF_UP);
 
-            int stars = calculateStars(accuracy);
-            int totalAttempts = totalLessonAttempts > 0 ? totalLessonAttempts : (summary != null ? summary.getTotalAttempts() : (lls != null && lls.getAttempts() != null ? lls.getAttempts() : 0));
-            OffsetDateTime completedAt = summary != null ? summary.getCompletedAt() : (lls != null ? lls.getUpdatedAt() : null);
-            
             long masteredInLesson = difficultyProgressRepository.countMasteredWordsByLearnerAndLesson(learnerId, lesson.getLessonId());
             boolean hasCompletedMod3 = lmsList.stream()
                     .anyMatch(m -> m.getModuleNumber() != null && m.getModuleNumber() == 3 && m.getTotalCount() != null && m.getTotalCount() > 0);
@@ -702,12 +698,19 @@ public class PracticeSessionService {
 
             String status = isCompleted ? "COMPLETED" : (lls != null && lls.getStatus() != null ? lls.getStatus().name() : "UNLOCKED");
 
+            BigDecimal reportedAccuracy = isCompleted
+                    ? ((summary != null && summary.getAccuracyRate() != null) ? summary.getAccuracyRate() : accuracy)
+                    : BigDecimal.ZERO;
+            int stars = isCompleted ? calculateStars(reportedAccuracy) : 0;
+            int totalAttempts = isCompleted ? (totalLessonAttempts > 0 ? totalLessonAttempts : (summary != null ? summary.getTotalAttempts() : (lls != null && lls.getAttempts() != null ? lls.getAttempts() : 0))) : 0;
+            OffsetDateTime completedAt = isCompleted ? (summary != null ? summary.getCompletedAt() : (lls != null ? lls.getUpdatedAt() : null)) : null;
+
             list.add(LearnerLessonProgressResponse.builder()
                     .lessonId(lesson.getLessonId())
                     .lessonTitle(lesson.getLessonTitle())
                     .categoryId(lesson.getCategory().getCategoryId())
                     .categoryName(lesson.getCategory().getCategoryName())
-                    .accuracyRate(accuracy)
+                    .accuracyRate(reportedAccuracy)
                     .starsEarned(stars)
                     .totalAttempts(totalAttempts)
                     .completedAt(completedAt)
@@ -739,6 +742,7 @@ public class PracticeSessionService {
             int completed = (int) cLessons.stream().filter(l -> "COMPLETED".equals(l.getStatus())).count();
 
             double avgAcc = cLessons.stream()
+                    .filter(l -> "COMPLETED".equals(l.getStatus()))
                     .mapToDouble(l -> l.getAccuracyRate() != null ? l.getAccuracyRate().doubleValue() : 0.0)
                     .average()
                     .orElse(0.0);

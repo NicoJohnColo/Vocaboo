@@ -3,7 +3,6 @@ import { useState } from 'react';
 export const DEFAULT_CONFIG = {
   module2_activities: 'MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE;HINT_TO_WORD',
   module3_activities: 'SENTENCE_COMPLETION;SENTENCE_ARRANGEMENT;PRONUNCIATION_FEEDBACK',
-  module4_activities: 'IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION',
   upgrade_streak_required: 2,
   demotion_threshold: 2,
   reintroduction_threshold: 4,
@@ -29,24 +28,30 @@ const MODULE_3_OPTIONS = [
   { id: 'PRONUNCIATION_FEEDBACK', label: 'Pronunciation Speech Check' },
 ];
 
-const MODULE_4_OPTIONS = [
-  { id: 'IMAGE_MATCHING', label: 'Image-Word Matching' },
-  { id: 'FILL_IN_BLANK', label: 'Context Fill-in-Blank' },
-  { id: 'SENTENCE_RECONSTRUCTION', label: 'Sentence Reconstruction' },
-];
+
 
 export default function LessonConfigSection({ config, onChange, defaultOpen = false }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const isSelected = (field, id) => {
     const list = (config[field] || DEFAULT_CONFIG[field] || '').split(';');
-    return list.includes(id);
+    if (list.includes(id)) return true;
+    if (id === 'MATCHING' && list.includes('IMAGE_MATCHING')) return true;
+    if (id === 'FILL_IN_BLANK' && list.includes('FILL_IN_THE_BLANK')) return true;
+    return false;
   };
 
   const toggleOption = (field, id) => {
-    const current = (config[field] || DEFAULT_CONFIG[field] || '')
+    let current = (config[field] || DEFAULT_CONFIG[field] || '')
       .split(';')
       .filter(Boolean);
+    current = current.map(x => {
+      if (x === 'IMAGE_MATCHING') return 'MATCHING';
+      if (x === 'FILL_IN_THE_BLANK') return 'FILL_IN_BLANK';
+      return x;
+    });
+    current = Array.from(new Set(current));
+
     let updated;
     if (current.includes(id)) {
       // Prevent unchecking the last item in a module
@@ -141,31 +146,6 @@ export default function LessonConfigSection({ config, onChange, defaultOpen = fa
             </div>
           </div>
 
-          {/* Module 4 Formats */}
-          <div>
-            <div className="lesson-config-section-title">
-              <span>🏆 Module 4: Cumulative Review Formats</span>
-            </div>
-            <div className="config-pill-grid">
-              {MODULE_4_OPTIONS.map(opt => {
-                const active = isSelected('module4_activities', opt.id);
-                return (
-                  <label
-                    key={opt.id}
-                    className={`config-pill ${active ? 'config-pill--active' : ''}`}
-                    onClick={() => toggleOption('module4_activities', opt.id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={active}
-                      onChange={() => {}}
-                    />
-                    <span>{opt.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
 
           {/* Module 2 Streak & Demotion Settings */}
           <div>
@@ -326,6 +306,8 @@ export default function LessonConfigSection({ config, onChange, defaultOpen = fa
               </div>
             </div>
           </div>
+
+
         </div>
       )}
     </div>

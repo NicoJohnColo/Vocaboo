@@ -110,7 +110,7 @@ public class Lesson {
 
     @Column(name = "module4_activities", columnDefinition = "TEXT")
     @Builder.Default
-    private String module4Activities = "IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION";
+    private String module4Activities = "MULTIPLE_CHOICE;MATCHING;FILL_IN_BLANK;WORD_SCRAMBLE;SENTENCE_RECONSTRUCTION;TRUE_OR_FALSE";
 
     @Column(name = "upgrade_streak_required")
     @Builder.Default
@@ -267,7 +267,7 @@ public class Lesson {
         private Boolean isDeleted = false;
         private String module2Activities = "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
         private String module3Activities = "SENTENCE_COMPLETION;SENTENCE_ARRANGEMENT;PRONUNCIATION_FEEDBACK";
-        private String module4Activities = "IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION";
+        private String module4Activities = "MULTIPLE_CHOICE;MATCHING;FILL_IN_BLANK;WORD_SCRAMBLE;SENTENCE_RECONSTRUCTION;TRUE_OR_FALSE";
         private Integer upgradeStreakRequired = 2;
         private Integer demotionThreshold = 2;
         private Integer reintroductionThreshold = 4;
@@ -316,7 +316,7 @@ public class Lesson {
             l.contentStatus = this.contentStatus;
             l.module2Activities = this.module2Activities != null ? this.module2Activities : "MULTIPLE_CHOICE;FILL_IN_BLANK;MATCHING;WORD_SCRAMBLE;IMAGE_LABELING;TRUE_OR_FALSE";
             l.module3Activities = this.module3Activities != null ? this.module3Activities : "SENTENCE_COMPLETION;SENTENCE_ARRANGEMENT;PRONUNCIATION_FEEDBACK";
-            l.module4Activities = this.module4Activities != null ? this.module4Activities : "IMAGE_MATCHING;FILL_IN_BLANK;SENTENCE_RECONSTRUCTION";
+            l.module4Activities = this.module4Activities != null ? this.module4Activities : "MULTIPLE_CHOICE;MATCHING;FILL_IN_BLANK;WORD_SCRAMBLE;SENTENCE_RECONSTRUCTION;TRUE_OR_FALSE";
             l.upgradeStreakRequired = this.upgradeStreakRequired != null ? this.upgradeStreakRequired : 2;
             l.demotionThreshold = this.demotionThreshold != null ? this.demotionThreshold : 2;
             l.reintroductionThreshold = this.reintroductionThreshold != null ? this.reintroductionThreshold : 4;

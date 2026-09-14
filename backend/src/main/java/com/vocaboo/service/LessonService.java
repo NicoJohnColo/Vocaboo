@@ -30,6 +30,7 @@ import com.vocaboo.repository.VocabularyCategoryRepository;
 import com.vocaboo.repository.VocabularyWordRepository;
 import com.vocaboo.repository.ConfusableWordPairRepository;
 import com.vocaboo.repository.DifficultyProgressRepository;
+import com.vocaboo.repository.LessonWordAccuracyRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -58,6 +59,7 @@ public class LessonService {
     private final ConfusableWordPairRepository confusableRepository;
     private final DifficultyProgressRepository difficultyProgressRepository;
     private final WordPerformanceRepository wordPerformanceRepository;
+    private final LessonWordAccuracyRepository lessonWordAccuracyRepository;
     private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -144,13 +146,16 @@ public class LessonService {
                 })
                 .collect(Collectors.toList());
 
-        List<LearnerLessonStatus> statuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
+        List<LearnerLessonStatus> statuses = (learnerId != null)
+                ? lessonStatusRepository.findByLearnerLearnerId(learnerId)
+                : Collections.emptyList();
 
-        Map<UUID, LearnerLessonStatus> statusMap = statuses.stream()
-                .collect(Collectors.toMap(
-                        status -> status.getLesson().getLessonId(),
-                        status -> status
-                ));
+        Map<UUID, LearnerLessonStatus> statusMap = new java.util.HashMap<>();
+        for (LearnerLessonStatus st : statuses) {
+            if (st != null && st.getLesson() != null && st.getLesson().getLessonId() != null) {
+                statusMap.putIfAbsent(st.getLesson().getLessonId(), st);
+            }
+        }
 
         List<LessonResponse> responses = new ArrayList<>();
         boolean previousCompleted = true; // First lesson is unlocked by default
@@ -159,34 +164,53 @@ public class LessonService {
             LearnerLessonStatus statusObj = statusMap.get(lesson.getLessonId());
             LessonStatus status = LessonStatus.LOCKED;
             BigDecimal masteryScore = null;
+            int order = lesson.getLessonOrder() != null ? lesson.getLessonOrder() : 1;
 
             if (statusObj != null) {
                 status = statusObj.getStatus();
                 masteryScore = statusObj.getMasteryScore();
-                if (status == LessonStatus.LOCKED && (lesson.getLessonOrder() == 1 || previousCompleted)) {
+                if (status == LessonStatus.LOCKED && (order == 1 || previousCompleted)) {
                     status = LessonStatus.UNLOCKED;
                     statusObj.setStatus(LessonStatus.UNLOCKED);
                     statusObj.setUnlockedAt(java.time.OffsetDateTime.now());
                     lessonStatusRepository.save(statusObj);
+                } else if (order > 1 && !previousCompleted && status == LessonStatus.UNLOCKED && (statusObj.getAttempts() == null || statusObj.getAttempts() == 0)) {
+                    status = LessonStatus.LOCKED;
+                    statusObj.setStatus(LessonStatus.LOCKED);
+                    statusObj.setUnlockedAt(null);
+                    lessonStatusRepository.save(statusObj);
                 }
-            } else {
-                if (lesson.getLessonOrder() == 1 || previousCompleted) {
+            } else if (learnerId != null) {
+                if (order == 1 || previousCompleted) {
                     status = LessonStatus.UNLOCKED;
                     
-                    Learner currentLearner = (learner != null) ? learner : learnerRepository.findById(learnerId)
-                            .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
-                    
-                    LearnerLessonStatus newStatus = LearnerLessonStatus.builder()
-                            .learner(currentLearner)
-                            .lesson(lesson)
-                            .status(LessonStatus.UNLOCKED)
-                            .unlockedAt(java.time.OffsetDateTime.now())
-                            .attempts(0)
-                            .bestLessonPoints(0)
-                            .lessonCompletionBonusAwarded(false)
-                            .perfectScoreBonusAwarded(false)
-                            .build();
-                    lessonStatusRepository.save(newStatus);
+                    Learner currentLearner = (learner != null) ? learner : learnerRepository.findById(learnerId).orElse(null);
+                    if (currentLearner != null) {
+                        try {
+                            LearnerLessonStatus newStatus = LearnerLessonStatus.builder()
+                                    .learner(currentLearner)
+                                    .lesson(lesson)
+                                    .status(LessonStatus.UNLOCKED)
+                                    .unlockedAt(java.time.OffsetDateTime.now())
+                                    .attempts(0)
+                                    .bestLessonPoints(0)
+                                    .lessonCompletionBonusAwarded(false)
+                                    .perfectScoreBonusAwarded(false)
+                                    .build();
+                            statusObj = lessonStatusRepository.save(newStatus);
+                            statusMap.put(lesson.getLessonId(), statusObj);
+                        } catch (Exception e) {
+                            statusObj = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lesson.getLessonId()).orElse(null);
+                            if (statusObj != null) {
+                                status = statusObj.getStatus();
+                                masteryScore = statusObj.getMasteryScore();
+                            }
+                        }
+                    }
+                }
+            } else {
+                if (order == 1 || previousCompleted) {
+                    status = LessonStatus.UNLOCKED;
                 }
             }
 
@@ -194,13 +218,25 @@ public class LessonService {
 
             int actualWordCount = lessonWords.size();
 
-            List<DifficultyProgress> progressList = difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonId(learnerId, lesson.getLessonId());
+            List<DifficultyProgress> progressList = (learnerId != null)
+                    ? difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonId(learnerId, lesson.getLessonId())
+                    : Collections.emptyList();
             Map<UUID, DifficultyLevel> highestWordLevel = new java.util.HashMap<>();
             for (DifficultyProgress dp : progressList) {
                 if (dp.getWord() != null) {
                     UUID wid = dp.getWord().getWordId();
+                    WordPerformance wp = (learnerId != null)
+                            ? wordPerformanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wid).orElse(null)
+                            : null;
                     if (dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
-                        highestWordLevel.put(wid, DifficultyLevel.MASTERED);
+                        if (wp != null && wp.getTotalAttempts() > 0) {
+                            highestWordLevel.put(wid, DifficultyLevel.MASTERED);
+                        } else {
+                            // Self-heal: unpracticed word was mistakenly marked MASTERED
+                            dp.setCurrentLevel(DifficultyLevel.LEARNING);
+                            difficultyProgressRepository.save(dp);
+                            highestWordLevel.putIfAbsent(wid, DifficultyLevel.LEARNING);
+                        }
                     } else {
                         highestWordLevel.putIfAbsent(wid, dp.getCurrentLevel());
                     }
@@ -222,13 +258,25 @@ public class LessonService {
                 }
             }
 
+            // Self-heal lesson status: if lesson was marked COMPLETED but not all words are mastered, revert to UNLOCKED
+            if (status == LessonStatus.COMPLETED && actualWordCount > 0 && masteredWordCount < actualWordCount) {
+                status = LessonStatus.UNLOCKED;
+                masteryScore = null;
+                if (statusObj != null) {
+                    statusObj.setStatus(LessonStatus.UNLOCKED);
+                    statusObj.setCompletedAt(null);
+                    statusObj.setMasteryScore(null);
+                    lessonStatusRepository.save(statusObj);
+                }
+            }
+
             responses.add(LessonResponse.builder()
                     .lessonId(lesson.getLessonId())
-                    .categoryId(lesson.getCategory().getCategoryId())
+                    .categoryId(lesson.getCategory() != null ? lesson.getCategory().getCategoryId() : categoryId)
                     .lessonTitle(lesson.getLessonTitle())
                     .lessonDescription(lesson.getLessonDescription())
                     .gradeLevel(lesson.getGradeLevel())
-                    .lessonOrder(lesson.getLessonOrder())
+                    .lessonOrder(order)
                     .totalWordCount(actualWordCount > 0 ? actualWordCount : (lesson.getTotalWordCount() != null ? lesson.getTotalWordCount() : 0))
                     .masteredWordCount(masteredWordCount)
                     .posTotalWordCounts(posTotalWordCounts)
@@ -256,6 +304,102 @@ public class LessonService {
         }
 
         return responses;
+    }
+
+    @Transactional(readOnly = true)
+    public LessonResponse getLessonById(UUID lessonId, UUID learnerId) {
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new IllegalArgumentException("Lesson not found"));
+
+        List<VocabularyWord> lessonWords = wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lesson.getLessonId());
+        int actualWordCount = lessonWords.size();
+        int masteredWordCount = 0;
+        LessonStatus status = LessonStatus.UNLOCKED;
+        BigDecimal masteryScore = null;
+        Map<String, Integer> posTotalWordCounts = new java.util.HashMap<>();
+        Map<String, Integer> posMasteredWordCounts = new java.util.HashMap<>();
+
+        if (learnerId != null) {
+            LearnerLessonStatus statusObj = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lesson.getLessonId()).orElse(null);
+            if (statusObj != null) {
+                status = statusObj.getStatus();
+                if (status == LessonStatus.COMPLETED) {
+                    masteryScore = statusObj.getMasteryScore();
+                }
+            }
+            
+            List<DifficultyProgress> progressList = difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonId(learnerId, lesson.getLessonId());
+            Map<UUID, DifficultyLevel> highestWordLevel = new java.util.HashMap<>();
+            for (DifficultyProgress dp : progressList) {
+                if (dp.getWord() != null) {
+                    UUID wid = dp.getWord().getWordId();
+                    WordPerformance wp = wordPerformanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wid).orElse(null);
+                    if (dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
+                        if (wp != null && wp.getTotalAttempts() > 0) {
+                            highestWordLevel.put(wid, DifficultyLevel.MASTERED);
+                        } else {
+                            dp.setCurrentLevel(DifficultyLevel.LEARNING);
+                            difficultyProgressRepository.save(dp);
+                            highestWordLevel.putIfAbsent(wid, DifficultyLevel.LEARNING);
+                        }
+                    } else {
+                        highestWordLevel.putIfAbsent(wid, dp.getCurrentLevel());
+                    }
+                }
+            }
+
+            for (VocabularyWord w : lessonWords) {
+                String pos = w.getPartOfSpeech() != null ? w.getPartOfSpeech().toUpperCase() : "UNKNOWN";
+                posTotalWordCounts.merge(pos, 1, Integer::sum);
+
+                DifficultyLevel level = highestWordLevel.get(w.getWordId());
+                if (level == DifficultyLevel.MASTERED) {
+                    masteredWordCount++;
+                    posMasteredWordCounts.merge(pos, 1, Integer::sum);
+                }
+            }
+
+            if (status == LessonStatus.COMPLETED && actualWordCount > 0 && masteredWordCount < actualWordCount) {
+                status = LessonStatus.UNLOCKED;
+                masteryScore = null;
+                if (statusObj != null) {
+                    statusObj.setStatus(LessonStatus.UNLOCKED);
+                    statusObj.setCompletedAt(null);
+                    statusObj.setMasteryScore(null);
+                    lessonStatusRepository.save(statusObj);
+                }
+            }
+        }
+
+        return LessonResponse.builder()
+                .lessonId(lesson.getLessonId())
+                .categoryId(lesson.getCategory() != null ? lesson.getCategory().getCategoryId() : null)
+                .lessonTitle(lesson.getLessonTitle())
+                .lessonDescription(lesson.getLessonDescription())
+                .gradeLevel(lesson.getGradeLevel())
+                .lessonOrder(lesson.getLessonOrder())
+                .totalWordCount(actualWordCount > 0 ? actualWordCount : (lesson.getTotalWordCount() != null ? lesson.getTotalWordCount() : 0))
+                .masteredWordCount(masteredWordCount)
+                .posTotalWordCounts(posTotalWordCounts)
+                .posMasteredWordCounts(posMasteredWordCounts)
+                .status(status)
+                .masteryScore(masteryScore)
+                .lessonType(lesson.getLessonType() != null ? lesson.getLessonType().name() : "REGULAR")
+                .sourceLessonIds(lesson.getSourceLessonIds())
+                .compositeReviewAfterLessonId(lesson.getCompositeReviewAfterLessonId())
+                .contextParagraph(lesson.getContextParagraph())
+                .module2Activities(lesson.getModule2Activities())
+                .module3Activities(lesson.getModule3Activities())
+                .module4Activities(lesson.getModule4Activities())
+                .upgradeStreakRequired(lesson.getUpgradeStreakRequired())
+                .demotionThreshold(lesson.getDemotionThreshold())
+                .reintroductionThreshold(lesson.getReintroductionThreshold())
+                .module3UpgradeStreakRequired(lesson.getModule3UpgradeStreakRequired())
+                .module3DemotionThreshold(lesson.getModule3DemotionThreshold())
+                .streakCelebrationThreshold(lesson.getStreakCelebrationThreshold())
+                .classId(lesson.getClassroom() != null ? lesson.getClassroom().getClassId() : null)
+                .className(lesson.getClassroom() != null ? lesson.getClassroom().getName() : null)
+                .build();
     }
 
     /**
@@ -342,14 +486,16 @@ public class LessonService {
                     .collect(Collectors.toList());
         }
 
-        List<LearnerLessonStatus> statuses = lessonStatusRepository.findByLearnerLearnerId(learnerId);
+        List<LearnerLessonStatus> statuses = (learnerId != null)
+                ? lessonStatusRepository.findByLearnerLearnerId(learnerId)
+                : Collections.emptyList();
 
-        Map<UUID, LearnerLessonStatus> statusMap = statuses.stream()
-                .collect(Collectors.toMap(
-                        status -> status.getLesson().getLessonId(),
-                        status -> status,
-                        (s1, s2) -> s1
-                ));
+        Map<UUID, LearnerLessonStatus> statusMap = new java.util.HashMap<>();
+        for (LearnerLessonStatus st : statuses) {
+            if (st != null && st.getLesson() != null && st.getLesson().getLessonId() != null) {
+                statusMap.putIfAbsent(st.getLesson().getLessonId(), st);
+            }
+        }
 
         List<LessonResponse> responses = new ArrayList<>();
         boolean previousCompleted = true;
@@ -358,32 +504,52 @@ public class LessonService {
             LearnerLessonStatus statusObj = statusMap.get(lesson.getLessonId());
             LessonStatus status = LessonStatus.LOCKED;
             BigDecimal masteryScore = null;
+            int order = lesson.getLessonOrder() != null ? lesson.getLessonOrder() : 1;
 
             if (statusObj != null) {
                 status = statusObj.getStatus();
                 masteryScore = statusObj.getMasteryScore();
-                if (status == LessonStatus.LOCKED && (lesson.getLessonOrder() == 1 || previousCompleted)) {
+                if (status == LessonStatus.LOCKED && (order == 1 || previousCompleted)) {
                     status = LessonStatus.UNLOCKED;
                     statusObj.setStatus(LessonStatus.UNLOCKED);
                     statusObj.setUnlockedAt(java.time.OffsetDateTime.now());
                     lessonStatusRepository.save(statusObj);
+                } else if (order > 1 && !previousCompleted && status == LessonStatus.UNLOCKED && (statusObj.getAttempts() == null || statusObj.getAttempts() == 0)) {
+                    status = LessonStatus.LOCKED;
+                    statusObj.setStatus(LessonStatus.LOCKED);
+                    statusObj.setUnlockedAt(null);
+                    lessonStatusRepository.save(statusObj);
+                }
+            } else if (learnerId != null) {
+                if (order == 1 || previousCompleted) {
+                    status = LessonStatus.UNLOCKED;
+                    Learner currentLearner = (learner != null) ? learner : learnerRepository.findById(learnerId).orElse(null);
+                    if (currentLearner != null) {
+                        try {
+                            LearnerLessonStatus newStatus = LearnerLessonStatus.builder()
+                                    .learner(currentLearner)
+                                    .lesson(lesson)
+                                    .status(LessonStatus.UNLOCKED)
+                                    .unlockedAt(java.time.OffsetDateTime.now())
+                                    .attempts(0)
+                                    .bestLessonPoints(0)
+                                    .lessonCompletionBonusAwarded(false)
+                                    .perfectScoreBonusAwarded(false)
+                                    .build();
+                            statusObj = lessonStatusRepository.save(newStatus);
+                            statusMap.put(lesson.getLessonId(), statusObj);
+                        } catch (Exception e) {
+                            statusObj = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lesson.getLessonId()).orElse(null);
+                            if (statusObj != null) {
+                                status = statusObj.getStatus();
+                                masteryScore = statusObj.getMasteryScore();
+                            }
+                        }
+                    }
                 }
             } else {
-                if (lesson.getLessonOrder() == 1 || previousCompleted) {
+                if (order == 1 || previousCompleted) {
                     status = LessonStatus.UNLOCKED;
-                    Learner currentLearner = (learner != null) ? learner : learnerRepository.findById(learnerId)
-                            .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
-                    LearnerLessonStatus newStatus = LearnerLessonStatus.builder()
-                            .learner(currentLearner)
-                            .lesson(lesson)
-                            .status(LessonStatus.UNLOCKED)
-                            .unlockedAt(java.time.OffsetDateTime.now())
-                            .attempts(0)
-                            .bestLessonPoints(0)
-                            .lessonCompletionBonusAwarded(false)
-                            .perfectScoreBonusAwarded(false)
-                            .build();
-                    lessonStatusRepository.save(newStatus);
                 }
             }
 
@@ -395,8 +561,15 @@ public class LessonService {
             for (DifficultyProgress dp : progressList) {
                 if (dp.getWord() != null) {
                     UUID wid = dp.getWord().getWordId();
+                    WordPerformance wp = wordPerformanceRepository.findByLearnerLearnerIdAndWordWordId(learnerId, wid).orElse(null);
                     if (dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
-                        highestWordLevel.put(wid, DifficultyLevel.MASTERED);
+                        if (wp != null && wp.getTotalAttempts() > 0) {
+                            highestWordLevel.put(wid, DifficultyLevel.MASTERED);
+                        } else {
+                            dp.setCurrentLevel(DifficultyLevel.LEARNING);
+                            difficultyProgressRepository.save(dp);
+                            highestWordLevel.putIfAbsent(wid, DifficultyLevel.LEARNING);
+                        }
                     } else {
                         highestWordLevel.putIfAbsent(wid, dp.getCurrentLevel());
                     }
@@ -415,6 +588,17 @@ public class LessonService {
                 if (level == DifficultyLevel.MASTERED) {
                     masteredWordCount++;
                     posMasteredWordCounts.merge(pos, 1, Integer::sum);
+                }
+            }
+
+            if (status == LessonStatus.COMPLETED && actualWordCount > 0 && masteredWordCount < actualWordCount) {
+                status = LessonStatus.UNLOCKED;
+                masteryScore = null;
+                if (statusObj != null) {
+                    statusObj.setStatus(LessonStatus.UNLOCKED);
+                    statusObj.setCompletedAt(null);
+                    statusObj.setMasteryScore(null);
+                    lessonStatusRepository.save(statusObj);
                 }
             }
 
@@ -779,7 +963,9 @@ public class LessonService {
 
                 BigDecimal newMastery = BigDecimal.valueOf(computedScore).setScale(2, java.math.RoundingMode.HALF_UP);
                 if (newMastery.compareTo(BigDecimal.ZERO) > 0) {
-                    status.setMasteryScore(newMastery);
+                    if (status.getMasteryScore() == null || newMastery.compareTo(status.getMasteryScore()) > 0) {
+                        status.setMasteryScore(newMastery);
+                    }
                 }
                 status.setStatus(LessonStatus.COMPLETED);
                 status.setCompletedAt(java.time.OffsetDateTime.now());
@@ -836,17 +1022,27 @@ public class LessonService {
 
         long totalWords = lessonWords.size();
         long masteredWords = 0;
+        long proficientOrMasteredWords = 0;
         
         int modNum = moduleNumber != null ? moduleNumber : 2;
 
         for (VocabularyWord w : lessonWords) {
-            DifficultyProgress dp = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, w.getWordId(), modNum).orElse(null);
-            if (dp != null && dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
-                masteredWords++;
+            DifficultyProgress dp = difficultyProgressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, w.getWordId(), modNum)
+                    .or(() -> difficultyProgressRepository.findByLearnerLearnerIdAndWordWordId(learnerId, w.getWordId()))
+                    .orElse(null);
+            if (dp != null) {
+                if (dp.getCurrentLevel() == DifficultyLevel.MASTERED) {
+                    masteredWords++;
+                    proficientOrMasteredWords++;
+                } else if (dp.getCurrentLevel() == DifficultyLevel.PROFICIENT) {
+                    proficientOrMasteredWords++;
+                }
             }
         }
 
-        boolean allMastered = (totalWords > 0 && masteredWords >= totalWords);
+        boolean allMastered = (modNum == 2)
+                ? (totalWords > 0 && proficientOrMasteredWords >= totalWords)
+                : (totalWords > 0 && masteredWords >= totalWords);
         
         return LessonMasteryStatusResponse.builder()
                 .allMastered(allMastered)
@@ -857,20 +1053,35 @@ public class LessonService {
 
     @Transactional
     public void resetLesson(UUID lessonId, UUID learnerId) {
-        // We do NOT delete word_performance or difficulty_progress here,
-        // because "Retry" should just reset the module progression (Module 1, 2, 3),
-        // but lifetime word mastery should be retained and updated dynamically.
+        // 1. Delete difficulty progress for this lesson's words
+        difficultyProgressRepository.deleteByLearnerLearnerIdAndWordLessonLessonId(learnerId, lessonId);
         
-        // 3. Delete practice results & sessions for this lesson
+        // 2. Delete lesson word accuracy
+        lessonWordAccuracyRepository.deleteByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
+        
+        // 3. Delete word performance for this lesson's words
+        wordPerformanceRepository.deleteByLearnerLearnerIdAndWordLessonLessonId(learnerId, lessonId);
+        
+        // 4. Delete practice results & sessions for this lesson
         jdbcTemplate.update("DELETE FROM practice_results WHERE session_id IN (SELECT session_id FROM practice_sessions WHERE learner_id = ? AND lesson_id = ?)", learnerId, lessonId);
         jdbcTemplate.update("DELETE FROM practice_sessions WHERE learner_id = ? AND lesson_id = ?", learnerId, lessonId);
         
-        // 4. Delete introduction sessions for this lesson
+        // 5. Delete introduction sessions for this lesson
         jdbcTemplate.update("DELETE FROM introduction_sessions WHERE learner_id = ? AND lesson_id = ?", learnerId, lessonId);
         
-        // 5. Delete lesson module scores
+        // 6. Delete lesson module scores
         jdbcTemplate.update("DELETE FROM lesson_module_scores WHERE learner_id = ? AND lesson_id = ?", learnerId, lessonId);
 
-
+        // 7. Reset learner lesson status to UNLOCKED with 0 attempts and null completedAt/masteryScore
+        LearnerLessonStatus status = lessonStatusRepository.findByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId).orElse(null);
+        if (status != null) {
+            status.setStatus(LessonStatus.UNLOCKED);
+            status.setAttempts(0);
+            status.setCompletedAt(null);
+            status.setMasteryScore(null);
+            status.setLessonCompletionBonusAwarded(false);
+            status.setPerfectScoreBonusAwarded(false);
+            lessonStatusRepository.save(status);
+        }
     }
 }

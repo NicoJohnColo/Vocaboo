@@ -43,6 +43,10 @@ public class VocabularyCategory {
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    @Column(name = "module4_activities", length = 500)
+    @Builder.Default
+    private String module4Activities = "MULTIPLE_CHOICE;MATCHING;FILL_IN_BLANK;WORD_SCRAMBLE;SENTENCE_RECONSTRUCTION;TRUE_OR_FALSE";
+
     public UUID getCategoryId() {
         return categoryId;
     }
@@ -53,6 +57,14 @@ public class VocabularyCategory {
 
     public void setCategoryName(String categoryName) {
         this.categoryName = categoryName;
+    }
+
+    public String getModule4Activities() {
+        return module4Activities;
+    }
+
+    public void setModule4Activities(String module4Activities) {
+        this.module4Activities = module4Activities;
     }
 
     public String getDescription() {
@@ -91,35 +103,7 @@ public class VocabularyCategory {
         return createdAt;
     }
 
-    public static VocabularyCategoryBuilder builder() { return new VocabularyCategoryBuilder(); }
-
-    public static class VocabularyCategoryBuilder {
-        private UUID categoryId;
-        private String categoryName;
-        private String description;
-        private Integer sortOrder = 0;
-        private Teacher teacher;
-        private Classroom classroom;
-
-        public VocabularyCategoryBuilder categoryId(UUID categoryId) { this.categoryId = categoryId; return this; }
-        public VocabularyCategoryBuilder categoryName(String categoryName) { this.categoryName = categoryName; return this; }
-        public VocabularyCategoryBuilder description(String description) { this.description = description; return this; }
-        public VocabularyCategoryBuilder sortOrder(Integer sortOrder) { this.sortOrder = sortOrder; return this; }
-        public VocabularyCategoryBuilder teacher(Teacher teacher) { this.teacher = teacher; return this; }
-        public VocabularyCategoryBuilder classroom(Classroom classroom) { this.classroom = classroom; return this; }
-
-        public VocabularyCategory build() {
-            VocabularyCategory c = new VocabularyCategory();
-            c.categoryId = this.categoryId;
-            c.categoryName = this.categoryName;
-            c.description = this.description;
-            c.sortOrder = this.sortOrder;
-            c.teacher = this.teacher;
-            c.classroom = this.classroom;
-            c.createdAt = OffsetDateTime.now();
-            return c;
-        }
-    }
+    // Replaced manual builder with Lombok @Builder
 
     @PrePersist
     protected void onCreate() {

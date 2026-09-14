@@ -94,6 +94,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   final Map<String, int> _wordBestTier = {};
   /// Tracks consecutive correct answers in the current tier to provide dynamic ladder climbing progress.
   final Map<String, int> _wordCorrectStreak = {};
+  /// Tracks consecutive incorrect answers in the current tier.
+  final Map<String, int> _wordIncorrectStreak = {};
   int _initialPassCorrectCount = 0;
   int _reinforcementPassCorrectCount = 0;
   bool _hasLeveledUpAnyWord = false;
@@ -101,8 +103,28 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // Session-wide consecutive streak for celebration overlay (Module 2)
   int _consecutiveStreak = 0;
-  bool _hasShownStreakCelebrationThisSession = false;
   int _streakCelebrationThreshold = 3;
+  int _upgradeStreakRequired = 2;
+  int _demotionThreshold = 2;
+  int? _module3UpgradeStreakRequired;
+  int? _module3DemotionThreshold;
+  String? _module2Activities;
+
+  int _getUpgradeStreakForWord(String wordId) {
+    final currentTier = _wordBestTier[wordId] ?? 0;
+    if (currentTier == 2) {
+      return _module3UpgradeStreakRequired ?? _upgradeStreakRequired;
+    }
+    return _upgradeStreakRequired;
+  }
+
+  int _getDemotionThresholdForWord(String wordId) {
+    final currentTier = _wordBestTier[wordId] ?? 0;
+    if (currentTier == 2) {
+      return _module3DemotionThreshold ?? _demotionThreshold;
+    }
+    return _demotionThreshold;
+  }
 
   // Session Completed State
   final bool _isCompleted = false;
@@ -119,6 +141,19 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _words = widget.allWords
         .map((w) => VocabularyWordModel.fromJson(w))
         .toList();
+    if (!widget.isSandbox) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final posFocus = auth.learner?.posFocus;
+      LocalStorageService.saveActiveLessonSession(
+        widget.lessonId,
+        widget.sessionId,
+        '/session/${widget.sessionId}/practice',
+        posFocus: posFocus ?? 'ALL',
+        allWords: widget.allWords,
+        categoryId: widget.categoryId,
+        lessonTitle: widget.lessonTitle,
+      );
+    }
     _initializeSession();
   }
 
@@ -134,26 +169,92 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   Future<void> _initializeSession() async {
     setState(() => _isLoading = true);
 
-    // Check if there is an existing saved session state
+    // 1. Load streak-celebration threshold and lesson config first.
+    if (!widget.isSandbox && mounted) {
+      final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+      var lesson = lessonProvider.lessons
+          .where((l) => l.lessonId == widget.lessonId)
+          .firstOrNull;
+      if (lesson == null && widget.lessonId.isNotEmpty) {
+        lesson = await lessonProvider.fetchLessonDetails(widget.lessonId);
+      }
+      if (lesson == null && widget.categoryId.isNotEmpty) {
+        try {
+          await lessonProvider.loadLessons(widget.categoryId);
+          lesson = lessonProvider.lessons
+              .where((l) => l.lessonId == widget.lessonId)
+              .firstOrNull;
+        } catch (_) {}
+      }
+      if (lesson != null) {
+        _upgradeStreakRequired = lesson.upgradeStreakRequired ?? 2;
+        _demotionThreshold = lesson.demotionThreshold ?? 2;
+        _module3UpgradeStreakRequired = lesson.module3UpgradeStreakRequired ?? _upgradeStreakRequired;
+        _module3DemotionThreshold = lesson.module3DemotionThreshold ?? _demotionThreshold;
+        _streakCelebrationThreshold = lesson.streakCelebrationThreshold ?? 3;
+        _module2Activities = lesson.module2Activities;
+        debugPrint(
+          'ActivePractice: config loaded -> upgradeStreakRequired=$_upgradeStreakRequired, demotionThreshold=$_demotionThreshold, module3UpgradeStreakRequired=$_module3UpgradeStreakRequired, module3DemotionThreshold=$_module3DemotionThreshold, streakCelebrationThreshold=$_streakCelebrationThreshold, module2Activities=$_module2Activities',
+        );
+      }
+    }
+
+    // 2. Check if there is an existing saved session state
     final savedState = await LocalStorageService.getPracticeSessionState(
       widget.sessionId,
     );
 
     if (savedState != null) {
-      _practiceQueue = savedState['queue'] as List<PracticeItemModel>;
-      _currentIndex = savedState['currentIndex'] as int;
+      _practiceQueue = (savedState['queue'] as List<dynamic>?)
+              ?.map((item) => item is PracticeItemModel
+                  ? item
+                  : PracticeItemModel.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+      _currentIndex = (savedState['currentIndex'] as int?) ?? 0;
       _completedScreens =
           (savedState['completedScreens'] as int?) ?? _currentIndex;
       _plannedScreens =
           (savedState['plannedScreens'] as int?) ?? _practiceQueue.length;
+      if (savedState['maxWordTierPoints'] != null) {
+        final tiers = savedState['maxWordTierPoints'] as Map;
+        tiers.forEach((k, v) {
+          if (v is num) _wordBestTier[k.toString()] = v.toInt();
+        });
+      }
+      _initWordTierProgress();
 
-      if (_currentIndex >= _practiceQueue.length) {
+      // Purge any remaining items for words that are already MASTERED
+      _practiceQueue.removeWhere((qItem) =>
+          _practiceQueue.indexOf(qItem) >= _currentIndex &&
+          ((_wordBestTier[qItem.wordId] ?? 0) >= 3 ||
+              qItem.difficultyLevel?.toUpperCase() == 'MASTERED'));
+      _plannedScreens = _practiceQueue.length;
+
+      if (_practiceQueue.isNotEmpty && _currentIndex >= _practiceQueue.length) {
         await _completeModuleAndAdvance();
-      } else {
+      } else if (_practiceQueue.isNotEmpty) {
         await _fetchAndLoadCurrentItem();
+      } else {
+        await _completeModuleAndAdvance();
       }
     } else {
       // Build new session queue
+      _initWordTierProgress();
+
+      // If all words are already mastered, advance to Module 3 immediately
+      final allAlreadyMastered = _words.isNotEmpty &&
+          _words.every((w) =>
+              (_wordBestTier[w.wordId] ?? 0) >= 3 ||
+              w.difficultyLevel?.toUpperCase() == 'MASTERED');
+      if (allAlreadyMastered) {
+        debugPrint(
+          'ActivePractice: All words are already MASTERED -> advancing to Module 3 immediately',
+        );
+        await _completeModuleAndAdvance();
+        return;
+      }
+
       if (widget.isSandbox) {
         _buildPracticeQueue();
       } else {
@@ -163,7 +264,23 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           widget.sessionId,
         );
         if (!mounted) return;
-        _practiceQueue = backendQuestions.map((q) {
+
+        // Filter out questions for words that are already MASTERED
+        final unmasteredQuestions = backendQuestions.where((q) {
+          final wId = q['wordId']?.toString();
+          final lvl = q['difficultyLevel']?.toString().toUpperCase();
+          if (lvl == 'MASTERED') return false;
+          if (wId != null && (_wordBestTier[wId] ?? 0) >= 3) return false;
+          final wordObj = _words.where((w) => w.wordId == wId).firstOrNull;
+          if (wordObj != null &&
+              (wordObj.difficultyLevel?.toUpperCase() == 'MASTERED' ||
+                  _tierOrdinal(wordObj.difficultyLevel) >= 3)) {
+            return false;
+          }
+          return true;
+        }).toList();
+
+        _practiceQueue = unmasteredQuestions.map((q) {
           final formatStr = q['activityFormat'] as String? ?? 'MULTIPLE_CHOICE';
           ActivityFormat format;
           switch (formatStr) {
@@ -265,37 +382,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             hintCebuanoSentence: q['hintCebuanoSentence']?.toString(),
           );
         }).toList();
-        _practiceQueue.shuffle(Random());
-        _separateAdjacentSameWords(_practiceQueue, fromIndex: 0);
+        if (_practiceQueue.isEmpty) {
+          final allNowMastered = _words.isNotEmpty &&
+              _words.every((w) =>
+                  (_wordBestTier[w.wordId] ?? 0) >= 3 ||
+                  w.difficultyLevel?.toUpperCase() == 'MASTERED');
+          if (allNowMastered) {
+            await _completeModuleAndAdvance();
+            return;
+          }
+          _buildPracticeQueue();
+        } else {
+          _practiceQueue.shuffle(Random());
+          _separateAdjacentSameWords(_practiceQueue, fromIndex: 0);
+        }
       }
 
       _currentIndex = 0;
       _completedScreens = 0;
       _plannedScreens = _practiceQueue.length;
 
-      // Load streak-celebration threshold from lesson config.
-      if (!widget.isSandbox && mounted) {
-        final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
-        var lesson = lessonProvider.lessons
-            .where((l) => l.lessonId == widget.lessonId)
-            .firstOrNull;
-        if (lesson == null && widget.categoryId.isNotEmpty) {
-          try {
-            await lessonProvider.loadLessons(widget.categoryId);
-            lesson = lessonProvider.lessons
-                .where((l) => l.lessonId == widget.lessonId)
-                .firstOrNull;
-          } catch (_) {}
-        }
-        if (lesson != null) {
-          _streakCelebrationThreshold = lesson.streakCelebrationThreshold ?? 3;
-        }
-      }
-
       // Seed the tier-progress map from the queue's current difficulty levels.
       _initWordTierProgress();
       if (_practiceQueue.isNotEmpty) {
         await _fetchAndLoadCurrentItem();
+      } else {
+        await _completeModuleAndAdvance();
+        return;
       }
       await _saveCurrentState();
     }
@@ -312,6 +425,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       // 2. Multiple choice
       // 3. Fill in the blank
       for (var word in _words) {
+        if ((_wordBestTier[word.wordId] ?? 0) >= 3 ||
+            word.difficultyLevel?.toUpperCase() == 'MASTERED') {
+          continue;
+        }
         _practiceQueue.add(
           _createPracticeItem(word, ActivityFormat.flashcardRecall),
         );
@@ -352,11 +469,28 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         }
       }
 
-      for (final word in shuffledWords) {
+      final activeWords = shuffledWords.where((w) =>
+          (_wordBestTier[w.wordId] ?? 0) < 3 &&
+          w.difficultyLevel?.toUpperCase() != 'MASTERED'
+      ).toList();
+
+      for (final word in activeWords) {
         List<ActivityFormat> wordFormats = [];
         final eligible = word.eligibleActivityTypes;
         if (eligible != null && eligible.isNotEmpty) {
           wordFormats = eligible.split(';').map((s) => parseFormat(s)).toList();
+        }
+        if (_module2Activities != null && _module2Activities!.trim().isNotEmpty) {
+          final allowed = _module2Activities!
+              .split(';')
+              .map((s) => parseFormat(s))
+              .toSet();
+          final filtered = wordFormats.where((f) => allowed.contains(f)).toList();
+          if (filtered.isNotEmpty) {
+            wordFormats = filtered;
+          } else {
+            wordFormats = allowed.toList();
+          }
         }
         if (wordFormats.isEmpty) {
           wordFormats = [
@@ -386,6 +520,13 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
         _practiceQueue.add(_createPracticeItem(word, format2));
       }
+    }
+
+    if (_practiceQueue.isEmpty && _words.isNotEmpty) {
+      debugPrint('ActivePractice: All words are MASTERED in _buildPracticeQueue -> advancing to Module 3');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _completeModuleAndAdvance();
+      });
     }
   }
 
@@ -431,6 +572,15 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   /// Maps a difficulty-level string to a 0–3 integer ordinal.
+  static String _tierName(int ord) {
+    switch (ord) {
+      case 1:  return 'FAMILIAR';
+      case 2:  return 'PROFICIENT';
+      case 3:  return 'MASTERED';
+      default: return 'LEARNING';
+    }
+  }
+
   /// LEARNING=0, FAMILIAR=1, PROFICIENT=2, MASTERED=3
   static int _tierOrdinal(String? level) {
     switch ((level ?? '').toUpperCase()) {
@@ -458,6 +608,24 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         _wordBestTier[item.wordId] = ordinal;
       }
     }
+  }
+
+  String _getEffectiveLevel(PracticeItemModel? item) {
+    if (item == null) return 'LEARNING';
+    final bestOrdinal = _wordBestTier[item.wordId];
+    if (bestOrdinal != null) {
+      switch (bestOrdinal) {
+        case 1:
+          return 'FAMILIAR';
+        case 2:
+          return 'PROFICIENT';
+        case 3:
+          return 'MASTERED';
+        default:
+          return 'LEARNING';
+      }
+    }
+    return (item.difficultyLevel ?? 'LEARNING').toUpperCase();
   }
 
   List<String> _resolveDistractors(VocabularyWordModel targetWord) {
@@ -619,9 +787,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   double get _scorePoints {
     final practicedWordIds = _practiceQueue.map((p) => p.wordId).toSet();
-    if (practicedWordIds.isEmpty) return 0.0;
+    final relevantWordIds = practicedWordIds.isNotEmpty
+        ? practicedWordIds
+        : _words.map((w) => w.wordId).toSet();
+    if (relevantWordIds.isEmpty) return 0.0;
     double score = 0.0;
-    for (final wordId in practicedWordIds) {
+    for (final wordId in relevantWordIds) {
       if ((_wordWrongAttempts[wordId] ?? 0) == 0) {
         score += 1.0;
       }
@@ -779,17 +950,14 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         item.activityFormat == ActivityFormat.imageMatching ||
         item.activityFormat == ActivityFormat.imageLabeling ||
         item.activityFormat == ActivityFormat.hintToWord) {
-      final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
+      final lvl = _getEffectiveLevel(item);
       final isFamiliarMC = item.activityFormat == ActivityFormat.multipleChoice &&
           lvl == 'FAMILIAR';
       final isProficientMC = item.activityFormat == ActivityFormat.multipleChoice &&
           (lvl == 'PROFICIENT' || lvl == 'MASTERED');
 
-      // Intertwined translation at FAMILIAR tier:
-      // Prompt = English word ("Notebook"), Answer = Cebuano meaning ("Kuwaderno")
-      // At LEARNING and PROFICIENT:
-      // Prompt = Cebuano meaning ("Kuwaderno"), Answer = English word ("Notebook")
-      var correctAnswer = isFamiliarMC ? item.cebuanoMeaning : item.englishWord;
+      // Prompt = Cebuano meaning, Answer = English word
+      var correctAnswer = item.englishWord.trim();
       if (correctAnswer.split(RegExp(r'\s+')).length > 2 ||
           correctAnswer.contains('__') ||
           correctAnswer.contains('.')) {
@@ -801,30 +969,20 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         );
       }
 
-      List<String> distractors;
+      final List<String> distractorPool = [];
       if (item.distractors.isNotEmpty) {
-        distractors = List<String>.from(item.distractors);
-      } else if (isFamiliarMC) {
-        distractors = _words
-            .where((w) => w.wordId != item.wordId && w.cebuanoMeaning.trim().isNotEmpty)
-            .map((w) => w.cebuanoMeaning.trim())
-            .where((c) => c.toLowerCase() != correctAnswer.toLowerCase())
-            .toSet()
-            .toList()
-          ..shuffle();
-      } else if (_words.any((w) => w.wordId == item.wordId)) {
-        distractors = _resolveDistractors(
-          _words.firstWhere((w) => w.wordId == item.wordId),
-        );
-      } else {
-        distractors = _words
-            .where((w) => w.wordId != item.wordId && w.englishWord.trim().isNotEmpty)
-            .map((w) => w.englishWord.trim())
-            .where((w) => w.toLowerCase() != correctAnswer.toLowerCase())
-            .toSet()
-            .toList()
-          ..shuffle();
+        distractorPool.addAll(item.distractors.map((d) => d.trim()));
       }
+      final sessionEnglishWords = _words
+          .where((w) => w.wordId != item.wordId && w.englishWord.trim().isNotEmpty)
+          .map((w) => w.englishWord.trim());
+      distractorPool.addAll(sessionEnglishWords);
+
+      List<String> distractors = distractorPool
+          .where((c) => c.toLowerCase() != correctAnswer.toLowerCase())
+          .toSet()
+          .toList()
+        ..shuffle();
 
       final targetOptionCount = item.activityFormat == ActivityFormat.multipleChoice
           ? (isProficientMC ? 5 : (isFamiliarMC ? 4 : 3))
@@ -843,35 +1001,26 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }).toSet().toList();
 
       if (_options.length < targetOptionCount) {
-        final fallbacks = isFamiliarMC
-            ? [
-                'Tubig',
-                'Balay',
-                'Libro',
-                'Kahoy',
-                'Higala',
-                'Eskwelahan',
-                'Iro',
-                'Iring',
-                'Adlaw',
-                'Bulan',
-                'Dalan',
-                'Kasingkasing',
-              ]
-            : [
-                'apple',
-                'house',
-                'water',
-                'friend',
-                'school',
-                'book',
-                'tree',
-                'happy',
-                'run',
-                'big',
-                'cat',
-                'dog',
-              ];
+        final fallbacks = [
+          'Water',
+          'House',
+          'Book',
+          'Tree',
+          'Friend',
+          'School',
+          'Dog',
+          'Cat',
+          'Sun',
+          'Moon',
+          'Road',
+          'Heart',
+          'Bread',
+          'Apple',
+          'River',
+          'Bird',
+          'Door',
+          'Table',
+        ];
         final needed = targetOptionCount - _options.length;
         final available = fallbacks
             .where((f) => !_options.any((o) => o.toLowerCase() == f.toLowerCase()))
@@ -1073,11 +1222,25 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _currentIndex,
       completedScreens: _completedScreens,
       plannedScreens: _plannedScreens,
+      maxWordTierPoints: _wordBestTier,
     );
     await LocalStorageService.saveReinforcementQueue(
       widget.sessionId,
       _reinforcementQueue,
     );
+    if (!widget.isSandbox && mounted) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final posFocus = auth.learner?.posFocus;
+      await LocalStorageService.saveActiveLessonSession(
+        widget.lessonId,
+        widget.sessionId,
+        '/session/${widget.sessionId}/practice',
+        posFocus: posFocus ?? 'ALL',
+        allWords: widget.allWords,
+        categoryId: widget.categoryId,
+        lessonTitle: widget.lessonTitle,
+      );
+    }
   }
 
   String _getMascotName() {
@@ -1089,10 +1252,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   String _getInstructionText(ActivityFormat format, [PracticeItemModel? item]) {
     switch (format) {
       case ActivityFormat.multipleChoice:
-        final lvl = (item?.difficultyLevel ?? 'LEARNING').toUpperCase();
-        if (lvl == 'FAMILIAR') {
-          return 'Select the correct Cebuano word for the English word below.';
-        }
         return 'Select the correct English word for the Cebuano word below.';
       case ActivityFormat.imageMatching:
       case ActivityFormat.imageLabeling:
@@ -1117,8 +1276,53 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     }
   }
 
+  static bool _containsCebuanoKeywords(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('ang ') ||
+        lower.contains('mga ') ||
+        lower.contains('sa ') ||
+        lower.contains('ug ') ||
+        lower.contains('og ') ||
+        lower.contains('nga ') ||
+        lower.contains('para ') ||
+        lower.contains('pahimangno') ||
+        lower.contains('pasabot');
+  }
+
+  static String? _getEnglishClueFallback(String word) {
+    const definitions = {
+      'bread': 'A food made of flour, water, and yeast mixed and baked.',
+      'sharp': 'Having a thin edge or pointed tip that cuts easily.',
+      'read': 'To look at and comprehend the meaning of written words.',
+      'notebook': 'A book of blank or ruled pages for writing notes.',
+      'pencil': 'An instrument for writing or drawing with a graphite core.',
+      'mother': 'A female parent.',
+      'father': 'A male parent.',
+      'sister': 'A female sibling.',
+      'brother': 'A male sibling.',
+      'cook': 'To prepare food by heating it.',
+      'rice': 'A staple grain boiled and eaten with everyday meals.',
+      'water': 'A clear liquid essential for drinking and living.',
+      'milk': 'A nutritious white liquid produced by mammals.',
+      'apple': 'A round edible fruit with red, yellow, or green skin.',
+      'sweet': 'Having the pleasant taste characteristic of sugar.',
+      'share': 'To divide and distribute a portion among others.',
+      'warm': 'Having or producing a comfortable amount of heat.',
+      'write': 'To make words or letters on paper with a pen or pencil.',
+      'clean': 'Free from dirt, marks, or stains.',
+      'neat': 'Arranged in an orderly and tidy way.',
+      'school': 'An institution where students learn and study.',
+      'dog': 'A loyal domesticated mammal that barks.',
+      'cat': 'A small domesticated feline animal.',
+      'bird': 'A warm-blooded feathered creature with wings.',
+      'fish': 'A limbless cold-blooded animal that swims in water.',
+      'horse': 'A large animal with hooves used for riding.',
+    };
+    return definitions[word.trim().toLowerCase()];
+  }
+
   String? _getHintTextForActivity(PracticeItemModel item) {
-    final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
+    final lvl = _getEffectiveLevel(item);
     final isLearning = lvl == 'LEARNING';
     final isFamiliar = lvl == 'FAMILIAR';
     final isProficient = lvl == 'PROFICIENT' || lvl == 'MASTERED';
@@ -1128,8 +1332,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     if (isProficient || hintLang == 'NONE') return null;
     if (!isLearning && !isFamiliar && !item.showHint) return null;
 
-    // For HINT_TO_WORD, the clue is shown in the question card itself — no extra hint needed
-    if (item.activityFormat == ActivityFormat.hintToWord) return null;
+    // For HINT_TO_WORD and MATCHING, no hint box is shown
+    if (item.activityFormat == ActivityFormat.hintToWord ||
+        item.activityFormat == ActivityFormat.matching) {
+      return null;
+    }
 
     // 1. LEARNING Tier: Hints MUST be in Bisaya/Cebuano (from HINT CEB / hint_cebuano_sentence)
     if (isLearning) {
@@ -1174,42 +1381,54 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
     }
 
-    // 2. FAMILIAR Tier: Hints are in English (from HINT EN / hint_definition)
+    // 2. FAMILIAR Tier: Hints/tips MUST be in English (from HINT DEF / hint_definition / English clues)
     if (isFamiliar) {
-      // Primary: configured HINT (EN) from the database table (hint_definition)
+      // Primary: configured HINT (DEF) from the database table (hint_definition)
       if (item.hintDefinition != null && item.hintDefinition!.trim().isNotEmpty) {
         final text = item.hintDefinition!.trim();
-        return text.toLowerCase().startsWith('hint')
+        return text.toLowerCase().startsWith('hint:') ||
+                text.toLowerCase().startsWith('tip:')
             ? text
             : 'Hint: $text';
       }
 
-      // Secondary: custom explanation text if provided
+      // Secondary: custom explanation / hintText if provided in English
       if (item.hintText != null && item.hintText!.trim().isNotEmpty) {
         final hint = item.hintText!.trim();
-        return hint.toLowerCase().startsWith('hint')
-            ? hint
-            : 'Hint: $hint';
+        if (!_containsCebuanoKeywords(hint)) {
+          return hint.toLowerCase().startsWith('hint:') ||
+                  hint.toLowerCase().startsWith('tip:')
+              ? hint
+              : 'Hint: $hint';
+        }
       }
 
-      // Fallback per activity format if no explicit HINT (EN) is configured
+      // Fallback: English dictionary definition clue
+      final clue = _getEnglishClueFallback(item.englishWord);
+      if (clue != null && clue.isNotEmpty) {
+        return 'Hint: $clue';
+      }
+
+      // Fallback per activity format if no explicit English definition is found
       switch (item.activityFormat) {
         case ActivityFormat.multipleChoice:
-          return 'Tip: Think about how "${item.englishWord}" is used in English.';
+        case ActivityFormat.imageMatching:
+        case ActivityFormat.imageLabeling:
+          return 'Hint: Focus on the meaning of "${item.englishWord}".';
 
         case ActivityFormat.fillInTheBlank:
         case ActivityFormat.listeningTyping:
-          return 'Tip: Think about what word fits the context.';
+          return 'Hint: Complete the sentence with the correct English word.';
 
         case ActivityFormat.wordScramble:
-          return 'Tip: Starts with "${item.englishWord.isNotEmpty ? item.englishWord[0].toUpperCase() : '?'}"';
+          return 'Hint: Unscramble the letters to form "${item.englishWord.isNotEmpty ? item.englishWord[0].toUpperCase() : ''}...".';
 
         case ActivityFormat.rearrangement:
         case ActivityFormat.trueOrFalse:
-          return 'Tip: Focus on the sentence structure.';
+          return 'Hint: Determine if the meaning matches "${item.englishWord}".';
 
         default:
-          return null;
+          return 'Hint: Think of what "${item.englishWord}" means.';
       }
     }
 
@@ -1217,7 +1436,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   String _getListeningTypingAudioText(PracticeItemModel item) {
-    final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+    final lvl = _getEffectiveLevel(item);
     if (lvl == 'LEARNING') {
       return item.englishWord;
     } else if (lvl == 'FAMILIAR') {
@@ -1308,10 +1527,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
       learnerAns = _options[_selectedOptionIndex];
 
-      final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
-      final isFamiliarMC = item.activityFormat == ActivityFormat.multipleChoice &&
-          lvl == 'FAMILIAR';
-      String targetCorrect = isFamiliarMC ? item.cebuanoMeaning : item.englishWord;
+      final lvl = _getEffectiveLevel(item);
+      String targetCorrect = item.englishWord;
 
       // For fill-in-the-blank, use the same logic as option building
       if (item.activityFormat == ActivityFormat.fillInTheBlank) {
@@ -1332,13 +1549,13 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       }
 
       debugPrint(
-        'MC/FITB check: selected="$learnerAns", comparing against="$targetCorrect", isFamiliarMC=$isFamiliarMC',
+        'MC/FITB check: selected="$learnerAns", comparing against="$targetCorrect"',
       );
       correct = (learnerAns.trim().toLowerCase() == targetCorrect.trim().toLowerCase());
       correctAns = targetCorrect;
     } else if (item.activityFormat == ActivityFormat.listeningTyping) {
       learnerAns = _typingController.text.trim();
-      final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+      final lvl = _getEffectiveLevel(item);
       String correctTarget;
       if (lvl == 'LEARNING') {
         correctTarget = item.englishWord;
@@ -1520,127 +1737,233 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         default:
           formatName = 'MULTIPLE_CHOICE';
       }
-      final submitResp = await provider.submitRetrievalAnswer(
-        widget.sessionId,
-        item.wordId,
-        correct,
-        wrongAnswer: correct ? null : learnerAns,
-        activityFormat: formatName,
-      );
+      Map<String, dynamic>? submitResp;
+      try {
+        submitResp = await provider.submitRetrievalAnswer(
+          widget.sessionId,
+          item.wordId,
+          correct,
+          wrongAnswer: correct ? null : learnerAns,
+          activityFormat: formatName,
+        );
+        debugPrint('submitRetrievalAnswer response for ${item.wordId}: $submitResp');
+      } catch (e) {
+        debugPrint('submitRetrievalAnswer exception for ${item.wordId}: $e');
+      }
+
+      bool leveledUp = false;
+      String newLevel = '';
+
       if (submitResp != null) {
         final currentLvl = submitResp['currentLevel']?.toString();
         if (currentLvl != null) {
           final tierOrd = _tierOrdinal(currentLvl);
+          _wordBestTier[item.wordId] = tierOrd;
+        }
+        if (submitResp['consecutiveCorrect'] != null) {
+          _wordCorrectStreak[item.wordId] = (submitResp['consecutiveCorrect'] as num).toInt();
+        }
+        if (submitResp['consecutiveIncorrect'] != null) {
+          _wordIncorrectStreak[item.wordId] = (submitResp['consecutiveIncorrect'] as num).toInt();
+        }
+
+        if (submitResp['leveledUp'] == true) {
+          leveledUp = true;
+          newLevel = submitResp['currentLevel']?.toString() ?? '';
+          _wordCorrectStreak[item.wordId] = 0;
+          _wordIncorrectStreak[item.wordId] = 0;
+        } else if (correct && (_wordBestTier[item.wordId] ?? 0) >= 2) {
+          // When at PROFICIENT (tier 2), answering correctly immediately promotes the word to MASTERED (tier 3)
+          _wordBestTier[item.wordId] = 3;
+          leveledUp = true;
+          newLevel = 'MASTERED';
+          _wordCorrectStreak[item.wordId] = 0;
+          _wordIncorrectStreak[item.wordId] = 0;
+        } else if (submitResp['demoted'] == true) {
+          _wordCorrectStreak[item.wordId] = 0;
+          _wordIncorrectStreak[item.wordId] = 0;
+          debugPrint('DEMOTED: word=${item.wordId} demoted to ${submitResp['currentLevel']}');
+        }
+      } else {
+        // Fallback / Sandbox / Missing session resolution:
+        if (correct) {
+          _wordIncorrectStreak[item.wordId] = 0;
+          final currentStreak = (_wordCorrectStreak[item.wordId] ?? 0) + 1;
+          _wordCorrectStreak[item.wordId] = currentStreak;
           final prevTier = _wordBestTier[item.wordId] ?? 0;
-          if (tierOrd > prevTier) {
-            _wordBestTier[item.wordId] = tierOrd;
+          final targetStreak = prevTier >= 2 ? 1 : _getUpgradeStreakForWord(item.wordId);
+          debugPrint('Word ${item.wordId} correct streak: $currentStreak/$targetStreak');
+          if (currentStreak >= targetStreak) {
+            final nextTier = (prevTier + 1).clamp(0, 3);
+            _wordBestTier[item.wordId] = nextTier;
+            _wordCorrectStreak[item.wordId] = 0;
+            leveledUp = nextTier > prevTier;
+            newLevel = _tierName(nextTier);
+          }
+        } else {
+          _wordCorrectStreak[item.wordId] = 0;
+          final currentIncorrect = (_wordIncorrectStreak[item.wordId] ?? 0) + 1;
+          _wordIncorrectStreak[item.wordId] = currentIncorrect;
+          final demotionTarget = _getDemotionThresholdForWord(item.wordId);
+          if (currentIncorrect >= demotionTarget) {
+            final prevTier = _wordBestTier[item.wordId] ?? 0;
+            final lowerTier = (prevTier - 1).clamp(0, 3);
+            _wordBestTier[item.wordId] = lowerTier;
+            _wordIncorrectStreak[item.wordId] = 0;
+            debugPrint('DEMOTED (local): word=${item.wordId} demoted to ${_tierName(lowerTier)}');
           }
         }
-        if (submitResp['leveledUp'] == true) {
-          _hasLeveledUpAnyWord = true;
-          _wordCorrectStreak[item.wordId] = 0;
-          final newLevel = submitResp['currentLevel']?.toString() ?? '';
-          debugPrint(
-            'LEVEL_UP: word=${item.wordId} to $newLevel — refreshing remaining queue items',
-          );
-          for (int i = _currentIndex + 1; i < _practiceQueue.length; i++) {
-            if (_practiceQueue[i].wordId == item.wordId) {
-              // Re-fetch this question from backend at the new difficulty level
-              try {
-                String refetchFormat;
-                switch (_practiceQueue[i].activityFormat) {
-                  case ActivityFormat.multipleChoice:
-                    refetchFormat = 'MULTIPLE_CHOICE';
-                    break;
-                  case ActivityFormat.fillInTheBlank:
-                    refetchFormat = 'FILL_IN_BLANK';
-                    break;
-                  case ActivityFormat.matching:
-                    refetchFormat = 'MATCHING';
-                    break;
-                  case ActivityFormat.listeningTyping:
-                    refetchFormat = 'TYPE_WHAT_YOU_HEAR';
-                    break;
-                  case ActivityFormat.rearrangement:
-                    refetchFormat = 'SENTENCE_ARRANGEMENT';
-                    break;
-                  case ActivityFormat.wordScramble:
-                    refetchFormat = 'WORD_SCRAMBLE';
-                    break;
-                  case ActivityFormat.imageLabeling:
-                    refetchFormat = 'IMAGE_LABELING';
-                    break;
-                  case ActivityFormat.trueOrFalse:
-                    refetchFormat = 'TRUE_OR_FALSE';
-                    break;
-                  case ActivityFormat.hintToWord:
-                    refetchFormat = 'HINT_TO_WORD';
-                    break;
-                  default:
-                    refetchFormat = 'MULTIPLE_CHOICE';
-                }
-                final q = await provider.loadSingleRetrievalQuestion(
-                  widget.sessionId,
-                  item.wordId,
-                  format: refetchFormat,
-                );
-                if (q != null) {
-                  // Update difficulty level so the question renders with new tier parameters
-                  final refreshedDistractors = (q['options'] != null && q['correctAnswer'] != null)
-                      ? List<String>.from(q['options'])
-                          .where((o) => o != q['correctAnswer'])
-                          .toList()
-                      : _practiceQueue[i].distractors;
-                  _practiceQueue[i] = PracticeItemModel(
-                    wordId: _practiceQueue[i].wordId,
-                    englishWord:
-                        q['englishWord'] ?? _practiceQueue[i].englishWord,
-                    displayWord:
-                        q['displayWord']?.toString() ?? _practiceQueue[i].displayWord,
-                    cebuanoMeaning:
-                        q['cebuanoMeaning'] ?? _practiceQueue[i].cebuanoMeaning,
-                    exampleSentenceEnglish:
-                        q['exampleSentenceEnglish'] ??
-                        _practiceQueue[i].exampleSentenceEnglish,
-                    exampleSentenceCebuano:
-                        _practiceQueue[i].exampleSentenceCebuano,
-                    activityFormat: _practiceQueue[i].activityFormat,
-                    distractors: refreshedDistractors,
-                    eligibleActivityTypes:
-                        _practiceQueue[i].eligibleActivityTypes,
-                    difficultyLevel: q['difficultyLevel'] ?? newLevel,
-                    timeLimitSeconds: q['timeLimitSeconds'] as int?,
-                    showHint: q['showHints'] == true,
-                    hintLanguage: (q['hintLanguage'] as String?) ?? 'CEBUANO',
-                    hintText: q['hintText'] as String?,
-                    hintToWordClue: q['hintToWordClue'] as String?,
-                    hintToWordClueType: q['hintToWordClueType'] as String?,
-                    hintDefinition: q['hintDefinition']?.toString() ?? _practiceQueue[i].hintDefinition,
-                    hintCebuanoSentence: q['hintCebuanoSentence']?.toString() ?? _practiceQueue[i].hintCebuanoSentence,
-                    imageAssetPath:
-                        q['imageAssetPath'] ?? _practiceQueue[i].imageAssetPath,
-                  );
-                  debugPrint(
-                    'LEVEL_UP: refreshed queue item $i for word=${item.wordId} to level=$newLevel',
-                  );
-                }
-              } catch (e) {
-                debugPrint('LEVEL_UP: failed to refresh queue item $i: $e');
+      }
+
+      final isMasteredNow = newLevel.toUpperCase() == 'MASTERED' ||
+          (_wordBestTier[item.wordId] ?? 0) >= 3 ||
+          item.difficultyLevel?.toUpperCase() == 'MASTERED';
+
+      if (isMasteredNow) {
+        _hasLeveledUpAnyWord = true;
+        _wordBestTier[item.wordId] = 3;
+        debugPrint(
+          'MASTERED: word=${item.wordId} reached MASTERED. Purging all future queue items for this word in Module 2.',
+        );
+        _practiceQueue.removeWhere((qItem) =>
+            _practiceQueue.indexOf(qItem) > _currentIndex &&
+            qItem.wordId == item.wordId);
+        _plannedScreens = _practiceQueue.length;
+      } else if (leveledUp) {
+        _hasLeveledUpAnyWord = true;
+        debugPrint(
+          'LEVEL_UP: word=${item.wordId} to $newLevel — refreshing remaining queue items',
+        );
+        bool foundRemaining = false;
+        for (int i = _currentIndex + 1; i < _practiceQueue.length; i++) {
+          if (_practiceQueue[i].wordId == item.wordId) {
+            foundRemaining = true;
+            // Re-fetch this question from backend at the new difficulty level
+            try {
+              String refetchFormat;
+              switch (_practiceQueue[i].activityFormat) {
+                case ActivityFormat.multipleChoice:
+                  refetchFormat = 'MULTIPLE_CHOICE';
+                  break;
+                case ActivityFormat.fillInTheBlank:
+                  refetchFormat = 'FILL_IN_BLANK';
+                  break;
+                case ActivityFormat.matching:
+                  refetchFormat = 'MATCHING';
+                  break;
+                case ActivityFormat.listeningTyping:
+                  refetchFormat = 'TYPE_WHAT_YOU_HEAR';
+                  break;
+                case ActivityFormat.rearrangement:
+                  refetchFormat = 'SENTENCE_ARRANGEMENT';
+                  break;
+                case ActivityFormat.wordScramble:
+                  refetchFormat = 'WORD_SCRAMBLE';
+                  break;
+                case ActivityFormat.imageLabeling:
+                  refetchFormat = 'IMAGE_LABELING';
+                  break;
+                case ActivityFormat.trueOrFalse:
+                  refetchFormat = 'TRUE_OR_FALSE';
+                  break;
+                case ActivityFormat.hintToWord:
+                  refetchFormat = 'HINT_TO_WORD';
+                  break;
+                default:
+                  refetchFormat = 'MULTIPLE_CHOICE';
               }
+              final q = await provider.loadSingleRetrievalQuestion(
+                widget.sessionId,
+                item.wordId,
+                format: refetchFormat,
+              );
+              if (q != null) {
+                final refreshedDistractors = (q['options'] != null && q['correctAnswer'] != null)
+                    ? List<String>.from(q['options'])
+                        .where((o) => o != q['correctAnswer'])
+                        .toList()
+                    : _practiceQueue[i].distractors;
+                _practiceQueue[i] = PracticeItemModel(
+                  wordId: _practiceQueue[i].wordId,
+                  englishWord:
+                      q['englishWord'] ?? _practiceQueue[i].englishWord,
+                  displayWord:
+                      q['displayWord']?.toString() ?? _practiceQueue[i].displayWord,
+                  cebuanoMeaning:
+                      q['cebuanoMeaning'] ?? _practiceQueue[i].cebuanoMeaning,
+                  exampleSentenceEnglish:
+                      q['exampleSentenceEnglish'] ??
+                      _practiceQueue[i].exampleSentenceEnglish,
+                  exampleSentenceCebuano:
+                      _practiceQueue[i].exampleSentenceCebuano,
+                  activityFormat: _practiceQueue[i].activityFormat,
+                  distractors: refreshedDistractors,
+                  eligibleActivityTypes:
+                      _practiceQueue[i].eligibleActivityTypes,
+                  difficultyLevel: q['difficultyLevel'] ?? newLevel,
+                  timeLimitSeconds: q['timeLimitSeconds'] as int?,
+                  showHint: q['showHints'] == true,
+                  hintLanguage: (q['hintLanguage'] as String?) ?? 'CEBUANO',
+                  hintText: q['hintText'] as String?,
+                  hintToWordClue: q['hintToWordClue'] as String?,
+                  hintToWordClueType: q['hintToWordClueType'] as String?,
+                  hintDefinition: q['hintDefinition']?.toString() ?? _practiceQueue[i].hintDefinition,
+                  hintCebuanoSentence: q['hintCebuanoSentence']?.toString() ?? _practiceQueue[i].hintCebuanoSentence,
+                  imageAssetPath:
+                      q['imageAssetPath'] ?? _practiceQueue[i].imageAssetPath,
+                );
+                debugPrint(
+                  'LEVEL_UP: refreshed queue item $i for word=${item.wordId} to level=$newLevel',
+                );
+              } else {
+                _practiceQueue[i] = _practiceQueue[i].copyWith(
+                  difficultyLevel: newLevel,
+                );
+              }
+            } catch (e) {
+              debugPrint('LEVEL_UP: failed to refresh queue item $i: $e');
+              _practiceQueue[i] = _practiceQueue[i].copyWith(
+                difficultyLevel: newLevel,
+              );
             }
           }
-        } else if (correct) {
-          _wordCorrectStreak[item.wordId] =
-              (_wordCorrectStreak[item.wordId] ?? 0) + 1;
+        }
+        if (!foundRemaining && newLevel.toUpperCase() != 'MASTERED') {
+          try {
+            final targetWord = _words.firstWhere(
+              (w) => w.wordId == item.wordId,
+              orElse: () => VocabularyWordModel(
+                wordId: item.wordId,
+                lessonId: widget.lessonId,
+                englishWord: item.englishWord,
+                cebuanoMeaning: item.cebuanoMeaning,
+                exampleSentenceEnglish: item.exampleSentenceEnglish,
+                gradeLevel: 'GRADE_4',
+                wordOrder: 1,
+                isConfusablePairMember: false,
+                difficultyLevel: newLevel,
+              ),
+            );
+            final newFormat = (item.activityFormat == ActivityFormat.multipleChoice)
+                ? ActivityFormat.fillInTheBlank
+                : ActivityFormat.multipleChoice;
+            final newItem = _createPracticeItem(targetWord, newFormat);
+            _practiceQueue.add(newItem);
+            _plannedScreens = _practiceQueue.length;
+            debugPrint(
+              'LEVEL_UP: Appended next-tier practice item for word=${item.wordId} (level=$newLevel) to practice queue',
+            );
+          } catch (e) {
+            debugPrint('LEVEL_UP: Error appending next-tier item: $e');
+          }
         }
       }
     }
 
     if (correct) {
       _consecutiveStreak++;
-      if (!_hasShownStreakCelebrationThisSession &&
-          _consecutiveStreak >= _streakCelebrationThreshold) {
-        _hasShownStreakCelebrationThisSession = true;
+      if (_consecutiveStreak >= _streakCelebrationThreshold &&
+          _consecutiveStreak % _streakCelebrationThreshold == 0) {
         if (mounted) {
           StreakCelebrationOverlay.show(context, streakCount: _consecutiveStreak);
         }
@@ -1650,14 +1973,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       } else {
         _initialPassCorrectCount++;
       }
-      if (widget.isSandbox) {
-        final prevTier = _wordBestTier[item.wordId] ?? 0;
-        final nextTier = (prevTier + 1).clamp(0, 3);
-        _wordBestTier[item.wordId] = nextTier;
-      }
     } else {
       _consecutiveStreak = 0; // Reset session-wide streak on any wrong answer
-      _wordCorrectStreak[item.wordId] = 0; // Streak resets on error
       _wordWrongAttempts[item.wordId] =
           (_wordWrongAttempts[item.wordId] ?? 0) + 1;
     }
@@ -1940,7 +2257,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     await Future.delayed(const Duration(milliseconds: 450));
 
     // Compute overall mastery percentage using point-based scoring per word.
-    final uniqueWordCount = _practiceQueue.map((p) => p.wordId).toSet().length;
+    final practicedWordIds = _practiceQueue.map((p) => p.wordId).toSet();
+    final allLessonWordIds = _words.map((w) => w.wordId).toSet();
+    final uniqueWordCount = practicedWordIds.isNotEmpty
+        ? practicedWordIds.length
+        : (allLessonWordIds.isNotEmpty ? allLessonWordIds.length : 1);
     final denom = uniqueWordCount == 0 ? 1 : uniqueWordCount;
     var moduleScore = ((_scorePoints / denom) * 100.0).clamp(0.0, 100.0);
     if (moduleScore.isNaN || moduleScore.isInfinite) moduleScore = 0.0;
@@ -1963,7 +2284,23 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         sessionId: widget.sessionId,
       );
     } catch (e) {
-      debugPrint('Module 2 score sync failed, continuing anyway: $e');
+      debugPrint('Module 2 score sync failed (attempt 1): $e — retrying in 2 s...');
+      // Retry once after a short delay to handle transient network issues
+      await Future.delayed(const Duration(seconds: 2));
+      try {
+        await lessonProvider.persistModuleScore(
+          widget.lessonId,
+          widget.isSandbox ? null : 2,
+          passCorrect,
+          denom,
+          customScore: moduleScore,
+          isSandbox: widget.isSandbox,
+          sessionId: widget.sessionId,
+        );
+        debugPrint('Module 2 score sync succeeded on retry.');
+      } catch (e2) {
+        debugPrint('Module 2 score sync failed after retry: $e2 — score will be saved locally.');
+      }
     }
 
     if (!widget.isSandbox) {
@@ -1992,29 +2329,46 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       });
     }
 
-    bool hasUnmasteredWords = false;
+    bool hasUnfinishedWords = false;
 
     if (widget.isSandbox) {
-      hasUnmasteredWords =
+      hasUnfinishedWords =
           false; // Always allow advancing in Sandbox mode for testing
     } else {
-      final masteryStatus = await lessonProvider.checkLessonMasteryStatus(
-        widget.lessonId,
-      );
-      if (masteryStatus != null) {
-        hasUnmasteredWords = masteryStatus['allMastered'] == false;
+      // In Module 2 (Active Practice), words are ready for Module 3 once they reach PROFICIENT (tier >= 2) or MASTERED (tier >= 3).
+      final practicedWordIds = _practiceQueue.map((p) => p.wordId).toSet();
+      final allPracticedProficient = practicedWordIds.isNotEmpty &&
+          practicedWordIds.every((id) => (_wordBestTier[id] ?? 0) >= 2);
+      final allWordsProficient = _words.isNotEmpty &&
+          _words.every((w) => (_wordBestTier[w.wordId] ?? 0) >= 2);
+
+      if (allPracticedProficient || allWordsProficient) {
+        hasUnfinishedWords = false;
+        debugPrint(
+          'ActivePractice: words reached PROFICIENT/MASTERED -> advancing to Module 3',
+        );
       } else {
-        hasUnmasteredWords = _wordWrongAttempts.isNotEmpty;
+        final masteryStatus = await lessonProvider.checkLessonMasteryStatus(
+          widget.lessonId,
+          moduleNumber: 2,
+        );
+        if (masteryStatus != null && masteryStatus['allMastered'] == true) {
+          hasUnfinishedWords = false;
+        } else {
+          hasUnfinishedWords = practicedWordIds.isNotEmpty
+              ? practicedWordIds.any((id) => (_wordBestTier[id] ?? 0) < 2)
+              : _words.any((w) => (_wordBestTier[w.wordId] ?? 0) < 2);
+        }
       }
     }
 
-    if (hasUnmasteredWords) {
+    if (hasUnfinishedWords) {
       if (!mounted) return;
       if (_hasLeveledUpAnyWord) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Level up! Generating harder questions to help you reach Mastered...',
+              'Level up! Generating harder questions to help you reach Proficient...',
             ),
             backgroundColor: Color(0xFF10B981),
             duration: Duration(seconds: 3),
@@ -2024,7 +2378,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Round complete! Practicing active words to increase mastery...',
+              'Round complete! Practicing active words to increase proficiency...',
             ),
             backgroundColor: Color(0xFF3B82F6),
             duration: Duration(seconds: 3),
@@ -2039,7 +2393,6 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         _completedScreens = 0;
         _initialPassCorrectCount = 0;
         _reinforcementPassCorrectCount = 0;
-        _wordWrongAttempts.clear();
         _hasLeveledUpAnyWord = false;
         _progressOverride = null; // Preserve _maxProgress so ladder progress isn't wiped!
         _showFeedback = false;
@@ -2052,8 +2405,24 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       return;
     }
 
+    // Module 2 is complete! Save active route for Module 3 so resuming opens Module 3
     if (!mounted) return;
-    debugPrint('Navigating to Module 3...');
+    if (!widget.isSandbox) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final posFocus = auth.learner?.posFocus;
+      await LocalStorageService.saveActiveLessonSession(
+        widget.lessonId,
+        widget.sessionId,
+        '/session/${widget.sessionId}/sentence-building',
+        posFocus: posFocus ?? 'ALL',
+        allWords: widget.allWords,
+        categoryId: widget.categoryId,
+        lessonTitle: widget.lessonTitle,
+      );
+    }
+
+    if (!mounted) return;
+    debugPrint('Navigating to Module 3 (Sentence Building)...');
     context.go(
       '/session/${widget.sessionId}/sentence-building',
       extra: {
@@ -2110,7 +2479,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       double wordPoints = tier.toDouble();
       if (tier < 3) {
         final streak = (_wordCorrectStreak[w.wordId] ?? 0);
-        final streakBonus = (streak / 2.0 * 0.9).clamp(0.0, 0.9);
+        final streakBonus = (streak / _upgradeStreakRequired * 0.9).clamp(0.0, 0.9);
         wordPoints += streakBonus;
       }
       totalMasteryPoints += wordPoints;
@@ -2162,6 +2531,39 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             ),
           ),
           actions: [
+            if (_consecutiveStreak >= 1)
+              Padding(
+                padding: const EdgeInsets.only(right: 6.0),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.local_fire_department_rounded,
+                          color: Color(0xFFEA580C),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$_consecutiveStreak',
+                          style: const TextStyle(
+                            color: Color(0xFFEA580C),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Center(
@@ -2218,6 +2620,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                       ),
                       const SizedBox(height: 12),
                       () {
+                        if (item.activityFormat == ActivityFormat.matching) {
+                          return const SizedBox.shrink();
+                        }
                         final hintText = _getHintTextForActivity(item);
                         if (hintText == null) return const SizedBox.shrink();
                         return Column(
@@ -2242,12 +2647,21 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      hintText,
+                                    child: CebuanoTextHighlighter(
+                                      text: hintText,
+                                      highlightWord: item.englishWord,
                                       style: const TextStyle(
                                         color: Color(0xFFA21CAF),
                                         fontWeight: FontWeight.w600,
                                         fontSize: 14,
+                                      ),
+                                      highlightStyle: const TextStyle(
+                                        color: Color(0xFF0284C7),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: Color(0xFF0284C7),
+                                        decorationThickness: 2.0,
                                       ),
                                     ),
                                   ),
@@ -2331,17 +2745,18 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Widget _buildDifficultyIndicator(PracticeItemModel item) {
-    final rawLevel = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
-    final level = (rawLevel == 'MASTERED') ? 'PROFICIENT' : rawLevel;
+    final level = _getEffectiveLevel(item);
     const labels = {
       'LEARNING': 'Learning',
       'FAMILIAR': 'Familiar',
       'PROFICIENT': 'Proficient',
+      'MASTERED': 'Mastered',
     };
     const colors = {
       'LEARNING': Color(0xFF94A3B8),
       'FAMILIAR': Color(0xFF3B82F6),
       'PROFICIENT': Color(0xFFF59E0B),
+      'MASTERED': Color(0xFF10B981),
     };
     final color = colors[level] ?? colors['LEARNING']!;
     final label = labels[level] ?? 'Learning';
@@ -2413,7 +2828,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     // FAMILIAR: all letters scrambled, no pre-placed anchor
     // PROFICIENT: all letters + 2 fake letters
     // MASTERED: all letters + 3 fake letters
-    final level = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
+    final level = _getEffectiveLevel(item);
     final isLearning = level == 'LEARNING';
 
     return Column(
@@ -2600,7 +3015,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   Widget _buildImageLabeling(PracticeItemModel item) {
     // Only show Cebuano meaning label at LEARNING tier
-    final level = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
+    final level = _getEffectiveLevel(item);
     final showCebuanoLabel = level == 'LEARNING';
 
     return Column(
@@ -2637,6 +3052,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Widget _buildTrueOrFalse(PracticeItemModel item) {
+    final level = _getEffectiveLevel(item);
     final isTrueSelected = _selectedOptionIndex == 0;
     final isFalseSelected = _selectedOptionIndex == 1;
 
@@ -2644,9 +3060,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Show image only at LEARNING and FAMILIAR tiers
-        if ((item.difficultyLevel ?? 'LEARNING').toUpperCase() !=
+        if (level !=
                 'PROFICIENT' &&
-            (item.difficultyLevel ?? 'LEARNING').toUpperCase() != 'MASTERED' &&
+            level != 'MASTERED' &&
             item.imageAssetPath != null &&
             item.imageAssetPath!.isNotEmpty &&
             (item.imageAssetPath!.startsWith('http') ||
@@ -2686,8 +3102,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                 item.englishWord,
                 style: const TextStyle(
                   fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0284C7),
+                  decoration: TextDecoration.underline,
+                  decorationColor: Color(0xFF0284C7),
+                  decorationThickness: 2.5,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -2848,29 +3267,48 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                   ),
                 ),
               () {
-                final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
-                final isFamiliar = lvl == 'FAMILIAR';
-                final promptWord = isFamiliar
-                    ? (item.displayWord != null && item.displayWord!.isNotEmpty
-                        ? item.displayWord!
-                        : item.englishWord)
-                    : (item.displayWord != null && item.displayWord!.isNotEmpty
-                        ? item.displayWord!
-                        : item.cebuanoMeaning);
-                return Text(
-                  promptWord,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
+                // In Multiple Choice, prompt is the Cebuano word and options are English words
+                final promptWord = item.cebuanoMeaning.isNotEmpty
+                    ? item.cebuanoMeaning
+                    : item.englishWord;
+                return Column(
+                  children: [
+                    Text(
+                      promptWord,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.volume_up_rounded,
+                        color: Color(0xFF06A6FF),
+                        size: 24,
+                      ),
+                      onPressed: () => _ttsService.speakCebuano(promptWord),
+                      tooltip: "Listen to Cebuano word",
+                    ),
+                  ],
                 );
               }(),
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        // Choices (English at LEARNING/PROFICIENT, Cebuano at FAMILIAR)
+        const SizedBox(height: 20),
+        const Text(
+          'Choose the correct English word:',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Choices (English words)
         ...List.generate(_options.length, (index) {
           final option = _options[index];
           final isSelected = _selectedOptionIndex == index;
@@ -2886,9 +3324,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           }
 
           if (_checked) {
-            final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
-            final isFamiliar = lvl == 'FAMILIAR';
-            final expectedAnswer = isFamiliar ? item.cebuanoMeaning : item.englishWord;
+            final expectedAnswer = item.englishWord;
             final isCorrectOption = (option.trim().toLowerCase() == expectedAnswer.trim().toLowerCase());
             if (isCorrectOption) {
               cardBorderColor = const Color(0xFF22C55E);
@@ -2957,6 +3393,22 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                         ),
                       ),
                     ),
+                    Material(
+                      color: Colors.transparent,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => TTSService.speakEnglish(option),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: Icon(
+                            Icons.volume_up_rounded,
+                            color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -2969,7 +3421,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // 1b. Hint-to-Word Activity Widget
   Widget _buildHintToWord(PracticeItemModel item) {
-    final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
+    final lvl = _getEffectiveLevel(item);
     final isLearning = lvl == 'LEARNING';
     final isFamiliar = lvl == 'FAMILIAR';
 
@@ -3728,7 +4180,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Widget _buildListeningTyping(PracticeItemModel item) {
-    final lvl = item.difficultyLevel?.toUpperCase() ?? 'LEARNING';
+    final lvl = _getEffectiveLevel(item);
     final showCebuano = (lvl == 'LEARNING' || lvl == 'FAMILIAR');
 
     // Hide English prompt from the UI (the learner must listen); show Bisaya hint instead if enabled
@@ -3851,9 +4303,8 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       if (item.activityFormat == ActivityFormat.trueOrFalse) {
         return item.fitbAnswer ?? 'True';
       }
-      final lvl = (item.difficultyLevel ?? 'LEARNING').toUpperCase();
-      if (item.activityFormat == ActivityFormat.multipleChoice && lvl == 'FAMILIAR') {
-        return item.cebuanoMeaning;
+      if (item.activityFormat == ActivityFormat.multipleChoice) {
+        return item.englishWord;
       }
       return item.englishWord;
     }
@@ -4253,7 +4704,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Exit Activity?'),
         content: const Text(
-          'Leaving now will discard your current session progress.',
+          'Your progress will be saved so you can resume where you left off.',
         ),
         actions: [
           TextButton(
@@ -4261,9 +4712,14 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             child: const Text('CANCEL'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              context.go('/home');
+            onPressed: () async {
+              await _saveCurrentState();
+              if (ctx.mounted) {
+                Navigator.of(ctx).pop();
+              }
+              if (mounted) {
+                context.go('/home');
+              }
             },
             child: const Text(
               'EXIT',

@@ -31,6 +31,7 @@ public class ReviewService {
     private final PracticeSessionRepository practiceSessionRepository;
     private final CumulativeReviewSessionRepository cumulativeReviewSessionRepository;
     private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
+    private final DifficultyProgressRepository difficultyProgressRepository;
 
     @Transactional
     public ReviewSession startReview(UUID learnerId, UUID lessonId) {
@@ -179,7 +180,9 @@ public class ReviewService {
         // Module 1 is vocabulary introduction (presentation, not assessed quiz).
         // Only assessed practice modules (Module 2+) update the lesson's mastery score.
         if (moduleNumber != null && moduleNumber > 1) {
-            lls.setMasteryScore(bdScore);
+            if (lls.getMasteryScore() == null || bdScore.compareTo(lls.getMasteryScore()) > 0) {
+                lls.setMasteryScore(bdScore);
+            }
             lls.setUpdatedAt(OffsetDateTime.now());
             lessonStatusRepository.save(lls);
         }
@@ -254,7 +257,9 @@ public class ReviewService {
 
         status.setAttempts(status.getAttempts() + 1);
         BigDecimal newScore = BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP);
-        status.setMasteryScore(newScore);
+        if (status.getMasteryScore() == null || newScore.compareTo(status.getMasteryScore()) > 0) {
+            status.setMasteryScore(newScore);
+        }
         status.setUpdatedAt(OffsetDateTime.now());
 
         return lessonStatusRepository.save(status);
@@ -291,7 +296,9 @@ public class ReviewService {
 
                         status.setAttempts(status.getAttempts() + 1);
                         BigDecimal newScore = BigDecimal.valueOf(score != null ? score : 0.0).setScale(2, RoundingMode.HALF_UP);
-                        status.setMasteryScore(newScore);
+                        if (status.getMasteryScore() == null || newScore.compareTo(status.getMasteryScore()) > 0) {
+                            status.setMasteryScore(newScore);
+                        }
                         status.setUpdatedAt(OffsetDateTime.now());
 
                         if (passed) {
@@ -385,45 +392,100 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> generateModule4ReviewPayload(UUID learnerId, UUID lessonId) {
         List<VocabularyWord> currentWords = wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId);
+        
+        // Filter: strictly target MASTERED words (final tier), with fallback to PROFICIENT if learner has none mastered yet
+        if (learnerId != null) {
+            List<DifficultyProgress> progressList = difficultyProgressRepository.findByLearnerLearnerIdAndWordLessonLessonId(learnerId, lessonId);
+            Set<UUID> masteredWordIds = progressList.stream()
+                    .filter(p -> p.getCurrentLevel() == DifficultyLevel.MASTERED)
+                    .map(p -> p.getWord().getWordId())
+                    .collect(Collectors.toSet());
 
-        List<String> formats = List.of("MULTIPLE_CHOICE", "FILL_IN_BLANK", "MATCHING", "SENTENCE_RECONSTRUCTION");
-        List<String> bag = new ArrayList<>();
+            if (!masteredWordIds.isEmpty()) {
+                List<VocabularyWord> filtered = currentWords.stream()
+                        .filter(w -> masteredWordIds.contains(w.getWordId()))
+                        .collect(Collectors.toList());
+                if (!filtered.isEmpty()) {
+                    currentWords = filtered;
+                }
+            } else {
+                Set<UUID> proficientWordIds = progressList.stream()
+                        .filter(p -> p.getCurrentLevel() == DifficultyLevel.PROFICIENT)
+                        .map(p -> p.getWord().getWordId())
+                        .collect(Collectors.toSet());
+                if (!proficientWordIds.isEmpty()) {
+                    List<VocabularyWord> filtered = currentWords.stream()
+                            .filter(w -> proficientWordIds.contains(w.getWordId()))
+                            .collect(Collectors.toList());
+                    if (!filtered.isEmpty()) {
+                        currentWords = filtered;
+                    }
+                }
+            }
+        }
+
+        Lesson lesson = lessonRepository.findById(lessonId).orElse(null);
+
+        String rawActivities = null;
+        if (lesson != null && lesson.getCategory() != null && lesson.getCategory().getModule4Activities() != null && !lesson.getCategory().getModule4Activities().isBlank()) {
+            rawActivities = lesson.getCategory().getModule4Activities();
+        } else if (lesson != null && lesson.getModule4Activities() != null && !lesson.getModule4Activities().isBlank()) {
+            rawActivities = lesson.getModule4Activities();
+        }
+
+        List<String> formats;
+        if (rawActivities != null && !rawActivities.isBlank()) {
+            formats = Arrays.stream(rawActivities.split(";"))
+                    .map(String::trim)
+                    .map(s -> s.equals("FILL_IN_THE_BLANK") ? "FILL_IN_BLANK" : s)
+                    .map(s -> s.equals("IMAGE_MATCHING") ? "MATCHING" : s)
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .collect(Collectors.toList());
+        } else {
+            formats = List.of("MULTIPLE_CHOICE", "MATCHING", "FILL_IN_BLANK", "WORD_SCRAMBLE", "SENTENCE_RECONSTRUCTION", "TRUE_OR_FALSE");
+        }
+        
+        if (formats.isEmpty()) {
+            formats = List.of("MULTIPLE_CHOICE");
+        }
+
         Random random = new Random();
-
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (VocabularyWord word : currentWords) {
-            if (bag.isEmpty()) {
-                bag.addAll(formats);
-                Collections.shuffle(bag, random);
+            for (String format : formats) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("wordId", word.getWordId().toString());
+                map.put("word", word.getEnglishWord());
+                map.put("englishWord", word.getEnglishWord());
+                map.put("definition", word.getCebuanoMeaning());
+                map.put("cebuanoMeaning", word.getCebuanoMeaning());
+                map.put("example", word.getExampleSentenceEnglish());
+                map.put("exampleSentenceEnglish", word.getExampleSentenceEnglish());
+                map.put("exampleCebuano", word.getExampleSentenceCebuano());
+                map.put("exampleSentenceCebuano", word.getExampleSentenceCebuano());
+                map.put("cebuanoSentence", word.getExampleSentenceCebuano());
+                map.put("sentenceCebuano", word.getExampleSentenceCebuano());
+                map.put("audioTextCebuano", word.getAudioTextCebuano());
+                map.put("audioTextEnglish", word.getAudioTextEnglish());
+                map.put("tileSentence", word.getTileSentence());
+                map.put("fillBlankSentence", word.getFillBlankSentence());
+                map.put("fitbSentence", (word.getFillBlankSentence() != null && !word.getFillBlankSentence().isBlank())
+                        ? word.getFillBlankSentence()
+                        : word.getExampleSentenceEnglish());
+                map.put("distractorPool", word.getDistractorPool());
+                map.put("explanationText", word.getExplanationText());
+                map.put("partOfSpeech", word.getPartOfSpeech());
+                map.put("imageAssetPath", word.getImageAssetPath());
+                map.put("activityFormat", format);
+                map.put("isRefresher", false);
+
+                result.add(map);
             }
-            String selectedFormat = bag.remove(0);
-
-            Map<String, Object> map = new HashMap<>();
-            map.put("wordId", word.getWordId().toString());
-            map.put("word", word.getEnglishWord());
-            map.put("englishWord", word.getEnglishWord());
-            map.put("definition", word.getCebuanoMeaning());
-            map.put("cebuanoMeaning", word.getCebuanoMeaning());
-            map.put("example", word.getExampleSentenceEnglish());
-            map.put("exampleSentenceEnglish", word.getExampleSentenceEnglish());
-            map.put("exampleCebuano", word.getExampleSentenceCebuano());
-            map.put("exampleSentenceCebuano", word.getExampleSentenceCebuano());
-            map.put("cebuanoSentence", word.getExampleSentenceCebuano());
-            map.put("sentenceCebuano", word.getExampleSentenceCebuano());
-            map.put("audioTextCebuano", word.getAudioTextCebuano());
-            map.put("audioTextEnglish", word.getAudioTextEnglish());
-            map.put("tileSentence", word.getTileSentence());
-            map.put("fillBlankSentence", word.getFillBlankSentence());
-            map.put("distractorPool", word.getDistractorPool());
-            map.put("explanationText", word.getExplanationText());
-            map.put("partOfSpeech", word.getPartOfSpeech());
-            map.put("imageAssetPath", word.getImageAssetPath());
-            map.put("activityFormat", selectedFormat);
-            map.put("isRefresher", false);
-
-            result.add(map);
         }
+        
+        Collections.shuffle(result, random);
 
         return result;
     }

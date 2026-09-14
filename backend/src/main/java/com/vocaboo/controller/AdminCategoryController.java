@@ -98,6 +98,7 @@ public class AdminCategoryController {
         map.put("teacher_id", c.getTeacher() != null ? c.getTeacher().getTeacherId() : null);
         map.put("class_id", c.getClassroom() != null ? c.getClassroom().getClassId() : null);
         map.put("class_name", c.getClassroom() != null ? c.getClassroom().getName() : null);
+        map.put("module4_activities", c.getModule4Activities());
         return map;
     }
 

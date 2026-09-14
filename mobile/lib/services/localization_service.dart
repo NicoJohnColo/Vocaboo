@@ -146,6 +146,12 @@ class LocalizationService {
       'cumulative_review': 'Cumulative Review',
 
       // Sentence Building Screen (Module 3)
+      'build_the_sentence': 'PAGHIMO OG PAHAYAG',
+      'your_sentence': 'Imong Pahayag:',
+      'word_bank': 'BANGKO SA MGA PULONG',
+      'preview_label': 'Preview:',
+      'guided_translation_label': 'Giya nga Hubad:',
+      'tap_words_placeholder': 'I-tap ang mga pulong gikan sa bangko sa ubos aron maporma ang pahayag…',
       'prompt_sentence_select': 'Pilia ang husto nga pulong sa blangko.',
       'instruction_sentence_select': 'Pilia ang pulong nga nagpuno sa blangko.',
       'prompt_sentence_build': 'Han-aya ang mga pulong aron maporma ang pahayag.',
@@ -463,6 +469,12 @@ class LocalizationService {
       'cumulative_review': 'Cumulative Review',
 
       // Sentence Building Screen (Module 3)
+      'build_the_sentence': 'BUILD THE SENTENCE',
+      'your_sentence': 'Your Sentence:',
+      'word_bank': 'WORD BANK',
+      'preview_label': 'Preview:',
+      'guided_translation_label': 'Guided Translation:',
+      'tap_words_placeholder': 'I-tap ang words gikan sa bank sa ubos para ma-build imong sentence…',
       'prompt_sentence_select': 'Pilia ang sakto nga word para sa blank.',
       'instruction_sentence_select': 'Pilia ang word nga mo-fit sa blank.',
       'prompt_sentence_build': 'I-arrange ang mga words para maporma ang sentence.',
@@ -779,10 +791,16 @@ class LocalizationService {
       'cumulative_review': 'Cumulative Review',
 
       // Sentence Building Screen (Module 3)
+      'build_the_sentence': 'BUILD THE SENTENCE',
+      'your_sentence': 'Your Sentence:',
+      'word_bank': 'WORD BANK',
+      'preview_label': 'Preview:',
+      'guided_translation_label': 'Guided Translation:',
+      'tap_words_placeholder': 'Tap words from the bank below to build your sentence…',
       'prompt_sentence_select': 'Choose the word that completes the sentence.',
       'instruction_sentence_select': 'Select the correct word for the blank.',
       'prompt_sentence_build': 'Arrange the words to form the correct sentence.',
-      'instruction_sentence_drag': 'Drag or tap words to form the sentence.',
+      'instruction_sentence_drag': 'Drag or tap words below to build your sentence.',
       'prompt_sentence_type': 'Type the missing word in the blank.',
       'instruction_sentence_type': 'Type the correct word to complete the sentence.',
       'prompt_sentence_review': 'Review this sentence to reinforce your learning.',
@@ -952,10 +970,91 @@ class LocalizationService {
     }
   };
 
+  static String _normalizeLanguage(String? preference) {
+    if (preference == null || preference.trim().isEmpty) {
+      return 'FULL_ENGLISH';
+    }
+    final clean = preference.trim().toUpperCase();
+    if (clean == 'CEBUANO' ||
+        clean == 'BISAYA' ||
+        clean == 'CB' ||
+        clean == 'CEBUANO_TO_ENGLISH') {
+      return 'CEBUANO_TO_ENGLISH';
+    }
+    if (clean == 'MIXED' ||
+        clean == 'TAGLISH' ||
+        clean == 'CEBUANO_ENGLISH_MIXED') {
+      return 'CEBUANO_ENGLISH_MIXED';
+    }
+    return 'FULL_ENGLISH';
+  }
+
+  static String _formatFallbackKey(String key) {
+    // Safety map for essential instructions and prompts
+    switch (key) {
+      case 'prompt_sentence_build':
+        return 'Arrange the words to form the correct sentence.';
+      case 'instruction_sentence_drag':
+        return 'Drag or tap words below to build your sentence.';
+      case 'prompt_sentence_select':
+        return 'Choose the word that completes the sentence.';
+      case 'instruction_sentence_select':
+        return 'Select the correct word for the blank.';
+      case 'prompt_sentence_type':
+        return 'Type the missing word in the blank.';
+      case 'instruction_sentence_type':
+        return 'Type the correct word to complete the sentence.';
+      case 'instruction_tof_match':
+        return 'Does this English sentence correctly match the Cebuano?';
+      case 'prompt_sentence_review':
+        return 'Review this sentence to reinforce your learning.';
+      case 'stage_learning':
+      case 'learning':
+      case 'novice':
+        return 'Learning';
+      case 'stage_familiar':
+      case 'familiar':
+        return 'Familiar';
+      case 'stage_proficient':
+      case 'proficient':
+        return 'Proficient';
+      case 'stage_mastered':
+      case 'mastered':
+        return 'Mastered';
+      case 'build_the_sentence':
+        return 'Build the Sentence';
+      case 'your_sentence':
+        return 'Your Sentence:';
+      case 'word_bank':
+        return 'WORD BANK';
+      case 'tap_words_placeholder':
+        return 'Tap words from the bank below to build your sentence…';
+      default:
+        // Convert any raw snake_case string into readable sentence / title case
+        if (key.contains('_')) {
+          final words = key.split('_').where((w) => w.isNotEmpty).map((w) {
+            return w[0].toUpperCase() + w.substring(1).toLowerCase();
+          }).join(' ');
+          return words;
+        }
+        return key;
+    }
+  }
+
   static String translate(String? preference, String key, {List<String>? args}) {
-    final language = preference ?? 'FULL_ENGLISH';
-    final languageTranslations = _translations[language] ?? _translations['FULL_ENGLISH']!;
-    String translatedText = languageTranslations[key] ?? _translations['FULL_ENGLISH']![key] ?? key;
+    final language = _normalizeLanguage(preference);
+    final languageTranslations =
+        _translations[language] ?? _translations['FULL_ENGLISH']!;
+
+    final String? raw = languageTranslations[key] ??
+        _translations['FULL_ENGLISH']?[key];
+
+    String translatedText;
+    if (raw == null || (raw == key && key.contains('_'))) {
+      translatedText = _formatFallbackKey(key);
+    } else {
+      translatedText = raw;
+    }
 
     if (args != null && args.isNotEmpty) {
       for (var arg in args) {
@@ -966,3 +1065,4 @@ class LocalizationService {
     return translatedText;
   }
 }
+

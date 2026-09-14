@@ -82,21 +82,17 @@ public class RetrievalActivityService {
             if (introOpt.isPresent()) {
                 Learner learner = introOpt.get().getLearner();
                 Lesson lesson = introOpt.get().getLesson();
-                if (createIfMissing) {
-                    return sessionRepository.save(PracticeSession.builder()
-                            .sessionId(sessionId)
-                            .learner(learner)
-                            .lesson(lesson)
-                            .moduleNumber(2)
-                            .classroomContextId(lesson.getClassroom() != null
-                                ? lesson.getClassroom().getClassId()
-                                : null)
-                            .build());
-                } else {
-                    throw new IllegalArgumentException("Session not found");
-                }
+                return sessionRepository.save(PracticeSession.builder()
+                        .sessionId(sessionId)
+                        .learner(learner)
+                        .lesson(lesson)
+                        .moduleNumber(2)
+                        .classroomContextId(lesson.getClassroom() != null
+                            ? lesson.getClassroom().getClassId()
+                            : null)
+                        .build());
             } else {
-                throw new IllegalArgumentException("Session not found");
+                throw new IllegalArgumentException("Session not found: " + sessionId);
             }
         }
 
@@ -392,7 +388,7 @@ public class RetrievalActivityService {
 
     @Transactional
     public Map<String, Object> generateSingleQuestion(UUID sessionId, UUID wordId, String format) {
-        PracticeSession session = resolvePracticeSession(sessionId, false);
+        PracticeSession session = resolvePracticeSession(sessionId, true);
         
         VocabularyWord word = wordRepository.findById(wordId)
                 .orElseThrow(() -> new IllegalArgumentException("Word not found"));
@@ -402,7 +398,7 @@ public class RetrievalActivityService {
 
     @Transactional
     public Map<String, Object> generateDiagnosticQuestion(UUID sessionId, UUID wordId) {
-        PracticeSession session = resolvePracticeSession(sessionId, false);
+        PracticeSession session = resolvePracticeSession(sessionId, true);
         VocabularyWord word = wordRepository.findById(wordId)
                 .orElseThrow(() -> new IllegalArgumentException("Word not found"));
 
@@ -428,7 +424,7 @@ public class RetrievalActivityService {
 
     @Transactional
     public Map<String, Object> submitAnswer(UUID sessionId, UUID wordId, boolean isCorrect, String wrongAnswer, String activityFormat) {
-        PracticeSession session = resolvePracticeSession(sessionId, false);
+        PracticeSession session = resolvePracticeSession(sessionId, true);
 
         UUID learnerId = session.getLearner().getLearnerId();
         UUID actualSessionId = session.getSessionId();
@@ -447,6 +443,7 @@ public class RetrievalActivityService {
                 : oldLevel;
 
         boolean leveledUp = isCorrect && (newLevel.ordinal() > oldLevel.ordinal());
+        boolean demoted = !isCorrect && (newLevel.ordinal() < oldLevel.ordinal());
 
         // 4. Spaced Repetition Reinforcement updates
         if (isCorrect) {
@@ -463,6 +460,9 @@ public class RetrievalActivityService {
         result.put("oldLevel", oldLevel.name());
         result.put("currentLevel", newLevel.name());
         result.put("leveledUp", leveledUp);
+        result.put("demoted", demoted);
+        result.put("consecutiveCorrect", progress != null ? progress.getConsecutiveCorrect() : 0);
+        result.put("consecutiveIncorrect", progress != null ? progress.getConsecutiveIncorrect() : 0);
         return result;
     }
 

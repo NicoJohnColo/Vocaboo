@@ -43,8 +43,26 @@ public class LessonController {
     public ResponseEntity<List<LessonResponse>> getLessons(
             @PathVariable("id") UUID categoryId,
             Principal principal) {
-        UUID learnerId = UUID.fromString(principal.getName());
+        UUID learnerId = null;
+        if (principal != null) {
+            try {
+                learnerId = UUID.fromString(principal.getName());
+            } catch (Exception ignored) {}
+        }
         return ResponseEntity.ok(lessonService.getLessonsForCategory(categoryId, learnerId));
+    }
+
+    @GetMapping("/lessons/{id}")
+    public ResponseEntity<LessonResponse> getLessonById(
+            @PathVariable("id") UUID lessonId,
+            Principal principal) {
+        UUID learnerId = null;
+        if (principal != null) {
+            try {
+                learnerId = UUID.fromString(principal.getName());
+            } catch (Exception ignored) {}
+        }
+        return ResponseEntity.ok(lessonService.getLessonById(lessonId, learnerId));
     }
 
     @GetMapping("/lessons/{id}/vocabulary")

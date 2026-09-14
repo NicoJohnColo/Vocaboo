@@ -176,3 +176,7 @@ class CebuanoTextHighlighter extends StatelessWidget {
     );
   }
 }
+
+/// Universal highlighter alias for highlighting target words in English and Cebuano
+typedef AppTextHighlighter = CebuanoTextHighlighter;
+

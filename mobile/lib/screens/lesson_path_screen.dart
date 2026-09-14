@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import 'dart:math';
+
 import '../core/motion/motion.dart';
 import '../models/lesson_model.dart';
 import '../providers/auth_provider.dart';
@@ -33,6 +35,7 @@ class LessonPathScreen extends StatefulWidget {
 
 class _LessonPathScreenState extends State<LessonPathScreen> {
   Map<String, int> _localMasteredCounts = {};
+  Map<String, double> _localScores = {};
   final Map<String, Map<String, dynamic>> _activeSessionsByLessonId = {};
   double? _cumulativeReviewScore;
   bool _cumulativeReviewCompleted = false;
@@ -83,30 +86,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         _activeSessionsByLessonId.remove(lesson.lessonId);
       }
 
-      // Try backend word difficulties first to get true mastery status
-      final difficulties = await provider.loadWordDifficulties(lesson.lessonId);
-      if (difficulties.isNotEmpty) {
-        int backendMastered = difficulties.values
-            .where((level) => level == 'MASTERED')
-            .length;
-        masteredCounts[lesson.lessonId] = backendMastered;
-      } else {
-        final details = await LocalStorageService.getLessonScoreDetails(
-          lesson.lessonId,
-        );
-        if (details != null) {
-          final failedRaw = details['failedSentenceWordIds'];
-          Set<String> failedSentenceWordIds = {};
-          if (failedRaw is List) {
-            failedSentenceWordIds = Set<String>.from(
-              failedRaw.map((e) => e.toString()),
-            );
-          }
-          int mastered = (lesson.totalWordCount - failedSentenceWordIds.length)
-              .clamp(0, lesson.totalWordCount);
-          masteredCounts[lesson.lessonId] = mastered;
-        }
-      }
+      // lesson.masteredWordCount from the lesson list API is the authoritative
+      // source — it counts words at MASTERED level across all modules.
+      // Using it directly avoids mismatches with module-specific endpoints.
+      masteredCounts[lesson.lessonId] = lesson.masteredWordCount;
 
       // Detect unlock state transitions
       final isNowUnlocked =
@@ -182,6 +165,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     if (mounted) {
       setState(() {
         _localMasteredCounts = masteredCounts;
+        _localScores = scores;
         _cumulativeReviewCompleted = isReviewCompleted;
         _cumulativeReviewScore = reviewScore;
       });
@@ -224,13 +208,14 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
       }
     });
 
-    setState(() {
-      if (_selectedLessonId == lesson.lessonId) {
-        _selectedLessonId = null; // Toggle dismiss
-      } else {
+    if (_selectedLessonId == lesson.lessonId) {
+      _selectedLessonId = null;
+      _handleStartLesson(lesson);
+    } else {
+      setState(() {
         _selectedLessonId = lesson.lessonId; // Single card open at a time
-      }
-    });
+      });
+    }
   }
 
   void _dismissPopover() {
@@ -248,17 +233,19 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     );
     if (activeSession != null && mounted) {
       _showResumePrompt(lesson, activeSession);
+      return;
+    }
+
+    if (!mounted) return;
+
+    final mastered = _localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount;
+    final total = lesson.totalWordCount;
+    final isCompleted =
+        total > 0 && mastered >= total && lesson.status == 'COMPLETED';
+    if (isCompleted) {
+      _showCompletedLessonOptions(lesson);
     } else {
-      final mastered =
-          _localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount;
-      final isCompleted =
-          lesson.status == 'COMPLETED' ||
-          (lesson.totalWordCount > 0 && mastered >= lesson.totalWordCount);
-      if (isCompleted) {
-        _showCompletedLessonOptions(lesson);
-      } else {
-        _showContextParagraphPrompt(lesson);
-      }
+      _showContextParagraphPrompt(lesson);
     }
   }
 
@@ -340,9 +327,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     for (int i = 0; i < provider.lessons.length; i++) {
       final l = provider.lessons[i];
       final mastered = _localMasteredCounts[l.lessonId] ?? l.masteredWordCount;
+      final total = l.totalWordCount;
       final isDone =
           l.status == 'COMPLETED' ||
-          (l.totalWordCount > 0 && mastered >= l.totalWordCount);
+          (total > 0 && mastered >= total);
       if (l.status == 'UNLOCKED' && !isDone) {
         currentActiveIndex = i;
         break;
@@ -360,10 +348,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
       totalMasteredWords += m;
       totalCategoryWords += l.totalWordCount;
     }
-    if (totalCategoryWords == 0) totalCategoryWords = 9;
-    if (totalMasteredWords == 0 && provider.lessons.isNotEmpty) {
-      totalMasteredWords = 9;
-    }
+    if (totalCategoryWords == 0) totalCategoryWords = provider.lessons.fold(0, (sum, l) => sum + l.totalWordCount);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFBF8FF),
@@ -574,14 +559,12 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                   ? PathNodeAlignment.left
                                   : PathNodeAlignment.right;
                               final nextLesson = provider.lessons[nextLIndex];
-                              final nextMastered =
-                                  _localMasteredCounts[nextLesson.lessonId] ??
+                              final nextMastered = _localMasteredCounts[nextLesson.lessonId] ??
                                   nextLesson.masteredWordCount;
+                              final nextTotal = nextLesson.totalWordCount;
                               final nextIsDone =
                                   nextLesson.status == 'COMPLETED' ||
-                                  (nextLesson.totalWordCount > 0 &&
-                                      nextMastered >=
-                                          nextLesson.totalWordCount);
+                                  (nextTotal > 0 && nextMastered >= nextTotal);
                               nextUnlocked =
                                   nextLesson.status == 'UNLOCKED' || nextIsDone;
                             }
@@ -606,13 +589,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                               : index;
                           final lesson = provider.lessons[lessonIndex];
 
-                          final mastered =
-                              _localMasteredCounts[lesson.lessonId] ??
-                              lesson.masteredWordCount;
+                          final mastered = _localMasteredCounts[lesson.lessonId] ?? lesson.masteredWordCount;
+                          final total = lesson.totalWordCount;
                           final isCompleted =
-                              lesson.status == 'COMPLETED' ||
-                              (lesson.totalWordCount > 0 &&
-                                  mastered >= lesson.totalWordCount);
+                              total > 0 && mastered >= total && lesson.status == 'COMPLETED';
                           final isUnlocked =
                               lesson.status == 'UNLOCKED' || isCompleted;
                           final isLocked = !isUnlocked;
@@ -635,6 +615,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                             isNewlyUnlocked: isNewlyUnlocked,
                             isLast: isLast,
                             mastered: mastered,
+                            total: total,
                             themeColor: themeColor,
                             fromAlignment: currentAlignment,
                             toAlignment: nextAlignment,
@@ -662,6 +643,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
     required bool isNewlyUnlocked,
     required bool isLast,
     required int mastered,
+    int? total,
     required Color themeColor,
     required PathNodeAlignment fromAlignment,
     required PathNodeAlignment toAlignment,
@@ -717,7 +699,9 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                           isCompleted: isCompleted,
                           isCurrentActive: isCurrentActive,
                           mastered: mastered,
+                          totalOverride: total,
                           onTap: () => _handleNodeTap(lesson, isLocked),
+                          onStart: () => _handleStartLesson(lesson),
                           onRefresh:
                               (!isLocked && (isCompleted || mastered > 0))
                               ? () => _handleStartLesson(lesson)
@@ -744,10 +728,12 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                     buttonText:
                         _activeSessionsByLessonId.containsKey(lesson.lessonId)
                         ? 'Resume'
-                        : 'Start',
+                        : (isCompleted ? 'Review' : 'Start'),
                     className: lesson.className,
                     backgroundColor: themeColor,
                     isTailOnLeft: isLeft,
+                    score: isCompleted ? _localScores[lesson.lessonId] : null,
+                    masteredCount: mastered,
                     width: (MediaQuery.of(context).size.width - 150).clamp(
                       180.0,
                       240.0,
@@ -989,13 +975,36 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF06A6FF),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _showFocusPromptAndStartLesson(lesson);
+            },
+            icon: const Icon(Icons.psychology_rounded, size: 18),
+            label: Text(
+              'Practice',
+              style: AppTypography.baloo2(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B5CF6),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           ElevatedButton.icon(
             onPressed: () async {
               Navigator.of(ctx).pop();
@@ -1012,7 +1021,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1157,7 +1166,12 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         ),
         actionsAlignment: MainAxisAlignment.end,
         actions: [
-          TextButton(
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFFFCA5A5)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
             onPressed: () async {
               Navigator.of(ctx).pop();
               await LocalStorageService.clearActiveLessonSession(
@@ -1176,14 +1190,32 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
               }
             },
             child: Text(
-              'Start Over',
+              'Restart / Start Over',
               style: AppTypography.baloo2(
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFFEF4444),
+                fontSize: 14,
               ),
             ),
           ),
-          ElevatedButton(
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF06A6FF),
+              foregroundColor: Colors.white,
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: Text(
+              'Resume Session',
+              style: AppTypography.baloo2(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: Colors.white,
+              ),
+            ),
             onPressed: () async {
               Navigator.of(ctx).pop();
               final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -1246,17 +1278,6 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                 },
               );
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0EA5E9),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              'Resume',
-              style: AppTypography.baloo2(fontWeight: FontWeight.w800),
-            ),
           ),
         ],
       ),
@@ -1368,7 +1389,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
   void _showFocusPromptAndStartLesson(LessonModel lesson) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final pref = auth.learner?.languagePreference;
-    String selectedFocus = auth.learner?.posFocus ?? 'ALL';
+    String selectedFocus = 'ALL';
 
     final options = [
       {
@@ -1536,6 +1557,58 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                                               fontSize: 10,
                                               fontWeight: FontWeight.w800,
                                               color: Color(0xFF10B981),
+                                            ),
+                                          ),
+                                        ),
+                                      ] else if (mastered > 0) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 1,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEFF6FF),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFF93C5FD),
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'In Progress (${total - mastered} left)',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF1D4ED8),
+                                            ),
+                                          ),
+                                        ),
+                                      ] else ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 1,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFFCBD5E1),
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'Not Started',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B),
                                             ),
                                           ),
                                         ),
@@ -2184,7 +2257,9 @@ class _3DPathNodeWidget extends StatefulWidget {
   final bool isCompleted;
   final bool isCurrentActive;
   final int mastered;
+  final int? totalOverride;
   final VoidCallback onTap;
+  final VoidCallback? onStart;
   final VoidCallback? onRefresh;
 
   const _3DPathNodeWidget({
@@ -2195,7 +2270,9 @@ class _3DPathNodeWidget extends StatefulWidget {
     required this.isCompleted,
     required this.isCurrentActive,
     required this.mastered,
+    this.totalOverride,
     required this.onTap,
+    this.onStart,
     this.onRefresh,
   });
 
@@ -2389,10 +2466,11 @@ class _3DPathNodeWidgetState extends State<_3DPathNodeWidget> {
         // Progress Card directly underneath
         if (!widget.isLocked)
           GestureDetector(
-            onTap: widget.onTap,
+            onTap: widget.onStart ?? widget.onTap,
             child: _PathProgressCard(
               lesson: widget.lesson,
               mastered: widget.mastered,
+              totalOverride: widget.totalOverride,
               isCompleted: widget.isCompleted,
               isPurpleTheme: isPurpleTheme,
             ),
@@ -2498,12 +2576,14 @@ class _FloatingActionButtonState extends State<_FloatingActionButton> {
 class _PathProgressCard extends StatelessWidget {
   final LessonModel lesson;
   final int mastered;
+  final int? totalOverride;
   final bool isCompleted;
   final bool isPurpleTheme;
 
   const _PathProgressCard({
     required this.lesson,
     required this.mastered,
+    this.totalOverride,
     required this.isCompleted,
     required this.isPurpleTheme,
   });
@@ -2526,12 +2606,10 @@ class _PathProgressCard extends StatelessWidget {
         ? const Color(0xFFF3E8FF)
         : const Color(0xFFE0F2FE);
 
-    final totalWords = lesson.totalWordCount;
-    final masteredText = isCompleted
-        ? '$totalWords/$totalWords Mastered'
-        : '$mastered/$totalWords Mastered';
+    final totalWords = totalOverride ?? lesson.totalWordCount;
+    final masteredText = '$mastered/$totalWords Mastered';
     final progressFraction = totalWords > 0
-        ? (isCompleted ? 1.0 : (mastered / totalWords).clamp(0.0, 1.0))
+        ? (mastered / totalWords).clamp(0.0, 1.0)
         : 0.0;
 
     return Stack(

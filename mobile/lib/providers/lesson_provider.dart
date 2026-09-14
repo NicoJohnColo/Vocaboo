@@ -120,6 +120,7 @@ class LessonProvider with ChangeNotifier {
         Uri.parse('$baseUrl/categories/$categoryId/lessons'),
         headers: _headers,
       );
+      debugPrint('GET /categories/$categoryId/lessons STATUS: ${response.statusCode}, BODY: ${response.body}');
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -128,16 +129,44 @@ class LessonProvider with ChangeNotifier {
       } else if (response.statusCode == 401) {
         _auth?.logout();
       } else {
-        _lessonsError = 'Failed to load lessons';
+        _lessonsError = 'Failed to load lessons (Status: ${response.statusCode})';
         _error = _lessonsError;
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('GET /categories/$categoryId/lessons EXCEPTION: $e\n$st');
       _lessonsError = 'Network error. Please check your connection.';
       _error = _lessonsError;
     }
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<LessonModel?> fetchLessonDetails(String lessonId) async {
+    if (lessonId.isEmpty) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/lessons/$lessonId'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        final lesson = LessonModel.fromJson(data);
+        final index = _lessons.indexWhere((l) => l.lessonId == lessonId);
+        if (index >= 0) {
+          _lessons[index] = lesson;
+        } else {
+          _lessons.add(lesson);
+        }
+        notifyListeners();
+        return lesson;
+      } else if (response.statusCode == 401) {
+        _auth?.logout();
+      }
+    } catch (e) {
+      debugPrint('LessonProvider.fetchLessonDetails error: $e');
+    }
+    return null;
   }
 
   Future<void> loadClassLessons(String classId, {String? categoryId}) async {

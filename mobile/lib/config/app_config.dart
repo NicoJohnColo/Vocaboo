@@ -9,8 +9,9 @@ class AppConfig {
       return overrideUrl;
     }
     if (Platform.isAndroid) {
-      // Android Emulator host loopback alias: 'http://10.0.2.2:8081/api/v1'
-      // Physical device (same Wi-Fi): 'http://192.168.1.23:8081/api/v1' or use --dart-define=BASE_URL=...
+      // 1. Android Emulator: 'http://10.0.2.2:8081/api/v1'
+      // 2. USB Connection / ADB reverse: 'http://127.0.0.1:8081/api/v1' (Requires: adb reverse tcp:8081 tcp:8081)
+      // 3. Physical device (same Wi-Fi): 'http://192.168.1.x:8081/api/v1' or use --dart-define=BASE_URL=...
       return 'http://10.0.2.2:8081/api/v1';
     }
     return 'http://127.0.0.1:8081/api/v1';

@@ -14,6 +14,7 @@ import ReportsPage from './pages/ReportsPage';
 import LessonManagementPage from './pages/LessonManagementPage';
 import VocabularyListPage from './pages/VocabularyListPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
+import CumulativeManagementPage from './pages/CumulativeManagementPage';
 import AdminAccountsPage from './pages/AdminAccountsPage';
 import SystemLogsPage from './pages/SystemLogsPage';
 import WrongAnswersAnalysisPage from './pages/WrongAnswersAnalysisPage';
@@ -92,6 +93,11 @@ export default function App() {
           <Route
             path="/categories"
             element={<ProtectedAdminRoute><CategoryManagementPage /></ProtectedAdminRoute>}
+          />
+
+          <Route
+            path="/cumulative"
+            element={<ProtectedAdminRoute><CumulativeManagementPage /></ProtectedAdminRoute>}
           />
 
           <Route

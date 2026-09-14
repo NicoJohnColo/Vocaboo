@@ -333,22 +333,35 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Text(
+                    english,
+                    style: AppTypography.baloo2(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
                     children: [
-                      Expanded(
-                        child: Text(
-                          english,
-                          style: AppTypography.baloo2(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF0F172A),
-                          ),
+                      CebuanoTextHighlighter(
+                        text: cebuano,
+                        highlightWord: cebuano,
+                        style: AppTypography.nunito(
+                          fontSize: 14,
+                          color: const Color(0xFF0284C7),
+                          fontStyle: FontStyle.italic,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      // Positive celebratory marker
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                            horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: currentlyCorrect
                               ? const Color(0xFFDCFCE7)
@@ -362,7 +375,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                               currentlyCorrect
                                   ? Icons.check_circle_rounded
                                   : Icons.auto_awesome_rounded,
-                              size: 13,
+                              size: 12,
                               color: currentlyCorrect
                                   ? const Color(0xFF16A34A)
                                   : const Color(0xFF0284C7),
@@ -373,7 +386,7 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                                   ? LocalizationService.translate(pref, 'you_got_this')
                                   : LocalizationService.translate(pref, 'in_practice'),
                               style: AppTypography.baloo2(
-                                fontSize: 11,
+                                fontSize: 10.5,
                                 fontWeight: FontWeight.w800,
                                 color: currentlyCorrect
                                   ? const Color(0xFF16A34A)
@@ -384,17 +397,6 @@ class _WrongAnswersScreenState extends State<WrongAnswersScreen>
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 4),
-                  CebuanoTextHighlighter(
-                    text: cebuano,
-                    highlightWord: cebuano,
-                    style: AppTypography.nunito(
-                      fontSize: 14,
-                      color: const Color(0xFF0284C7),
-                      fontStyle: FontStyle.italic,
-                      fontWeight: FontWeight.w700,
-                    ),
                   ),
                   if (partOfSpeech.isNotEmpty || lessonTitle.isNotEmpty)
                     Padding(

@@ -26,19 +26,7 @@ public class CreateCategoryRequest {
     @JsonProperty("class_id")
     private java.util.UUID classId; // Required for teachers; null for global admin categories
 
-    public String getCategoryName() {
-        return categoryName;
-    }
+    @JsonProperty("module4_activities")
+    private String module4Activities;
 
-    public String getDescription() {
-        return description;
-    }
-
-    public Integer getSortOrder() {
-        return sortOrder;
-    }
-
-    public java.util.UUID getClassId() {
-        return classId;
-    }
 }

@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -132,6 +133,69 @@ class AdminLearnerAccuracyTest {
 
         // And wordPerformanceRepository.save should have been invoked to self-heal the DB record
         verify(wordPerformanceRepository, atLeastOnce()).save(any(WordPerformance.class));
+    }
+
+    @Test
+    void testSessionAccuracyReflectsLatestSessionWhileLifetimeAccuracyAccountsForAllRetries() {
+        when(learnerRepository.findById(learnerId)).thenReturn(Optional.of(learner));
+        when(masteryRepository.findByLearnerLearnerId(learnerId)).thenReturn(Optional.empty());
+        when(lessonStatusRepository.findByLearnerLearnerId(learnerId)).thenReturn(List.of());
+        when(lessonModuleScoreRepository.findByLearnerLearnerId(learnerId)).thenReturn(List.of());
+        when(classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learnerId, "ACTIVE")).thenReturn(List.of());
+        when(lessonRepository.findByIsDeletedFalseAndClassroomIsNullOrderByLessonOrderAsc()).thenReturn(List.of(lesson1));
+
+        // Word performance: 6 attempts, 5 correct (83.33% lifetime accuracy), 2 demerit points
+        WordPerformance wp = WordPerformance.builder()
+                .learner(learner)
+                .word(fishWord)
+                .totalAttempts(6)
+                .correctCount(5)
+                .incorrectCount(1)
+                .demeritPoints(2)
+                .accuracy(BigDecimal.valueOf(83.33))
+                .build();
+
+        when(wordPerformanceRepository.findByLearnerLearnerId(learnerId)).thenReturn(new ArrayList<>(List.of(wp)));
+
+        // Earlier session: 2 attempts, 1 correct, 1 wrong (50.00%)
+        PracticeSession session1 = PracticeSession.builder()
+                .sessionId(UUID.randomUUID())
+                .learner(learner)
+                .lesson(lesson1)
+                .createdAt(OffsetDateTime.now().minusHours(2))
+                .build();
+
+        // Latest session (e.g. Active Practice retries): 2 attempts, both correct (100.00%)
+        PracticeSession session2 = PracticeSession.builder()
+                .sessionId(UUID.randomUUID())
+                .learner(learner)
+                .lesson(lesson1)
+                .createdAt(OffsetDateTime.now().minusMinutes(5))
+                .build();
+
+        List<PracticeResult> prList = List.of(
+                PracticeResult.builder().session(session1).word(fishWord).isCorrect(true).recordedAt(OffsetDateTime.now().minusHours(2)).build(),
+                PracticeResult.builder().session(session1).word(fishWord).isCorrect(false).recordedAt(OffsetDateTime.now().minusHours(2)).build(),
+                PracticeResult.builder().session(session2).word(fishWord).isCorrect(true).recordedAt(OffsetDateTime.now().minusMinutes(5)).build(),
+                PracticeResult.builder().session(session2).word(fishWord).isCorrect(true).recordedAt(OffsetDateTime.now().minusMinutes(4)).build()
+        );
+        when(practiceResultRepository.findBySessionLearnerLearnerId(learnerId)).thenReturn(prList);
+
+        AdminLearnerDetailResponse detail = adminLearnerService.getLearnerDetail(learnerId, null, null);
+
+        assertNotNull(detail);
+        assertEquals(1, detail.getAllWords().size());
+        AdminLearnerDetailResponse.LearnerWordPerformanceDetail wordDetail = detail.getAllWords().get(0);
+
+        // Session accuracy MUST be 100.00% (from latest session2: 2/2 correct)
+        assertEquals(BigDecimal.valueOf(100.00).setScale(2), wordDetail.getSessionAccuracy());
+        assertEquals(2, wordDetail.getSessionAttempts());
+        assertEquals(2, wordDetail.getSessionCorrect());
+
+        // Lifetime accuracy MUST be 83.33% (actual cumulative lifetime accuracy across all 6 attempts)
+        assertEquals(BigDecimal.valueOf(83.33), wordDetail.getLifetimeAccuracy());
+        assertEquals(6, wordDetail.getTotalAttempts());
+        assertEquals(5, wordDetail.getCorrectCount());
     }
 
     @Test

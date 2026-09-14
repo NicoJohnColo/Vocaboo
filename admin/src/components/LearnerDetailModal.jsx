@@ -628,8 +628,8 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                         <th>Part of Speech</th>
                         <th>Cebuano Meaning</th>
                         <th>Lesson</th>
-                        <th title="Highest score recorded in the lesson attempt">Lesson Best Acc</th>
-                        <th title="Cumulative accuracy across all lifetime sessions">Lifetime Acc</th>
+                        <th title="Accuracy achieved in the learner's latest practice session">Session Accuracy</th>
+                        <th title="Cumulative historical accuracy across all attempts and retries across all lessons">Lifetime Acc</th>
                         <th>Demerits</th>
                         <th>Attempts</th>
                       </tr>
@@ -644,8 +644,16 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                         const dem = w.demerit_points ?? w.demeritPoints ?? 0;
                         const att = w.total_attempts ?? w.totalAttempts ?? ((w.correct_count || 0) + (w.incorrect_count || 0));
                         const corr = w.correct_count ?? w.correctCount ?? 0;
-                        const lessonAcc = w.lesson_accuracy ?? w.lessonAccuracy ?? w.accuracy;
-                        const lifetimeAcc = w.lifetime_accuracy ?? w.lifetimeAccuracy ?? (att > 0 ? (corr * 100 / att) : lessonAcc);
+                        const rawSessionAcc = w.session_accuracy ?? w.sessionAccuracy ?? w.lesson_accuracy ?? w.lessonAccuracy;
+                        const rawLifetimeAcc = w.lifetime_accuracy ?? w.lifetimeAccuracy;
+                        const lifetimeAcc = rawLifetimeAcc != null
+                          ? Number(rawLifetimeAcc)
+                          : (att > 0 ? (corr * 100 / att) : (w.accuracy != null ? Number(w.accuracy) : 0));
+                        const sessionAcc = rawSessionAcc != null
+                          ? Number(rawSessionAcc)
+                          : lifetimeAcc;
+                        const sessionAtt = w.session_attempts ?? w.sessionAttempts ?? att;
+                        const sessionCorr = w.session_correct ?? w.sessionCorrect ?? corr;
 
                         return (
                           <tr key={wid}>
@@ -663,16 +671,30 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                             </td>
                             <td className="text-muted">{ceb}</td>
                             <td className="text-muted">{les}</td>
-                            <td style={{ color: Number(lessonAcc) < 70 ? 'var(--color-danger)' : Number(lessonAcc) >= 85 ? 'var(--color-success)' : 'var(--color-text-main)', fontWeight: 700 }}>
-                              {lessonAcc != null ? `${Number(lessonAcc).toFixed(1)}%` : '0%'}
+                            <td style={{ color: Number(sessionAcc) < 70 ? 'var(--color-danger)' : Number(sessionAcc) >= 85 ? 'var(--color-success)' : 'var(--color-text-main)', fontWeight: 700 }}>
+                              <div>
+                                {sessionAcc != null ? `${Number(sessionAcc).toFixed(1)}%` : '0.0%'}
+                              </div>
+                              <div style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                                {sessionAtt > 0 ? `${sessionCorr}/${sessionAtt} session` : 'No session'}
+                              </div>
                             </td>
                             <td style={{ color: Number(lifetimeAcc) < 70 ? 'var(--color-danger)' : Number(lifetimeAcc) >= 85 ? 'var(--color-success)' : 'var(--color-text-main)', fontWeight: 600 }}>
-                              {lifetimeAcc != null ? `${Number(lifetimeAcc).toFixed(1)}%` : '0%'}
+                              <span title={`Lifetime cumulative: ${corr} / ${att} correct across all lessons and retries`}>
+                                <div>
+                                  {lifetimeAcc != null ? `${Number(lifetimeAcc).toFixed(1)}%` : '0.0%'}
+                                </div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                                  {att > 0 ? `${corr}/${att} lifetime` : '0 attempts'}
+                                </div>
+                              </span>
                             </td>
-                            <td style={{ color: Number(dem) > 0 ? 'var(--color-danger)' : 'inherit', fontWeight: 600 }}>
+                            <td style={{ color: Number(dem) > 0 ? 'var(--color-danger)' : 'inherit', fontWeight: 600 }} title={`${Math.round(dem / 2)} errors (${dem} demerits)`}>
                               {dem || 0}
                             </td>
-                            <td>{att || 0}</td>
+                            <td title={`${corr} correct out of ${att} total attempts`}>
+                              {att || 0}
+                            </td>
                           </tr>
                         );
                       })}

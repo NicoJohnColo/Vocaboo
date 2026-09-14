@@ -7,6 +7,17 @@ import { LessonService } from '../services/LessonService';
 import { SectionService } from '../services/SectionService';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 
+const MODULE_4_OPTIONS = [
+  { id: 'MULTIPLE_CHOICE',          label: 'Multiple Choice',         desc: '4-option recognition question' },
+  { id: 'MATCHING',                 label: 'Word Matching',            desc: 'Match word to English/Cebuano meaning' },
+  { id: 'FILL_IN_BLANK',            label: 'Fill in Blank',            desc: 'Type the missing word in context' },
+  { id: 'WORD_SCRAMBLE',            label: 'Word Scramble',            desc: 'Arrange scrambled letter tiles' },
+  { id: 'SENTENCE_RECONSTRUCTION',  label: 'Sentence Reconstruction',  desc: 'Arrange scrambled sentence tiles' },
+  { id: 'TRUE_OR_FALSE',            label: 'True or False',            desc: 'Evaluate word/definition validity' },
+];
+
+const DEFAULT_MODULE_4 = 'MULTIPLE_CHOICE;MATCHING;FILL_IN_BLANK;WORD_SCRAMBLE';
+
 export default function CategoryManagementPage() {
   const navigate = useNavigate();
   const { admin } = useAdminAuth();
@@ -21,10 +32,34 @@ export default function CategoryManagementPage() {
   const [success, setSuccess] = useState('');
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ category_name: '', description: '', class_id: '' });
+  const [form, setForm] = useState({
+    category_name: '',
+    description: '',
+    class_id: '',
+    module4_activities: DEFAULT_MODULE_4,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
   const [dragging, setDragging] = useState(null);
+
+  const isModule4OptionSelected = (optId) => {
+    const raw = form.module4_activities || DEFAULT_MODULE_4;
+    const list = raw.split(';').filter(Boolean);
+    return list.includes(optId);
+  };
+
+  const toggleModule4Option = (optId) => {
+    const raw = form.module4_activities || DEFAULT_MODULE_4;
+    const list = raw.split(';').filter(Boolean);
+    let nextList;
+    if (list.includes(optId)) {
+      if (list.length <= 1) return;
+      nextList = list.filter(id => id !== optId);
+    } else {
+      nextList = [...list, optId];
+    }
+    setForm(f => ({ ...f, module4_activities: nextList.join(';') }));
+  };
 
   const flash = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3500); };
 
@@ -66,6 +101,7 @@ export default function CategoryManagementPage() {
       category_name: cat?.category_name ?? '',
       description: cat?.description ?? '',
       class_id: cat?.class_id ?? defaultClassId,
+      module4_activities: cat?.module4_activities ?? DEFAULT_MODULE_4,
     });
     setModalError('');
     setModal(type);
@@ -85,6 +121,7 @@ export default function CategoryManagementPage() {
         category_name: form.category_name.trim(),
         description: form.description.trim(),
         class_id: isTeacher ? form.class_id : null,
+        module4_activities: form.module4_activities || DEFAULT_MODULE_4,
       });
       flash('Category created!');
       closeModal();
@@ -106,6 +143,7 @@ export default function CategoryManagementPage() {
         category_name: form.category_name.trim(),
         description: form.description.trim(),
         class_id: isTeacher ? form.class_id : null,
+        module4_activities: form.module4_activities || DEFAULT_MODULE_4,
       });
       flash('Category updated!');
       closeModal();
@@ -204,6 +242,7 @@ export default function CategoryManagementPage() {
                 GLOBAL CURRICULUM
               </span>
             )}
+            <button className="btn btn--ghost" onClick={() => navigate('/cumulative')}>🎓 Cumulative Review</button>
             <button className="btn btn--primary" onClick={() => openModal('create')}>+ New Category</button>
           </div>
         </header>
@@ -424,6 +463,40 @@ export default function CategoryManagementPage() {
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   placeholder="Optional description..." />
               </div>
+
+              <div className="form-field" style={{ marginTop: 8, padding: '14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, color: '#1e293b' }}>🎓 Module 4 (Cumulative Review) Formats</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4f46e5', background: '#e0e7ff', padding: '2px 8px', borderRadius: 4 }}>Category Default</span>
+                </label>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 10px 0' }}>
+                  These activity formats will be used during Cumulative Review across all lessons in this category.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  {MODULE_4_OPTIONS.map(opt => {
+                    const active = isModule4OptionSelected(opt.id);
+                    return (
+                      <label
+                        key={opt.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                          border: active ? '1.5px solid #4f46e5' : '1px solid #cbd5e1',
+                          borderRadius: 8, background: active ? '#eef2ff' : '#fff', cursor: 'pointer',
+                          fontSize: '0.85rem', fontWeight: active ? 600 : 500, color: active ? '#312e81' : '#475569'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => toggleModule4Option(opt.id)}
+                        />
+                        <span>{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="modal__actions">
                 <button className="btn btn--ghost" onClick={closeModal} disabled={submitting}>Cancel</button>
                 <button className="btn btn--primary" onClick={handleCreate} disabled={submitting}>
@@ -466,6 +539,40 @@ export default function CategoryManagementPage() {
                 <textarea className="form-textarea" rows={2} value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
               </div>
+
+              <div className="form-field" style={{ marginTop: 8, padding: '14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, color: '#1e293b' }}>🎓 Module 4 (Cumulative Review) Formats</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4f46e5', background: '#e0e7ff', padding: '2px 8px', borderRadius: 4 }}>Category Default</span>
+                </label>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 10px 0' }}>
+                  These activity formats will be used during Cumulative Review across all lessons in this category.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  {MODULE_4_OPTIONS.map(opt => {
+                    const active = isModule4OptionSelected(opt.id);
+                    return (
+                      <label
+                        key={opt.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                          border: active ? '1.5px solid #4f46e5' : '1px solid #cbd5e1',
+                          borderRadius: 8, background: active ? '#eef2ff' : '#fff', cursor: 'pointer',
+                          fontSize: '0.85rem', fontWeight: active ? 600 : 500, color: active ? '#312e81' : '#475569'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => toggleModule4Option(opt.id)}
+                        />
+                        <span>{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="modal__actions">
                 <button className="btn btn--ghost" onClick={closeModal} disabled={submitting}>Cancel</button>
                 <button className="btn btn--primary" onClick={handleUpdate} disabled={submitting}>

@@ -89,13 +89,18 @@ public class CategoryManagementService {
                     : categoryRepository.findMaxSortOrderGlobal() + 1;
         }
 
-        VocabularyCategory category = VocabularyCategory.builder()
+        VocabularyCategory.VocabularyCategoryBuilder builder = VocabularyCategory.builder()
                 .categoryName(trimmedName)
                 .description(req.getDescription())
                 .sortOrder(sortOrder)
                 .teacher(teacher)
-                .classroom(classroom)
-                .build();
+                .classroom(classroom);
+                
+        if (req.getModule4Activities() != null) {
+            builder.module4Activities(req.getModule4Activities());
+        }
+
+        VocabularyCategory category = builder.build();
 
         return categoryRepository.save(category);
     }
@@ -148,6 +153,9 @@ public class CategoryManagementService {
         }
         if (req.getDescription() != null) {
             category.setDescription(req.getDescription());
+        }
+        if (req.getModule4Activities() != null) {
+            category.setModule4Activities(req.getModule4Activities());
         }
         if (req.getSortOrder() != null) {
             category.setSortOrder(req.getSortOrder());

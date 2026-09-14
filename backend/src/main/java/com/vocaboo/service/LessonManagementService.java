@@ -366,6 +366,9 @@ public class LessonManagementService {
         jdbcTemplate.update("DELETE FROM introduction_sessions WHERE lesson_id = ?", lessonId);
         jdbcTemplate.update("DELETE FROM review_items WHERE session_id IN (SELECT session_id FROM review_sessions WHERE lesson_id = ?)", lessonId);
         jdbcTemplate.update("DELETE FROM review_sessions WHERE lesson_id = ?", lessonId);
+        String lessonIdStr = lessonId.toString();
+        jdbcTemplate.update("DELETE FROM cumulative_review_results WHERE session_id IN (SELECT id FROM cumulative_review_sessions WHERE lesson_pair_id LIKE ?)", "%" + lessonIdStr + "%");
+        jdbcTemplate.update("DELETE FROM cumulative_review_sessions WHERE lesson_pair_id LIKE ?", "%" + lessonIdStr + "%");
         jdbcTemplate.update("DELETE FROM asset_uploads WHERE lesson_id = ?", lessonId);
         jdbcTemplate.update("DELETE FROM bulk_import_history WHERE lesson_id = ?", lessonId);
         jdbcTemplate.update("DELETE FROM vocabulary_words WHERE lesson_id = ?", lessonId);

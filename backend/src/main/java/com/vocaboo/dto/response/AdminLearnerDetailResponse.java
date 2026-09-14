@@ -499,6 +499,15 @@ public class AdminLearnerDetailResponse {
         @JsonProperty("accuracy")
         private BigDecimal accuracy;
 
+        @JsonProperty("session_accuracy")
+        private BigDecimal sessionAccuracy;
+
+        @JsonProperty("session_correct")
+        private Integer sessionCorrect;
+
+        @JsonProperty("session_attempts")
+        private Integer sessionAttempts;
+
         @JsonProperty("lesson_accuracy")
         private BigDecimal lessonAccuracy;
 
@@ -530,7 +539,10 @@ public class AdminLearnerDetailResponse {
         public String getCebuanoMeaning() { return cebuanoMeaning; }
         public String getLessonTitle() { return lessonTitle; }
         public BigDecimal getAccuracy() { return accuracy; }
-        public BigDecimal getLessonAccuracy() { return lessonAccuracy != null ? lessonAccuracy : accuracy; }
+        public BigDecimal getSessionAccuracy() { return sessionAccuracy != null ? sessionAccuracy : (lessonAccuracy != null ? lessonAccuracy : accuracy); }
+        public Integer getSessionCorrect() { return sessionCorrect; }
+        public Integer getSessionAttempts() { return sessionAttempts; }
+        public BigDecimal getLessonAccuracy() { return sessionAccuracy != null ? sessionAccuracy : (lessonAccuracy != null ? lessonAccuracy : accuracy); }
         public BigDecimal getLifetimeAccuracy() { return lifetimeAccuracy != null ? lifetimeAccuracy : accuracy; }
         public Integer getCorrectCount() { return correctCount; }
         public Integer getIncorrectCount() { return incorrectCount; }
@@ -546,6 +558,9 @@ public class AdminLearnerDetailResponse {
             private String partOfSpeech;
             private String lessonTitle;
             private BigDecimal accuracy;
+            private BigDecimal sessionAccuracy;
+            private Integer sessionCorrect;
+            private Integer sessionAttempts;
             private BigDecimal lessonAccuracy;
             private BigDecimal lifetimeAccuracy;
             private Integer totalAttempts;
@@ -562,6 +577,9 @@ public class AdminLearnerDetailResponse {
             public LearnerWordPerformanceDetailBuilder partOfSpeech(String partOfSpeech) { this.partOfSpeech = partOfSpeech; return this; }
             public LearnerWordPerformanceDetailBuilder lessonTitle(String lessonTitle) { this.lessonTitle = lessonTitle; return this; }
             public LearnerWordPerformanceDetailBuilder accuracy(BigDecimal accuracy) { this.accuracy = accuracy; return this; }
+            public LearnerWordPerformanceDetailBuilder sessionAccuracy(BigDecimal sessionAccuracy) { this.sessionAccuracy = sessionAccuracy; return this; }
+            public LearnerWordPerformanceDetailBuilder sessionCorrect(Integer sessionCorrect) { this.sessionCorrect = sessionCorrect; return this; }
+            public LearnerWordPerformanceDetailBuilder sessionAttempts(Integer sessionAttempts) { this.sessionAttempts = sessionAttempts; return this; }
             public LearnerWordPerformanceDetailBuilder lessonAccuracy(BigDecimal lessonAccuracy) { this.lessonAccuracy = lessonAccuracy; return this; }
             public LearnerWordPerformanceDetailBuilder lifetimeAccuracy(BigDecimal lifetimeAccuracy) { this.lifetimeAccuracy = lifetimeAccuracy; return this; }
             public LearnerWordPerformanceDetailBuilder totalAttempts(Integer totalAttempts) { this.totalAttempts = totalAttempts; return this; }
@@ -580,7 +598,10 @@ public class AdminLearnerDetailResponse {
                 d.partOfSpeech = this.partOfSpeech;
                 d.lessonTitle = this.lessonTitle;
                 d.accuracy = this.accuracy;
-                d.lessonAccuracy = this.lessonAccuracy != null ? this.lessonAccuracy : this.accuracy;
+                d.sessionAccuracy = this.sessionAccuracy != null ? this.sessionAccuracy : this.lessonAccuracy;
+                d.sessionCorrect = this.sessionCorrect;
+                d.sessionAttempts = this.sessionAttempts;
+                d.lessonAccuracy = this.lessonAccuracy != null ? this.lessonAccuracy : this.sessionAccuracy;
                 d.lifetimeAccuracy = this.lifetimeAccuracy != null ? this.lifetimeAccuracy : this.accuracy;
                 d.totalAttempts = this.totalAttempts;
                 d.correctCount = this.correctCount;

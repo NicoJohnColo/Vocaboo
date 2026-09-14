@@ -14,6 +14,7 @@ export const CategoryService = {
       description: payload.description,
       sort_order: payload.sort_order,
       class_id: payload.class_id || null,
+      module4_activities: payload.module4_activities,
     };
     const res = await apiFetch('/api/admin/categories', {
       method: 'POST',
@@ -32,6 +33,7 @@ export const CategoryService = {
       description: payload.description,
       sort_order: payload.sort_order,
       class_id: payload.class_id || null,
+      module4_activities: payload.module4_activities,
     };
     const res = await apiFetch(`/api/admin/categories/${id}`, {
       method: 'PUT',

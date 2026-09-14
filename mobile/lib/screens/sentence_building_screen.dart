@@ -111,9 +111,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
   // Stats for Summary Screen
   int _initialPassCorrectCount = 0;
+  final Set<String> _uniqueFailedSentenceWordIds = {};
   int _reinforcementPassCorrectCount = 0;
   int _consecutiveStreak = 0;
-  bool _hasShownStreakCelebrationThisSession = false;
   int _totalPronunciationAttempts = 0;
   List<Map<String, dynamic>> _confusablePairs = [];
   final Map<String, bool> _confusableMastery = {};
@@ -159,11 +159,27 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       _enabledM3Activities.contains('TRUE_OR_FALSE_MATCH') ||
       _enabledM3Activities.contains('TOF_MATCH');
 
-  int _upgradeStreakRequired =
-      2; // Default 2 correct answers in FAMILIAR to reach PROFICIENT
-  int _demotionThreshold = 1; // Default 1 error to level down
-  int _streakCelebrationThreshold =
-      3; // Default 3 consecutive correct for celebration overlay
+  int _upgradeStreakRequired = 2; // Default 2 correct answers in FAMILIAR to reach PROFICIENT
+  int _demotionThreshold = 2; // Default 2 errors to level down
+  int? _module3UpgradeStreakRequired;
+  int? _module3DemotionThreshold;
+  int _streakCelebrationThreshold = 3; // Default 3 consecutive correct for celebration overlay
+
+  int _getUpgradeStreakForWord(String wordId) {
+    final currentTier = _wordDifficulties[wordId] ?? 'LEARNING';
+    if (currentTier == 'PROFICIENT') {
+      return _module3UpgradeStreakRequired ?? _upgradeStreakRequired;
+    }
+    return _upgradeStreakRequired;
+  }
+
+  int _getDemotionThresholdForWord(String wordId) {
+    final currentTier = _wordDifficulties[wordId] ?? 'LEARNING';
+    if (currentTier == 'PROFICIENT') {
+      return _module3DemotionThreshold ?? _demotionThreshold;
+    }
+    return _demotionThreshold;
+  }
 
   int _getWordStage(String wordId) {
     if (_wordStage.containsKey(wordId)) {
@@ -412,6 +428,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
         var lesson = lessonProvider.lessons
             .where((l) => l.lessonId == widget.lessonId)
             .firstOrNull;
+        if (lesson == null && widget.lessonId.isNotEmpty) {
+          lesson = await lessonProvider.fetchLessonDetails(widget.lessonId);
+        }
         if (lesson == null && widget.categoryId.isNotEmpty) {
           try {
             await lessonProvider.loadLessons(widget.categoryId);
@@ -430,15 +449,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                 .where((s) => s.isNotEmpty)
                 .toSet();
           }
-          _upgradeStreakRequired =
-              lesson.module3UpgradeStreakRequired ??
-              lesson.upgradeStreakRequired ??
-              2;
-          _demotionThreshold =
-              lesson.module3DemotionThreshold ?? lesson.demotionThreshold ?? 1;
+          _upgradeStreakRequired = lesson.upgradeStreakRequired ?? 2;
+          _demotionThreshold = lesson.demotionThreshold ?? 2;
+          _module3UpgradeStreakRequired = lesson.module3UpgradeStreakRequired ?? _upgradeStreakRequired;
+          _module3DemotionThreshold = lesson.module3DemotionThreshold ?? _demotionThreshold;
           _streakCelebrationThreshold = lesson.streakCelebrationThreshold ?? 3;
           debugPrint(
-            'SentenceBuilding: config loaded -> upgradeStreakRequired=$_upgradeStreakRequired, demotionThreshold=$_demotionThreshold, streakCelebrationThreshold=$_streakCelebrationThreshold',
+            'SentenceBuilding: config loaded -> upgradeStreakRequired=$_upgradeStreakRequired, demotionThreshold=$_demotionThreshold, module3UpgradeStreakRequired=$_module3UpgradeStreakRequired, module3DemotionThreshold=$_module3DemotionThreshold, streakCelebrationThreshold=$_streakCelebrationThreshold',
           );
         }
       }
@@ -658,49 +675,47 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     final stage = _getWordStage(_currentWord.wordId);
     final wordId = _currentWord.wordId;
 
-    // TOF is always the warm-up entry when enabled — but we still rotate
-    // between completion and rearrangement for subsequent visits so the
-    // learner never sees the exact same sequence twice in a row.
-    if (_hasTruthOrFalse) {
-      _currentFormat = ActivityFormat.truthOrFalse;
+    // Build the pool of formats eligible for this stage.
+    List<ActivityFormat> pool = [];
+    if (stage == 1) {
+      // Stage 1 (LEARNING): TOF and completion preferred, rearrangement optional
+      pool = [
+        if (_hasTruthOrFalse) ActivityFormat.truthOrFalse,
+        if (_hasCompletion) ActivityFormat.completion,
+        if (_hasRearrangement) ActivityFormat.rearrangement,
+      ];
+    } else if (stage == 2) {
+      // Stage 2 (FAMILIAR): all enabled formats
+      pool = [
+        if (_hasCompletion) ActivityFormat.completion,
+        if (_hasRearrangement) ActivityFormat.rearrangement,
+        if (_hasTruthOrFalse) ActivityFormat.truthOrFalse,
+      ];
     } else {
-      // Build the pool of formats eligible for this stage.
-      // Stage 1 (LEARNING)  : completion preferred, rearrangement optional
-      // Stage 2 (FAMILIAR)  : both completion and rearrangement eligible
-      // Stage 3 (PROFICIENT): rearrangement preferred, completion optional
-      List<ActivityFormat> pool;
-      if (stage == 1) {
-        pool = [
-          if (_hasCompletion) ActivityFormat.completion,
-          if (_hasRearrangement) ActivityFormat.rearrangement,
-        ];
-        if (pool.isEmpty) pool = [ActivityFormat.completion];
-      } else if (stage == 2) {
-        pool = [
-          if (_hasCompletion) ActivityFormat.completion,
-          if (_hasRearrangement) ActivityFormat.rearrangement,
-        ];
-        if (pool.isEmpty) pool = [ActivityFormat.completion];
-      } else {
-        // Stage 3 — rearrangement leads, completion optional
-        pool = [
-          if (_hasRearrangement) ActivityFormat.rearrangement,
-          if (_hasCompletion) ActivityFormat.completion,
-        ];
-        if (pool.isEmpty) pool = [ActivityFormat.rearrangement];
-      }
-
-      // Exclude the format that was used last time for THIS word (rotation).
-      final lastFmt = _lastWordFormat[wordId];
-      final rotated = pool.where((f) => f != lastFmt).toList();
-      final chosen = rotated.isNotEmpty
-          ? rotated[Random().nextInt(rotated.length)]
-          : pool[Random().nextInt(pool.length)];
-
-      _currentFormat = chosen;
+      // Stage 3 (PROFICIENT): rearrangement and free-type completion lead, TOF optional
+      pool = [
+        if (_hasRearrangement) ActivityFormat.rearrangement,
+        if (_hasCompletion) ActivityFormat.completion,
+        if (_hasTruthOrFalse) ActivityFormat.truthOrFalse,
+      ];
+    }
+    if (pool.isEmpty) {
+      pool = [
+        if (_hasCompletion) ActivityFormat.completion,
+        if (_hasRearrangement) ActivityFormat.rearrangement,
+        if (_hasTruthOrFalse) ActivityFormat.truthOrFalse,
+      ];
+      if (pool.isEmpty) pool = [ActivityFormat.completion];
     }
 
-    // Record chosen format so the next visit can rotate away from it.
+    // Exclude the format that was used last time for THIS word (rotation).
+    final lastFmt = _lastWordFormat[wordId];
+    final rotated = pool.where((f) => f != lastFmt).toList();
+    final chosen = rotated.isNotEmpty
+        ? rotated[Random().nextInt(rotated.length)]
+        : pool[Random().nextInt(pool.length)];
+
+    _currentFormat = chosen;
     _lastWordFormat[wordId] = _currentFormat;
 
     setState(() {
@@ -812,7 +827,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
     // First, check if the sentence explicitly contains a placeholder
     final placeholderExp = RegExp(
-      r"\{\s*BLANK\s*\}|_{3,}",
+      r"\{\s*BLANK\s*\}|\[\s*BLANK\s*\]|<\s*BLANK\s*>|_{2,}|-{2,}|\[_\]",
       caseSensitive: false,
     );
     final placeholderMatches = placeholderExp.allMatches(sentence).toList();
@@ -1058,45 +1073,64 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
     // The correct answers are all the blanked words
     final correctAnswers = _completionTokens
-        .where((t) => t.isBlank && t.answer != null)
-        .map((t) => t.answer!)
+        .where((t) => t.isBlank && t.answer != null && t.answer!.trim().isNotEmpty)
+        .map((t) => t.answer!.trim())
+        .toSet()
         .toList();
 
-    // Use options from the database!
-    final List<String> dbOptions = [];
+    // Fallback if no blanks had an explicit answer
+    if (correctAnswers.isEmpty) {
+      final fallbackAns = _activityAnswer(_currentWord).trim();
+      if (fallbackAns.isNotEmpty) {
+        correctAnswers.add(fallbackAns);
+      }
+    }
+
+    // Collect distractors from database
+    final Set<String> pool = {};
     if (_currentWord.sentenceCompletionOption1?.trim().isNotEmpty ?? false) {
-      dbOptions.add(_currentWord.sentenceCompletionOption1!.trim());
+      pool.add(_currentWord.sentenceCompletionOption1!.trim());
     }
     if (_currentWord.sentenceCompletionOption2?.trim().isNotEmpty ?? false) {
-      dbOptions.add(_currentWord.sentenceCompletionOption2!.trim());
+      pool.add(_currentWord.sentenceCompletionOption2!.trim());
     }
     if (_currentWord.sentenceCompletionOption3?.trim().isNotEmpty ?? false) {
-      dbOptions.add(_currentWord.sentenceCompletionOption3!.trim());
+      pool.add(_currentWord.sentenceCompletionOption3!.trim());
     }
 
-    if (dbOptions.isEmpty) {
+    if (pool.isEmpty) {
       if (_currentWord.mcDistractor1?.trim().isNotEmpty ?? false) {
-        dbOptions.add(_currentWord.mcDistractor1!.trim());
+        pool.add(_currentWord.mcDistractor1!.trim());
       }
       if (_currentWord.mcDistractor2?.trim().isNotEmpty ?? false) {
-        dbOptions.add(_currentWord.mcDistractor2!.trim());
+        pool.add(_currentWord.mcDistractor2!.trim());
       }
       if (_currentWord.mcDistractor3?.trim().isNotEmpty ?? false) {
-        dbOptions.add(_currentWord.mcDistractor3!.trim());
+        pool.add(_currentWord.mcDistractor3!.trim());
       }
     }
 
-    final pool = dbOptions.toSet().toList();
+    // Remove any items that match any correct answer
+    pool.removeWhere(
+      (w) => correctAnswers.any((ans) => ans.toLowerCase() == w.toLowerCase()),
+    );
 
-    // Only fallback if the database has absolutely no distractors for this word
-    if (pool.isEmpty) {
-      // Build a pool from other words in the session
+    // Calculate distractors based on stage
+    // Stage 1 (LEARNING): 1 blank + 2 distractors = 3 total options
+    // Stage 2 (FAMILIAR): 2 blanks + 3 distractors = 5 total options
+    final int numDistractors = (stage == 1) ? 2 : 3;
+
+    // Replenish from session words if needed
+    if (pool.length < numDistractors) {
       final sessionWords = _words
           .where((word) => word.wordId != _currentWord.wordId)
-          .map((word) => word.englishWord)
-          .toList();
+          .map((word) => word.englishWord.trim())
+          .where((w) => w.isNotEmpty && !correctAnswers.any((ans) => ans.toLowerCase() == w.toLowerCase()));
       pool.addAll(sessionWords);
+    }
 
+    // Replenish from fallback list if still needed
+    if (pool.length < numDistractors) {
       final fallbackDistractors = [
         'apple',
         'house',
@@ -1110,25 +1144,24 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
         'big',
         'small',
         'quickly',
+        'bread',
+        'road',
+        'river',
+        'sun',
+        'moon',
+        'table',
       ];
-      pool.addAll(fallbackDistractors);
+      pool.addAll(
+        fallbackDistractors.where(
+          (w) => !correctAnswers.any((ans) => ans.toLowerCase() == w.toLowerCase()),
+        ),
+      );
     }
 
-    pool.removeWhere(
-      (w) => correctAnswers.any((ans) => ans.toLowerCase() == w.toLowerCase()),
-    );
+    final poolList = pool.toList()..shuffle();
+    final distractors = poolList.take(numDistractors).toList();
 
-    // Calculate distractors based on stage (revised format)
-    // Stage 1 (LEARNING): 1 blank + 2 distractors = 3 total options
-    // Stage 2 (FAMILIAR): 2 blanks + 3 distractors = 5 total options
-    int numDistractors = (stage == 1) ? 2 : 3;
-
-    pool.shuffle();
-    // Use whatever distractors we have up to numDistractors
-    final distractors = pool.take(numDistractors).toList();
-
-    _completionOptions = [...correctAnswers, ...distractors];
-    _completionOptions.shuffle();
+    _completionOptions = {...correctAnswers, ...distractors}.toList()..shuffle();
   }
 
   void _generateRearrangementChips() {
@@ -1298,7 +1331,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
     final m2Total = widget.module2TotalCount ?? 0;
     final m2Correct = widget.module2CorrectCount ?? 0;
-    final m3Total = _initialPassCorrectCount + _failedSentenceWords.length;
+    final m3Total = _initialPassCorrectCount + _uniqueFailedSentenceWordIds.length;
     final m3Correct = _initialPassCorrectCount;
 
     final totalAttempts = (m2Total + m3Total).clamp(1, 9999);
@@ -1337,9 +1370,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     );
 
     // Get failed sentence word IDs, combined with any Module 2 errors
-    final failedSentenceWordIds = _failedSentenceWords
-        .map((w) => w.wordId)
-        .toSet();
+    final failedSentenceWordIds = _uniqueFailedSentenceWordIds.toSet();
     if (widget.module2WordWrongAttempts != null) {
       widget.module2WordWrongAttempts!.forEach((wId, wrongCount) {
         if (wrongCount > 0) {
@@ -1358,71 +1389,48 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
         .where((v) => v)
         .length;
 
-    double lessonOverallScore = overallScore;
+    // Unified accuracy of Module 2 and Module 3
+    final double sessionAccuracy = overallScore;
+    double lessonOverallScore = sessionAccuracy;
+
     if (!widget.isSandbox) {
-      double newWholeLessonAccuracy = 0.0;
       final lessonProvider = Provider.of<LessonProvider>(
         navContext,
         listen: false,
       );
       try {
         await lessonProvider.endPracticeSession(widget.sessionId);
-        final summary = await lessonProvider.fetchWordMasterySummary(
-          widget.lessonId,
-          sessionId: widget.sessionId,
-        );
-        if (summary.isNotEmpty) {
-          final wordAccuracies = summary
-              .map((item) => (item['accuracy'] as num?)?.toDouble())
-              .whereType<double>()
-              .toList();
-          if (wordAccuracies.isNotEmpty) {
-            newWholeLessonAccuracy =
-                (wordAccuracies.reduce((a, b) => a + b) / wordAccuracies.length).clamp(
-                  0.0,
-                  100.0,
-                );
-          }
-        }
       } catch (_) {}
 
-      // Fallback if summary was empty or offline: calculate across all 3 modules
-      if (newWholeLessonAccuracy == 0.0) {
-        int totalCorrectAllModules = 0;
-        int totalAttemptsAllModules = 0;
-        for (int m = 1; m <= 3; m++) {
-          final mScore = await LocalStorageService.getModuleScore(widget.lessonId, m);
-          if (mScore != null) {
-            totalCorrectAllModules += mScore['correct'] ?? 0;
-            totalAttemptsAllModules += mScore['total'] ?? 0;
-          }
-        }
-        if (totalAttemptsAllModules > 0) {
-          newWholeLessonAccuracy =
-              ((totalCorrectAllModules / totalAttemptsAllModules) * 100.0).clamp(0.0, 100.0);
-        } else {
-          newWholeLessonAccuracy = overallScore;
-        }
+      // High-score rule: check previous best score so lesson score never downgrades
+      final previousBest = await LocalStorageService.getLessonScore(widget.lessonId);
+      if (previousBest != null && previousBest > sessionAccuracy) {
+        lessonOverallScore = previousBest;
+        debugPrint(
+          'SentenceBuilding: Preserving previous best score ($previousBest%) over current session ($sessionAccuracy%)',
+        );
+      } else {
+        lessonOverallScore = sessionAccuracy;
+        debugPrint(
+          'SentenceBuilding: New best lesson score achieved ($sessionAccuracy%)',
+        );
       }
 
-      final double accurateScore = newWholeLessonAccuracy > 0
-          ? newWholeLessonAccuracy
-          : overallScore;
-      lessonOverallScore = accurateScore;
-
-      // Persist full score details so the map screen can retrieve them later
+      // Persist full score details so the map screen and review can retrieve them later
       await LocalStorageService.saveLessonScoreDetails(widget.lessonId, {
         'wordPronunciationCorrect': _wordPronunciationCorrect,
         'wordPronunciationAttempts': _wordPronunciationAttempts,
         'failedSentenceWordIds': failedSentenceWordIds.toList(),
         'overallScore': lessonOverallScore,
+        'sessionAccuracy': sessionAccuracy,
+        'previousBest': previousBest,
         'confusablePairsTotal': _confusablePairs.length,
         'confusablePairsMastered': confusableMasteredCount,
         'confusableMastery': _confusableMastery,
       });
       await LocalStorageService.saveLessonScore(
         widget.lessonId,
-        lessonOverallScore,
+        sessionAccuracy,
         force: false,
       );
     }
@@ -1512,9 +1520,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
           learnerId: lId,
         );
       }
-      if (!_hasShownStreakCelebrationThisSession &&
-          _consecutiveStreak >= _streakCelebrationThreshold) {
-        _hasShownStreakCelebrationThisSession = true;
+      if (_consecutiveStreak >= _streakCelebrationThreshold &&
+          _consecutiveStreak % _streakCelebrationThreshold == 0) {
         StreakCelebrationOverlay.show(context, streakCount: _consecutiveStreak);
       }
       if (!_isReinforcementPass) {
@@ -1524,6 +1531,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       }
     } else {
       _consecutiveStreak = 0;
+      _uniqueFailedSentenceWordIds.add(_currentWord.wordId);
       if (!_failedSentenceWords.any((w) => w.wordId == _currentWord.wordId)) {
         _failedSentenceWords.add(_currentWord);
       }
@@ -1575,11 +1583,23 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
           .then((res) {
             if (mounted && res != null) {
               final newLevel = res['currentLevel']?.toString() ?? '';
-              if (newLevel == 'MASTERED') {
+              if (newLevel.isNotEmpty) {
                 setState(() {
-                  _wordStage[_currentWord.wordId] = 4;
-                  _wordDifficulties[_currentWord.wordId] = 'MASTERED';
-                  _sentenceMasteredWordIds.add(_currentWord.wordId);
+                  _wordDifficulties[_currentWord.wordId] = newLevel;
+                  if (res['consecutiveCorrect'] != null) {
+                    _wordStageCorrectStreak[_currentWord.wordId] =
+                        (res['consecutiveCorrect'] as num).toInt();
+                  }
+                  if (newLevel == 'MASTERED') {
+                    _wordStage[_currentWord.wordId] = 4;
+                    _sentenceMasteredWordIds.add(_currentWord.wordId);
+                  } else if (newLevel == 'PROFICIENT') {
+                    _wordStage[_currentWord.wordId] = 3;
+                  } else if (newLevel == 'FAMILIAR') {
+                    _wordStage[_currentWord.wordId] = 2;
+                  } else if (newLevel == 'LEARNING') {
+                    _wordStage[_currentWord.wordId] = 1;
+                  }
                 });
               }
             }
@@ -1668,44 +1688,22 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     );
 
     if (_isCorrect) {
-      if (_currentFormat == ActivityFormat.truthOrFalse) {
-        // TOF correct → advance to Completion (warm-up done, start production)
-        // TOF does NOT count toward the upgrade streak on its own.
-        if (_hasCompletion) {
-          setState(() {
-            _currentFormat = ActivityFormat.completion;
-            _resetItemState();
-          });
-          return;
-        } else if (_hasRearrangement) {
-          setState(() {
-            _currentFormat = ActivityFormat.rearrangement;
-            _resetItemState();
-          });
-          return;
-        }
-        // TOF only (no production) — treat correct TOF as streak-eligible
-      } else if (_currentFormat == ActivityFormat.completion) {
-        // If Rearrangement is enabled, transition to Rearrangement next
-        if (_hasRearrangement) {
-          setState(() {
-            _currentFormat = ActivityFormat.rearrangement;
-            _resetItemState();
-          });
-          return;
-        }
-      }
-
-      // Final sentence format for this item completed (or only completion enabled)
-
+      final reqStreak = _getUpgradeStreakForWord(_currentWord.wordId);
       final streak = (_wordStageCorrectStreak[_currentWord.wordId] ?? 0) + 1;
       _wordStageCorrectStreak[_currentWord.wordId] = streak;
       final currentTier = _getStageTier(stage);
       debugPrint(
-        'SentenceBuilding: Word ${_currentWord.englishWord} correct in Stage $stage ($currentTier), streak $streak/$_upgradeStreakRequired',
+        'SentenceBuilding: Word ${_currentWord.englishWord} correct in Stage $stage ($currentTier), streak $streak/$reqStreak',
       );
 
-      if (streak >= _upgradeStreakRequired) {
+      final backendTier = _wordDifficulties[_currentWord.wordId];
+      final backendStage = backendTier == 'MASTERED'
+          ? 4
+          : (backendTier == 'PROFICIENT'
+              ? 3
+              : (backendTier == 'FAMILIAR' ? 2 : 1));
+
+      if (backendStage > stage || streak >= reqStreak) {
         if (stage == 3 && _hasPronunciation) {
           setState(() {
             _currentPhase = Phase.pronunciationFeedback;
@@ -1728,11 +1726,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     } else {
       _consecutiveStreak = 0;
       _wordStageCorrectStreak[_currentWord.wordId] = 0; // Reset streak on error
+      final reqDemotion = _getDemotionThresholdForWord(_currentWord.wordId);
       final failures = (_consecutiveFailures[_currentWord.wordId] ?? 0) + 1;
       _consecutiveFailures[_currentWord.wordId] = failures;
 
-      // On failure in FAMILIAR (stage 2), demotes down to LEARNING (stage 1)
-      final prevStage = (failures >= _demotionThreshold)
+      // On failure meeting demotion threshold, demotes down one stage
+      final prevStage = (failures >= reqDemotion)
           ? (stage - 1).clamp(1, 4)
           : stage;
       final prevTier = _getStageTier(prevStage);
@@ -1758,6 +1757,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
           );
         }
 
+        _uniqueFailedSentenceWordIds.add(_currentWord.wordId);
         if (!_failedSentenceWords.any((w) => w.wordId == _currentWord.wordId)) {
           _failedSentenceWords.add(_currentWord);
         }
@@ -2273,6 +2273,39 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
             onPressed: _showExitConfirmation,
           ),
           actions: [
+            if (_consecutiveStreak >= 1)
+              Padding(
+                padding: const EdgeInsets.only(right: 6.0),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.local_fire_department_rounded,
+                          color: Color(0xFFEA580C),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$_consecutiveStreak',
+                          style: const TextStyle(
+                            color: Color(0xFFEA580C),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Center(
@@ -2330,6 +2363,82 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     );
   }
 
+  Widget _buildSentenceWordChip(String word, {bool selected = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFFF0F9FF) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: selected ? const Color(0xFF0EA5E9) : const Color(0xFFCBD5E1),
+          width: 1.5,
+        ),
+        boxShadow: selected
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Text(
+        word,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: selected ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
+        ),
+      ),
+    );
+  }
+
+  static bool _containsCebuanoKeywords(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('ang ') ||
+        lower.contains('mga ') ||
+        lower.contains('sa ') ||
+        lower.contains('ug ') ||
+        lower.contains('og ') ||
+        lower.contains('nga ') ||
+        lower.contains('para ') ||
+        lower.contains('pagkaon') ||
+        lower.contains('gikan');
+  }
+
+  static String _getEnglishClueFallback(String word) {
+    const definitions = {
+      'bread': 'A food made of flour, water, and yeast mixed and baked.',
+      'sharp': 'Having a thin edge or pointed tip that cuts easily.',
+      'read': 'To look at and comprehend the meaning of written words.',
+      'notebook': 'A book of blank or ruled pages for writing notes.',
+      'pencil': 'An instrument for writing or drawing with a graphite core.',
+      'mother': 'A female parent.',
+      'father': 'A male parent.',
+      'sister': 'A female sibling.',
+      'brother': 'A male sibling.',
+      'cook': 'To prepare food by heating it.',
+      'rice': 'A staple grain boiled and eaten with everyday meals.',
+      'water': 'A clear liquid essential for drinking and living.',
+      'milk': 'A nutritious white liquid produced by mammals.',
+      'apple': 'A round edible fruit with red, yellow, or green skin.',
+      'sweet': 'Having the pleasant taste characteristic of sugar.',
+      'share': 'To divide and distribute a portion among others.',
+      'warm': 'Having or producing a comfortable amount of heat.',
+      'write': 'To make words or letters on paper with a pen or pencil.',
+      'clean': 'Free from dirt, marks, or stains.',
+      'neat': 'Arranged in an orderly and tidy way.',
+      'school': 'An institution where students learn and study.',
+      'dog': 'A loyal domesticated mammal that barks.',
+      'cat': 'A small domesticated feline animal.',
+      'bird': 'A warm-blooded feathered creature with wings.',
+      'fish': 'A limbless cold-blooded animal that swims in water.',
+      'horse': 'A large animal with hooves used for riding.',
+    };
+    return definitions[word.trim().toLowerCase()] ?? 'Focus on the meaning of "$word".';
+  }
+
   Widget _buildCompletionBlankSentence() {
     const wordStyle = TextStyle(
       fontSize: 18,
@@ -2348,7 +2457,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 4,
       runSpacing: 8,
-      children: _completionTokens.map((token) {
+      children: _completionTokens.map<Widget>((token) {
         if (!token.isBlank) {
           return Text(token.text, style: wordStyle);
         }
@@ -2498,6 +2607,299 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       }).toList(),
     );
   }
+
+  Widget _buildRearrangementActivity(String? pref) {
+    final allTokens = _activityArrangementTokens(_currentWord);
+    int startIndex = _arrangementStartIndex;
+    int endIndex = _arrangementEndIndex;
+
+    if (_expectedArrangementTokens.isEmpty) {
+      startIndex = 0;
+      endIndex = -1;
+    }
+
+    final prefix = startIndex > 0
+        ? allTokens.sublist(0, startIndex)
+        : <String>[];
+    final suffix = endIndex != -1 && endIndex < allTokens.length - 1
+        ? allTokens.sublist(endIndex + 1)
+        : <String>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 1. "Your Sentence:" Drop Zone Label
+        Text(
+          LocalizationService.translate(pref, 'your_sentence'),
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF334155),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // 2. Drop Zone Container (Your Sentence)
+        DragTarget<String>(
+          onWillAcceptWithDetails: (_) => !_isChecked,
+          onAcceptWithDetails: (details) {
+            if (_isChecked) return;
+            final word = details.data;
+            if (_assembledWords.contains(word)) return;
+            setState(() {
+              _scrambledWords.remove(word);
+              _assembledWords.add(word);
+            });
+          },
+          builder: (context, candidateData, rejectedData) {
+            return Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 80),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: candidateData.isNotEmpty
+                    ? const Color(0xFFEFF6FF)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _assembledWords.isNotEmpty || candidateData.isNotEmpty
+                      ? const Color(0xFF0EA5E9)
+                      : const Color(0xFFE2E8F0),
+                  width: 2,
+                ),
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 10,
+                children: [
+                  ...prefix.map((w) => _buildLockedChip(w)),
+                  if (_assembledWords.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8.0,
+                        horizontal: 12.0,
+                      ),
+                      child: Text(
+                        LocalizationService.translate(
+                          pref,
+                          'tap_words_placeholder',
+                        ),
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    )
+                  else
+                    ..._assembledWords.map(
+                      (word) => GestureDetector(
+                        onTap: _isChecked
+                            ? null
+                            : () => setState(() {
+                                  _assembledWords.remove(word);
+                                  _scrambledWords.add(word);
+                                }),
+                        child: _buildSentenceWordChip(word, selected: true),
+                      ),
+                    ),
+                  ...suffix.map((w) => _buildLockedChip(w)),
+                ],
+              ),
+            );
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // 3. WORD BANK Section below Your Sentence
+        Text(
+          LocalizationService.translate(pref, 'word_bank'),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF64748B),
+            letterSpacing: 1.0,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 12,
+          children: _scrambledWords.map((word) {
+            return Draggable<String>(
+              data: word,
+              feedback: Material(
+                color: Colors.transparent,
+                child: _buildSentenceWordChip(word, selected: false),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.35,
+                child: _buildSentenceWordChip(word, selected: false),
+              ),
+              child: GestureDetector(
+                onTap: _isChecked
+                    ? null
+                    : () => setState(() {
+                          _scrambledWords.remove(word);
+                          _assembledWords.add(word);
+                        }),
+                child: _buildSentenceWordChip(word, selected: false),
+              ),
+            );
+          }).toList(),
+        ),
+
+        // 4. Cumulative Preview & Guided Translation
+        if (_assembledWords.isNotEmpty || prefix.isNotEmpty) ...[
+          Builder(builder: (context) {
+            final targetWord = _currentWord.englishWord;
+            final assembledEnglish =
+                [...prefix, ..._assembledWords, ...suffix].join(' ').trim();
+            final totalTargetCount = _expectedArrangementTokens.isNotEmpty
+                ? _expectedArrangementTokens.length
+                : allTokens.length;
+            final assembledCount = _assembledWords.length;
+            final fullCebuano = (_currentWord.exampleSentenceCebuano != null &&
+                    _currentWord.exampleSentenceCebuano!.trim().isNotEmpty)
+                ? _currentWord.exampleSentenceCebuano!.trim()
+                : _currentWord.cebuanoMeaning.trim();
+
+            String progressiveCebuano = '';
+            if (fullCebuano.isNotEmpty) {
+              final cebTokens = fullCebuano
+                  .split(RegExp(r'\s+'))
+                  .where((t) => t.trim().isNotEmpty)
+                  .toList();
+              if (totalTargetCount > 0 && cebTokens.isNotEmpty) {
+                final ratio =
+                    (assembledCount / totalTargetCount).clamp(0.0, 1.0);
+                final revealCount =
+                    (ratio * cebTokens.length).ceil().clamp(1, cebTokens.length);
+                progressiveCebuano = (assembledCount >= totalTargetCount)
+                    ? fullCebuano
+                    : '${cebTokens.sublist(0, revealCount).join(' ')}…';
+              } else {
+                progressiveCebuano = fullCebuano;
+              }
+            }
+
+            return Container(
+              margin: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // English preview
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          if (assembledEnglish.isNotEmpty) {
+                            _ttsService.speak(assembledEnglish);
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.volume_up_rounded,
+                          color: Color(0xFF06A6FF),
+                          size: 20,
+                        ),
+                        tooltip: 'Listen to preview',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: CebuanoTextHighlighter(
+                          text: 'Preview: $assembledEnglish',
+                          highlightWord: targetWord,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF475569),
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          highlightStyle: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF0284C7),
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w900,
+                            decoration: TextDecoration.underline,
+                            decorationThickness: 2.5,
+                            decorationColor: Color(0xFF0284C7),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (progressiveCebuano.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    // Progressive guided translation
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            if (progressiveCebuano.isNotEmpty) {
+                              _ttsService.speakCebuano(progressiveCebuano);
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.translate_rounded,
+                            color: Color(0xFF0284C7),
+                            size: 18,
+                          ),
+                          tooltip: 'Listen to Bisaya guided translation',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CebuanoTextHighlighter(
+                            text: 'Bisaya: $progressiveCebuano',
+                            highlightWord: _currentWord.cebuanoMeaning,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF0284C7),
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            highlightStyle: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF0369A1),
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w900,
+                              decoration: TextDecoration.underline,
+                              decorationThickness: 2.5,
+                              decorationColor: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
 
   Widget _buildConfusableBody(ThemeData theme) {
     final pair = _activeConfusablePair!;
@@ -3426,43 +3828,96 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                       }(),
                     ],
                   ),
-                  if (_getWordStage(_currentWord.wordId) == 1) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFDF4FF),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFE879F9),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.lightbulb_outline,
-                            color: Color(0xFFD946EF),
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              (_currentWord.explanationText != null &&
-                                      _currentWord.explanationText!.trim().isNotEmpty)
-                                  ? _currentWord.explanationText!.trim()
-                                  : 'Tip: Focus on the meaning "${_currentWord.cebuanoMeaning}" for "${_currentWord.englishWord}".',
-                              style: const TextStyle(
-                                color: Color(0xFFA21CAF),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
+                  () {
+                    final stage = _getWordStage(_currentWord.wordId);
+                    if (stage >= 3) return const SizedBox.shrink();
+
+                    String hintText = '';
+                    String highlightWord = _currentWord.englishWord;
+
+                    if (stage == 1) {
+                      // Stage 1 (Learning): Native Bisaya hint (scaffolding)
+                      if (_currentWord.hintCebuanoSentence != null &&
+                          _currentWord.hintCebuanoSentence!.trim().isNotEmpty) {
+                        final h = _currentWord.hintCebuanoSentence!.trim();
+                        hintText = (h.toLowerCase().startsWith('pahimangno') ||
+                                h.toLowerCase().startsWith('tip') ||
+                                h.toLowerCase().startsWith('hint'))
+                            ? h
+                            : 'Pahimangno: $h';
+                      } else if (_currentWord.explanationText != null &&
+                          _currentWord.explanationText!.trim().isNotEmpty) {
+                        hintText = _currentWord.explanationText!.trim();
+                      } else {
+                        hintText =
+                            'Pahimangno: Ang "${_currentWord.englishWord}" nagpasabot og "${_currentWord.cebuanoMeaning}".';
+                      }
+                      highlightWord = _currentWord.englishWord;
+                    } else if (stage == 2) {
+                      // Stage 2 (Familiar): English definition hint (reinforcing target language)
+                      if (_currentWord.hintDefinition != null &&
+                          _currentWord.hintDefinition!.trim().isNotEmpty) {
+                        final h = _currentWord.hintDefinition!.trim();
+                        hintText = (h.toLowerCase().startsWith('hint:') ||
+                                h.toLowerCase().startsWith('tip:'))
+                            ? h
+                            : 'Hint: $h';
+                      } else {
+                        final fallbackClue = _getEnglishClueFallback(_currentWord.englishWord);
+                        hintText = 'Hint: $fallbackClue';
+                      }
+                      highlightWord = _currentWord.englishWord;
+                    }
+
+                    if (hintText.isEmpty) return const SizedBox.shrink();
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFDF4FF),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFE879F9),
+                              width: 1,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.lightbulb_outline,
+                                color: Color(0xFFD946EF),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: CebuanoTextHighlighter(
+                                  text: hintText,
+                                  highlightWord: highlightWord,
+                                  style: const TextStyle(
+                                    color: Color(0xFFA21CAF),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                  highlightStyle: const TextStyle(
+                                    color: Color(0xFF0284C7),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Color(0xFF0284C7),
+                                    decorationThickness: 2.0,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }(),
                   const SizedBox(height: 24),
 
                   AppQuestionTransition(
@@ -3475,369 +3930,56 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                         children: [
                           if (_currentFormat == ActivityFormat.truthOrFalse) ...[
                             _buildTruthOrFalseActivity(pref),
-                          ] else if (_currentFormat == ActivityFormat.rearrangement &&
-                              !_isChecked) ...[
+                          ] else if (_currentFormat == ActivityFormat.rearrangement) ...[
+                            _buildRearrangementActivity(pref),
+                          ] else if (_currentFormat == ActivityFormat.completion) ...[
                             Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(18),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 16,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(24),
                                 border: Border.all(
                                   color: const Color(0xFFE2E8F0),
                                 ),
                               ),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  const Text(
-                                    'WORD BANK',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF64748B),
-                                      letterSpacing: 1.0,
-                                    ),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      const Opacity(
+                                        opacity: 0,
+                                        child: IconButton(
+                                          icon: Icon(Icons.volume_up_rounded),
+                                          onPressed: null,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 8.0,
+                                          ),
+                                          child: _buildCompletionBlankSentence(),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.volume_up_rounded,
+                                          color: Color(0xFF06A6FF),
+                                        ),
+                                        onPressed: _speakFullSentence,
+                                        tooltip: "Listen to full sentence",
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 24),
+                                  const Divider(color: Color(0xFFE2E8F0)),
                                   const SizedBox(height: 12),
-                                  Wrap(
-                                    alignment: WrapAlignment.center,
-                                    spacing: 10,
-                                    runSpacing: 12,
-                                    children: _scrambledWords.map((word) {
-                                      return Draggable<String>(
-                                        data: word,
-                                        feedback: Material(
-                                          color: Colors.transparent,
-                                          child: ActionChip(
-                                            label: Text(
-                                              word,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 15,
-                                                color: Color(0xFF334155),
-                                              ),
-                                            ),
-                                            backgroundColor: Colors.white,
-                                            side: const BorderSide(
-                                              color: Color(0xFF06A6FF),
-                                              width: 1.5,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        ),
-                                        childWhenDragging: Opacity(
-                                          opacity: 0.35,
-                                          child: ActionChip(
-                                            label: Text(
-                                              word,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 15,
-                                                color: Color(0xFF334155),
-                                              ),
-                                            ),
-                                            backgroundColor: Colors.white,
-                                            side: const BorderSide(
-                                              color: Color(0xFFCBD5E1),
-                                              width: 1.5,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        ),
-                                        child: ActionChip(
-                                          label: Text(
-                                            word,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 15,
-                                              color: Color(0xFF334155),
-                                            ),
-                                          ),
-                                          backgroundColor: Colors.white,
-                                          side: const BorderSide(
-                                            color: Color(0xFFCBD5E1),
-                                            width: 1.5,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          shadowColor: Colors.black.withValues(
-                                            alpha: 0.04,
-                                          ),
-                                          elevation: 2,
-                                          onPressed: () {
-                                            setState(() {
-                                              _scrambledWords.remove(word);
-                                              _assembledWords.add(word);
-                                            });
-                                          },
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                          ],
 
-                          // English Sentence Frame with visual blank/tapped words
-                          // Only shown for completion and rearrangement — NOT for truthOrFalse
-                          if (_currentFormat != ActivityFormat.truthOrFalse) Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: const Color(0xFFE2E8F0),
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Opacity(
-                                      opacity: 0,
-                                      child: IconButton(
-                                        icon: Icon(Icons.volume_up_rounded),
-                                        onPressed: null,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child:
-                                          _currentFormat ==
-                                              ActivityFormat.completion
-                                          ? Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    vertical: 8.0,
-                                                  ),
-                                              child:
-                                                  _buildCompletionBlankSentence(),
-                                            )
-                                          : Builder(
-                                              builder: (context) {
-                                                final allTokens =
-                                                    _activityArrangementTokens(
-                                                      _currentWord,
-                                                    );
-                                                int startIndex =
-                                                    _arrangementStartIndex;
-                                                int endIndex =
-                                                    _arrangementEndIndex;
-
-                                                if (_expectedArrangementTokens
-                                                    .isEmpty) {
-                                                  startIndex = 0;
-                                                  endIndex = -1;
-                                                }
-
-                                                final prefix = startIndex > 0
-                                                    ? allTokens.sublist(
-                                                        0,
-                                                        startIndex,
-                                                      )
-                                                    : <String>[];
-                                                final suffix =
-                                                    endIndex != -1 &&
-                                                        endIndex <
-                                                            allTokens.length - 1
-                                                    ? allTokens.sublist(
-                                                        endIndex + 1,
-                                                      )
-                                                    : <String>[];
-
-                                                return Wrap(
-                                                  alignment:
-                                                      WrapAlignment.center,
-                                                  crossAxisAlignment:
-                                                      WrapCrossAlignment.center,
-                                                  spacing: 6,
-                                                  runSpacing: 10,
-                                                  children: [
-                                                    ...prefix.map(
-                                                      (w) => _buildLockedChip(w),
-                                                    ),
-                                                    DragTarget<String>(
-                                                      onWillAcceptWithDetails:
-                                                          (_) => !_isChecked,
-                                                      onAcceptWithDetails:
-                                                          (details) {
-                                                            if (_isChecked) {
-                                                              return;
-                                                            }
-                                                            final word =
-                                                                details.data;
-                                                            if (_assembledWords
-                                                                .contains(word)) {
-                                                              return;
-                                                            }
-                                                            setState(() {
-                                                              _scrambledWords
-                                                                  .remove(word);
-                                                              _assembledWords
-                                                                  .add(word);
-                                                            });
-                                                          },
-                                                      builder:
-                                                          (
-                                                            context,
-                                                            candidateData,
-                                                            rejectedData,
-                                                          ) {
-                                                            return Container(
-                                                              padding:
-                                                                  const EdgeInsets.all(
-                                                                    8,
-                                                                  ),
-                                                              decoration: BoxDecoration(
-                                                                color:
-                                                                    candidateData
-                                                                        .isNotEmpty
-                                                                    ? const Color(
-                                                                        0xFFE0F2FE,
-                                                                      )
-                                                                    : const Color(
-                                                                        0xFFF8FAFC,
-                                                                      ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      18,
-                                                                    ),
-                                                                border: Border.all(
-                                                                  color:
-                                                                      candidateData
-                                                                          .isNotEmpty
-                                                                      ? const Color(
-                                                                          0xFF06A6FF,
-                                                                        )
-                                                                      : const Color(
-                                                                          0xFFE2E8F0,
-                                                                        ),
-                                                                  width: 1.5,
-                                                                  style:
-                                                                      _assembledWords
-                                                                          .isEmpty
-                                                                      ? BorderStyle
-                                                                            .solid
-                                                                      : BorderStyle
-                                                                            .none,
-                                                                ),
-                                                              ),
-                                                              child: Wrap(
-                                                                alignment:
-                                                                    WrapAlignment
-                                                                        .center,
-                                                                spacing: 8,
-                                                                runSpacing: 10,
-                                                                children:
-                                                                    _assembledWords
-                                                                        .isEmpty
-                                                                    ? [
-                                                                        const Padding(
-                                                                          padding: EdgeInsets.symmetric(
-                                                                            vertical:
-                                                                                8,
-                                                                            horizontal:
-                                                                                12,
-                                                                          ),
-                                                                          child: Text(
-                                                                            "Drop words here",
-                                                                            textAlign:
-                                                                                TextAlign.center,
-                                                                            style: TextStyle(
-                                                                              color: Color(
-                                                                                0xFF94A3B8,
-                                                                              ),
-                                                                              fontSize: 14,
-                                                                              fontStyle: FontStyle.italic,
-                                                                            ),
-                                                                          ),
-                                                                        ),
-                                                                      ]
-                                                                    : _assembledWords.map((
-                                                                        word,
-                                                                      ) {
-                                                                        return ActionChip(
-                                                                          label: Text(
-                                                                            word,
-                                                                            style: const TextStyle(
-                                                                              fontWeight: FontWeight.bold,
-                                                                              fontSize: 15,
-                                                                              color: Color(
-                                                                                0xFF06A6FF,
-                                                                              ),
-                                                                            ),
-                                                                          ),
-                                                                          backgroundColor: const Color(
-                                                                            0xFFEFF6FF,
-                                                                          ),
-                                                                          side: const BorderSide(
-                                                                            color: Color(
-                                                                              0xFF06A6FF,
-                                                                            ),
-                                                                            width:
-                                                                                1.5,
-                                                                          ),
-                                                                          shape: RoundedRectangleBorder(
-                                                                            borderRadius: BorderRadius.circular(
-                                                                              12,
-                                                                            ),
-                                                                          ),
-                                                                          onPressed: () {
-                                                                            if (_isChecked) {
-                                                                              return;
-                                                                            }
-                                                                            setState(() {
-                                                                              _assembledWords.remove(
-                                                                                word,
-                                                                              );
-                                                                              _scrambledWords.add(
-                                                                                word,
-                                                                              );
-                                                                            });
-                                                                          },
-                                                                        );
-                                                                      }).toList(),
-                                                              ),
-                                                            );
-                                                          },
-                                                    ),
-                                                    ...suffix.map(
-                                                      (w) => _buildLockedChip(w),
-                                                    ),
-                                                  ],
-                                                );
-                                              },
-                                            ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.volume_up_rounded,
-                                        color: Color(0xFF06A6FF),
-                                      ),
-                                      onPressed: _speakFullSentence,
-                                      tooltip: "Listen to full sentence",
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 24),
-                                const Divider(color: Color(0xFFE2E8F0)),
-                                const SizedBox(height: 12),
-
-                                // Cebuano Translation Scaffold (Always shown with target word underlined)
-                                ...[
+                                  // Cebuano Translation Scaffold (Always shown with target word underlined)
                                   Row(
                                     children: [
                                       const Text(
@@ -3866,10 +4008,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                                           ),
                                         ),
                                       ),
-                                      if (_currentFormat ==
-                                              ActivityFormat.completion ||
-                                          _getWordStage(_currentWord.wordId) <=
-                                              2)
+                                      if (_getWordStage(_currentWord.wordId) <= 2)
                                         IconButton(
                                           icon: const Icon(
                                             Icons.volume_up_rounded,
@@ -3887,22 +4026,25 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                                     ],
                                   ),
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                          if (_currentFormat != ActivityFormat.truthOrFalse)
-                          const SizedBox(height: 36),
+                            const SizedBox(height: 16),
+                          ],
 
                           if (!_isChecked &&
                               _currentFormat == ActivityFormat.completion) ...[
-                            const SizedBox(height: 36),
+                            const SizedBox(height: 8),
                             Builder(
                               builder: (context) {
                                 final stage = _getWordStage(
                                   _currentWord.wordId,
                                 );
-                                if (stage == 4) {
+                                if (stage >= 3) {
                                   return const SizedBox.shrink(); // No word bank for free-type (Proficient Free-Typing)
+                                }
+
+                                if (_completionOptions.isEmpty) {
+                                  _generateCompletionOptions();
                                 }
 
                                 return Column(
@@ -3912,7 +4054,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                                         .contains(opt);
                                     return Padding(
                                       padding: const EdgeInsets.only(
-                                        bottom: 12.0,
+                                        bottom: 10.0,
                                       ),
                                       child: InkWell(
                                         onTap: () {
@@ -3951,7 +4093,10 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                                           duration: const Duration(
                                             milliseconds: 150,
                                           ),
-                                          padding: const EdgeInsets.all(18),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 13,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: isSel
                                                 ? const Color(0xFFEFF6FF)
@@ -4031,9 +4176,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                     (w) => w.trim().isNotEmpty,
                   );
             } else {
-              isActionEnabled =
-                  _assembledWords.isNotEmpty &&
-                  _assembledWords.length == _expectedArrangementTokens.length;
+              isActionEnabled = _assembledWords.isNotEmpty;
             }
 
             if (!_isChecked) {

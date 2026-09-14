@@ -16,6 +16,8 @@ class LessonPopoverCard extends StatefulWidget {
   final Color backgroundColor;
   final bool isTailOnLeft;
   final double width;
+  final double? score;
+  final int? masteredCount;
 
   const LessonPopoverCard({
     super.key,
@@ -29,6 +31,8 @@ class LessonPopoverCard extends StatefulWidget {
     this.backgroundColor = const Color(0xFF0EA5E9), // Primary Sky Blue
     this.isTailOnLeft = true,
     this.width = 220.0,
+    this.score,
+    this.masteredCount,
   });
 
   @override
@@ -138,6 +142,42 @@ class _LessonPopoverCardState extends State<LessonPopoverCard>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        if (widget.score != null && widget.score! > 0) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.analytics_rounded,
+                                  size: 10,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    'Accuracy: ${widget.score!.toStringAsFixed(0)}% • ${widget.masteredCount ?? 0}/${widget.totalWordCount} Mastered',
+                                    style: AppTypography.nunito(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         if (widget.className != null &&
                             widget.className!.isNotEmpty) ...[
                           const SizedBox(height: 3),

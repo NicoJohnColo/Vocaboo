@@ -239,7 +239,10 @@ public class DifficultyAdjustmentService {
         DifficultyLevel oldLevel = progress.getCurrentLevel();
         DifficultyLevel newLevel = oldLevel;
 
-        if ("PRONUNCIATION_FEEDBACK".equalsIgnoreCase(activityType)) {
+        if ("PRONUNCIATION_FEEDBACK".equalsIgnoreCase(activityType)
+                || "PRONUNCIATION".equalsIgnoreCase(activityType)
+                || "SPEAKING".equalsIgnoreCase(activityType)
+                || "MICROPHONE".equalsIgnoreCase(activityType)) {
             return toProgressResponse(progress);
         }
 

@@ -87,7 +87,7 @@ public class PublishWorkflowService {
 
         long wordCount = wordRepository.countByLessonLessonIdAndIsDeletedFalse(lessonId);
 
-        if (wordCount < 5) errors.add("Lesson must have at least 5 vocabulary words (currently has " + wordCount + ")");
+        if (wordCount < 1) errors.add("Lesson must have at least 1 vocabulary word (currently has " + wordCount + ")");
         if (wordCount > 20) warnings.add("Lesson has " + wordCount + " words; recommended maximum is 20");
         if (lesson.getLessonTitle() == null || lesson.getLessonTitle().isBlank()) errors.add("Lesson title is missing");
         if (lesson.getLessonDescription() == null || lesson.getLessonDescription().isBlank()) warnings.add("Lesson description is missing");

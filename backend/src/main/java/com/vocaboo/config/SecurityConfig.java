@@ -37,8 +37,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public learner endpoints
-                .requestMatchers("/api/v1/learners/register", "/api/v1/learners/login", "/api/v1/learners/check-name").permitAll()
+                // Public learner endpoints & root path
+                .requestMatchers("/", "/api/v1/learners/register", "/api/v1/learners/login", "/api/v1/learners/check-name").permitAll()
                 // Public admin login and registration
                 .requestMatchers(HttpMethod.POST, "/api/admin/login", "/api/admin/register").permitAll()
                 // Public teacher self-registration

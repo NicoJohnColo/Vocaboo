@@ -18,6 +18,7 @@ import '../widgets/mascot_bubble.dart';
 import '../widgets/cebuano_text_highlighter.dart';
 import '../widgets/streak_and_break_animations.dart';
 import '../core/motion/motion.dart';
+import '../services/lesson_audio_service.dart';
 
 class CompletionToken {
   final String text;
@@ -269,6 +270,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
   @override
   void initState() {
     super.initState();
+    LessonAudioService().playBgm();
     WidgetsBinding.instance.addObserver(this);
     _moduleStartTime = DateTime.now();
 
@@ -305,6 +307,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
   @override
   void dispose() {
+    LessonAudioService().stopBgm();
     WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _recordingSessionActive = false;
@@ -1537,6 +1540,12 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       }
     }
 
+    if (_isCorrect) {
+      LessonAudioService().playCorrect();
+    } else {
+      LessonAudioService().playWrong();
+    }
+
     if (widget.isSandbox) {
       if (_isCorrect) {
         final currentStage = _getWordStage(_currentWord.wordId);
@@ -1564,7 +1573,23 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
         _currentWord.wordId,
         _isCorrect,
         activityType: activityTypeStr,
-      );
+      ).then((goalJustCompleted) {
+        if (goalJustCompleted && mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('🎉 Goal Complete!'),
+              content: const Text('You hit your daily goal! +50 points!'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Awesome!'),
+                ),
+              ],
+            ),
+          );
+        }
+      });
       provider.submitReviewItem(
         sessionId: widget.sessionId,
         wordId: _currentWord.wordId,
@@ -2768,24 +2793,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                 ? _currentWord.exampleSentenceCebuano!.trim()
                 : _currentWord.cebuanoMeaning.trim();
 
-            String progressiveCebuano = '';
-            if (fullCebuano.isNotEmpty) {
-              final cebTokens = fullCebuano
-                  .split(RegExp(r'\s+'))
-                  .where((t) => t.trim().isNotEmpty)
-                  .toList();
-              if (totalTargetCount > 0 && cebTokens.isNotEmpty) {
-                final ratio =
-                    (assembledCount / totalTargetCount).clamp(0.0, 1.0);
-                final revealCount =
-                    (ratio * cebTokens.length).ceil().clamp(1, cebTokens.length);
-                progressiveCebuano = (assembledCount >= totalTargetCount)
-                    ? fullCebuano
-                    : '${cebTokens.sublist(0, revealCount).join(' ')}…';
-              } else {
-                progressiveCebuano = fullCebuano;
-              }
-            }
+            String progressiveCebuano = fullCebuano;
 
             return Container(
               margin: const EdgeInsets.only(top: 16),
@@ -2855,7 +2863,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                             }
                           },
                           icon: const Icon(
-                            Icons.translate_rounded,
+                            Icons.language_rounded,
                             color: Color(0xFF0284C7),
                             size: 18,
                           ),

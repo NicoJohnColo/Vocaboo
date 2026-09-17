@@ -245,7 +245,7 @@ class _LanguagePreferenceScreenState extends State<LanguagePreferenceScreen> {
                         'cebuano_english_mixed_subtitle',
                       ),
                       value: 'CEBUANO_ENGLISH_MIXED',
-                      icon: Icons.translate_rounded,
+                      icon: Icons.language_rounded,
                     ),
                   ],
                 ),

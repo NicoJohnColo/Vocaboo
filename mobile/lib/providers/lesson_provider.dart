@@ -14,6 +14,7 @@ import '../models/recent_word_progress_model.dart';
 import '../models/learner_activity_stats_model.dart';
 import '../services/scoring_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/daily_goal_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:mobile/config/app_config.dart';
 
@@ -458,13 +459,14 @@ class LessonProvider with ChangeNotifier {
   }
 
 
-  Future<void> submitPracticeResult(
+  Future<bool> submitPracticeResult(
     String sessionId,
     String wordId,
     bool isCorrect, {
     String? activityType,
     int? attemptNumber,
   }) async {
+    bool goalJustCompleted = false;
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/practice-sessions/$sessionId/results'),
@@ -480,9 +482,22 @@ class LessonProvider with ChangeNotifier {
       if (response.statusCode == 401) {
         _auth?.logout();
       }
+
+      // Check daily goal if correct
+      if (isCorrect && _auth != null) {
+        // Fetch current goal state first to see if it's already completed
+        final currentGoal = await DailyGoalService.getDailyGoal(_auth!);
+        if (currentGoal != null && !currentGoal.isCompleted) {
+          final updatedGoal = await DailyGoalService.incrementGoal(_auth!);
+          if (updatedGoal != null && updatedGoal.isCompleted) {
+            goalJustCompleted = true; // Goal just completed in this step
+          }
+        }
+      }
     } catch (e) {
       debugPrint('Error submitting practice result: $e');
     }
+    return goalJustCompleted;
   }
 
   Future<List<Map<String, dynamic>>> loadConfusablePairs(String lessonId) async {
@@ -597,12 +612,13 @@ class LessonProvider with ChangeNotifier {
   }
 
   /// Submits a single review item (word) result.
-  Future<void> submitReviewItem({
+  Future<bool> submitReviewItem({
     required String sessionId,
     required String wordId,
     required bool isCorrect,
     required int confidence,
   }) async {
+    bool goalJustCompleted = false;
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/progress/review-items'),
@@ -617,11 +633,21 @@ class LessonProvider with ChangeNotifier {
       if (response.statusCode == 401) {
         _auth?.logout();
       }
-    // Catch any errors silently; can log if needed
+
+      // Check daily goal if correct
+      if (isCorrect && _auth != null) {
+        final currentGoal = await DailyGoalService.getDailyGoal(_auth!);
+        if (currentGoal != null && !currentGoal.isCompleted) {
+          final updatedGoal = await DailyGoalService.incrementGoal(_auth!);
+          if (updatedGoal != null && updatedGoal.isCompleted) {
+            goalJustCompleted = true; // Goal just completed in this step
+          }
+        }
+      }
     } catch (e) {
       debugPrint('LessonProvider.submitReviewItem error: $e');
     }
-
+    return goalJustCompleted;
   }
 
   /// Completes the review session and returns score & pass status.
@@ -890,7 +916,20 @@ class LessonProvider with ChangeNotifier {
         }),
       );
       if (response.statusCode == 200) {
-        return json.decode(response.body) as Map<String, dynamic>;
+        final result = json.decode(response.body) as Map<String, dynamic>;
+        
+        // Check daily goal if correct
+        if (isCorrect && _auth != null) {
+          final currentGoal = await DailyGoalService.getDailyGoal(_auth!);
+          if (currentGoal != null && !currentGoal.isCompleted) {
+            final updatedGoal = await DailyGoalService.incrementGoal(_auth!);
+            if (updatedGoal != null && updatedGoal.isCompleted) {
+              result['goalJustCompleted'] = true;
+            }
+          }
+        }
+        
+        return result;
       } else if (response.statusCode == 401) {
         _auth?.logout();
       }

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: vocaboo-backend
+    runtime: java
+    region: singapore
+    rootDir: backend
+    buildCommand: ./mvnw clean package -DskipTests
+    startCommand: java -jar target/backend-0.0.1-SNAPSHOT.jar
+    healthCheckPath: /health
+    envVars:
+      - key: JAVA_VERSION
+        value: 17
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: ADMIN_BASE_URL
+        sync: false
+      - key: UPLOADS_BASE_URL
+        sync: false

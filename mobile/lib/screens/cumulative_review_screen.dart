@@ -22,6 +22,8 @@ import '../core/motion/motion.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // Widget
 // ─────────────────────────────────────────────────────────────────────────────
+import '../models/vocabulary_word_model.dart';
+import '../services/lesson_audio_service.dart';
 
 class CumulativeReviewScreen extends StatefulWidget {
   final String sessionId;
@@ -120,6 +122,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
   @override
   void initState() {
     super.initState();
+    LessonAudioService().playBgm();
     _countdownRingController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -133,6 +136,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
 
   @override
   void dispose() {
+    LessonAudioService().stopBgm();
     _countdownTimer?.cancel();
     _countdownRingController.dispose();
     _entryFadeController.dispose();
@@ -348,23 +352,12 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     final correct = (item['word'] ?? '').toString().trim();
     if (correct.isEmpty) return const [];
 
-    final matchingSet = (item['matchingSet'] as List<dynamic>?)
-            ?.whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList() ??
-        const [];
-
+    // Force distractors to strictly come from the current session/lesson words
+    // ignoring backend matchingSets which might contain out-of-lesson words.
     final candidates = <String>{};
-    if (matchingSet.isNotEmpty) {
-      for (final entry in matchingSet) {
-        final w = (entry['englishWord'] ?? '').toString().trim();
-        if (w.isNotEmpty && w != correct) candidates.add(w);
-      }
-    } else {
-      for (final entry in _reviewItems) {
-        final w = (entry['word'] ?? '').toString().trim();
-        if (w.isNotEmpty && w != correct) candidates.add(w);
-      }
+    for (final entry in _reviewItems) {
+      final w = (entry['word'] ?? '').toString().trim();
+      if (w.isNotEmpty && w != correct) candidates.add(w);
     }
 
     final distractors = candidates.toList()
@@ -550,6 +543,12 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
       correctAns = correctWord;
     }
 
+    if (correct) {
+      LessonAudioService().playCorrect();
+    } else {
+      LessonAudioService().playWrong();
+    }
+
     setState(() {
       _checked = true;
       _isAnswerCorrect = correct;
@@ -564,6 +563,34 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
     // This prevents unconditional progression in edge cases where
     // _handleContinue fires before _checkAnswer has set _checked = true.
     if (!_checked) return;
+
+    final item = _queue[_currentIndex];
+    final wordId = (item['wordId'] ?? '').toString();
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+    
+    provider.submitReviewItem(
+      sessionId: widget.sessionId,
+      wordId: wordId,
+      isCorrect: _isAnswerCorrect,
+      confidence: _isAnswerCorrect ? 3 : 1,
+    ).then((goalJustCompleted) {
+      if (goalJustCompleted && mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('🎉 Goal Complete!'),
+            content: const Text('You hit your daily goal! +50 points!'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Awesome!'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+
     setState(() {
       _currentIndex++;
       _prepareCurrentActivityState();
@@ -1799,19 +1826,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             final totalTargetCount = _arrangementTargetTokens.isNotEmpty ? _arrangementTargetTokens.length : answerTokens.length;
             final assembledCount = _assembledWords.length;
             final fullCebuano = (item['exampleSentenceCebuano'] ?? item['exampleCebuano'] ?? item['cebuanoMeaning'] ?? '').toString().trim();
-            String progressiveCebuano = '';
-            if (fullCebuano.isNotEmpty) {
-              final cebTokens = fullCebuano.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
-              if (totalTargetCount > 0 && cebTokens.isNotEmpty) {
-                final ratio = (assembledCount / totalTargetCount).clamp(0.0, 1.0);
-                final revealCount = (ratio * cebTokens.length).ceil().clamp(1, cebTokens.length);
-                progressiveCebuano = (assembledCount >= totalTargetCount)
-                    ? fullCebuano
-                    : '${cebTokens.sublist(0, revealCount).join(' ')}…';
-              } else {
-                progressiveCebuano = fullCebuano;
-              }
-            }
+            String progressiveCebuano = fullCebuano;
 
             return Container(
               margin: const EdgeInsets.only(top: 16),
@@ -1873,7 +1888,7 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
                               _playAudio(progressiveCebuano);
                             }
                           },
-                          icon: const Icon(Icons.translate_rounded, color: Color(0xFF0284C7), size: 18),
+                          icon: const Icon(Icons.language_rounded, color: Color(0xFF0284C7), size: 18),
                           tooltip: 'Listen to Bisaya guided translation',
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),

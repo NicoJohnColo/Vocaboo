@@ -15,6 +15,7 @@ import '../services/localization_service.dart';
 import '../widgets/app_path_line.dart';
 import '../widgets/lesson_popover_card.dart';
 import '../widgets/app_3d_bottom_nav_bar.dart';
+import '../widgets/cebuano_text_highlighter.dart';
 import 'mastery_result_screen.dart';
 
 class LessonPathScreen extends StatefulWidget {
@@ -947,87 +948,90 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
           ),
           textAlign: TextAlign.center,
         ),
-        content: Text(
-          'You completed this lesson. What would you like to do?',
-          textAlign: TextAlign.center,
-          style: AppTypography.nunito(
-            fontSize: 14,
-            color: const Color(0xFF64748B),
-            height: 1.5,
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'You completed this lesson. What would you like to do?',
+              textAlign: TextAlign.center,
+              style: AppTypography.nunito(
+                fontSize: 14,
+                color: const Color(0xFF64748B),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await _viewLessonScore(lesson);
+              },
+              icon: const Icon(Icons.visibility_rounded, size: 18),
+              label: Text(
+                'View Score',
+                style: AppTypography.baloo2(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF06A6FF),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _showFocusPromptAndStartLesson(lesson);
+              },
+              icon: const Icon(Icons.psychology_rounded, size: 18),
+              label: Text(
+                'Practice',
+                style: AppTypography.baloo2(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF8B5CF6),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await _retryLesson(lesson);
+              },
+              icon: const Icon(Icons.replay_rounded, size: 18),
+              label: Text(
+                'Retry',
+                style: AppTypography.baloo2(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        actions: [
-          ElevatedButton.icon(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await _viewLessonScore(lesson);
-            },
-            icon: const Icon(Icons.visibility_rounded, size: 18),
-            label: Text(
-              'View Score',
-              style: AppTypography.baloo2(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF06A6FF),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _showFocusPromptAndStartLesson(lesson);
-            },
-            icon: const Icon(Icons.psychology_rounded, size: 18),
-            label: Text(
-              'Practice',
-              style: AppTypography.baloo2(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await _retryLesson(lesson);
-            },
-            icon: const Icon(Icons.replay_rounded, size: 18),
-            label: Text(
-              'Retry',
-              style: AppTypography.baloo2(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1310,6 +1314,10 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final pref = auth.learner?.languagePreference;
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+    
+    // Collect all words for highlighting (both Cebuano and English to cover context paragraphs in either language)
+    final highlightWords = provider.words.expand((w) => [w.cebuanoMeaning, w.englishWord]).join(', ');
 
     showDialog(
       context: context,
@@ -1326,6 +1334,7 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               LocalizationService.translate(pref, 'lesson_context_desc'),
@@ -1345,43 +1354,50 @@ class _LessonPathScreenState extends State<LessonPathScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: Text(
-                '"${lesson.contextParagraph}"',
+              child: CebuanoTextHighlighter(
+                text: '"${lesson.contextParagraph}"',
+                highlightWord: highlightWords,
                 style: AppTypography.nunito(
                   fontSize: 16,
                   color: const Color(0xFF334155),
                   fontStyle: FontStyle.italic,
+                  height: 1.5,
+                ),
+                highlightStyle: AppTypography.nunito(
+                  fontSize: 16,
+                  color: const Color(0xFF0369A1),
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w900,
+                  height: 1.5,
+                  decoration: TextDecoration.underline,
+                  decorationColor: const Color(0xFF0284C7),
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _showFocusPromptAndStartLesson(lesson);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0EA5E9),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(
+                'CONTINUE',
+                style: AppTypography.baloo2(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
           ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _showFocusPromptAndStartLesson(lesson);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0EA5E9),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              LocalizationService.translate(pref, 'continue'),
-              style: AppTypography.baloo2(
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

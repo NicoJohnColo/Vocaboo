@@ -51,7 +51,7 @@ class InteractiveTranslationTooltip extends StatelessWidget {
                   color: Color(0xFF0F172A),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.translate_rounded, color: Color(0xFF38BDF8), size: 22),
+                child: const Icon(Icons.language_rounded, color: Color(0xFF38BDF8), size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(

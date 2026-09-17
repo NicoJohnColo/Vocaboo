@@ -15,6 +15,7 @@ import '../widgets/app_3d_progress_bar.dart';
 import '../widgets/cebuano_text_highlighter.dart';
 import 'short_reintroduction_screen.dart';
 import '../widgets/streak_and_break_animations.dart';
+import '../services/lesson_audio_service.dart';
 
 class ActivePracticeScreen extends StatefulWidget {
   final String sessionId;
@@ -138,6 +139,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   @override
   void initState() {
     super.initState();
+    LessonAudioService().playBgm();
     _words = widget.allWords
         .map((w) => VocabularyWordModel.fromJson(w))
         .toList();
@@ -159,6 +161,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   @override
   void dispose() {
+    LessonAudioService().stopBgm();
     _questionTimer?.cancel();
     _typingController.dispose();
     super.dispose();
@@ -733,11 +736,9 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   List<Map<String, dynamic>> _resolveMatchingSet(PracticeItemModel targetItem) {
-    final matchingSet = targetItem.matchingSet ?? const [];
-    if (matchingSet.isNotEmpty) {
-      return matchingSet;
-    }
-
+    // Force distractors to strictly come from the current session/lesson words
+    // ignoring backend matchingSets which might contain out-of-lesson words.
+    
     // Prefer words that have been practiced in this session
     final practicedWordIds = _practiceQueue.map((p) => p.wordId).toSet();
     final practicedOthers = _words
@@ -1207,6 +1208,16 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   void _handleTimeout() {
     if (_checked) return;
+    
+    // Auto-submit if an answer is selected
+    if (_selectedOptionIndex != -1 || _selectedCebuano != null || _assembledTokens.isNotEmpty || _typingController.text.isNotEmpty) {
+      _checkAnswer();
+      return;
+    }
+    
+    // Play time's up sound using the shared audio service
+    LessonAudioService().playTimeUp();
+    
     setState(() {
       _selectedOptionIndex = -1;
       _checked = true;
@@ -1784,6 +1795,24 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           _wordIncorrectStreak[item.wordId] = 0;
           debugPrint('DEMOTED: word=${item.wordId} demoted to ${submitResp['currentLevel']}');
         }
+
+        if (submitResp['goalJustCompleted'] == true) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('🎉 Goal Complete!'),
+                content: const Text('You hit your daily goal! +50 points!'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Awesome!'),
+                  ),
+                ],
+              ),
+            );
+          }
+        }
       } else {
         // Fallback / Sandbox / Missing session resolution:
         if (correct) {
@@ -1984,6 +2013,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _isAnswerCorrect = correct;
       _showFeedback = true;
     });
+
+    if (correct) {
+      LessonAudioService().playCorrect();
+    } else {
+      LessonAudioService().playWrong();
+    }
   }
 
   /// Returns the earliest queue index >= [startFrom] such that there are at
@@ -3432,7 +3467,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
     if (item.hintToWordClueType == 'CEBUANO_SENTENCE' || isLearning) {
       badgeLabel = 'CEBUANO CONTEXT CLUE';
-      badgeIcon = Icons.translate_rounded;
+      badgeIcon = Icons.language_rounded;
       badgeColor = const Color(0xFF0284C7);
       badgeBg = const Color(0xFFE0F2FE);
     } else if (item.hintToWordClueType == 'ENGLISH_DEFINITION' || isFamiliar) {

@@ -1457,7 +1457,7 @@ class _VocabularyIntroductionScreenState
             _buildUnifiedPill(
               label: 'CEBUANO WORD',
               accentColor: const Color(0xFF10B981),
-              icon: Icons.translate_rounded,
+              icon: Icons.language_rounded,
             ),
             const SizedBox(height: 24),
             Row(

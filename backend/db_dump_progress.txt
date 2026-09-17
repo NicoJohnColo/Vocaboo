@@ -1,2 +1,16 @@
+Big | Mod: 2 | Level: FAMILIAR | Streak: 0 | Recall: false
+Clean | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
+Clean | Mod: 3 | Level: MASTERED | Streak: 0 | Recall: false
+Cook | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
+Cook | Mod: 3 | Level: MASTERED | Streak: 0 | Recall: false
+Fast | Mod: 2 | Level: FAMILIAR | Streak: 0 | Recall: false
+Mother | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
+Mother | Mod: 3 | Level: MASTERED | Streak: 0 | Recall: false
+Pencil | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
+Pencil | Mod: 3 | Level: MASTERED | Streak: 1 | Recall: false
+Read | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
 Read | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
 Read | Mod: 3 | Level: MASTERED | Streak: 1 | Recall: true
+Read | Mod: 3 | Level: MASTERED | Streak: 0 | Recall: false
+Sweet | Mod: 2 | Level: MASTERED | Streak: 0 | Recall: false
+Sweet | Mod: 3 | Level: MASTERED | Streak: 1 | Recall: false

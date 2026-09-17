@@ -41,7 +41,7 @@ public class PracticeSessionService {
 
     // Activities excluded from all scoring (no pts, no accuracy count)
     private static final java.util.Set<String> SCORING_EXCLUDED = java.util.Set.of(
-        "CONFUSABLE_DISTINCTION", "PRONUNCIATION_FEEDBACK"
+        "CONFUSABLE_DISTINCTION", "PRONUNCIATION_FEEDBACK", "PRONUNCIATION", "SPEAKING", "MICROPHONE"
     );
     // TRUE_FALSE uses flat rate, excluded from streak/tier but counted in accuracy
     private static final java.util.Set<String> TRUE_FALSE_TYPES = java.util.Set.of(

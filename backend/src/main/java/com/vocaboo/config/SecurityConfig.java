@@ -103,12 +103,14 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-                "http://192.168.1.186:*",
-                "http://10.250.50.221:*",
                 "http://10.*:*",
                 "http://192.168.*:*",
+                "https://*.vocaboo-admin.app",
                 "https://vocaboo-admin.app",
-                "https://*.vocaboo-admin.app"
+                "https://*.vercel.app",
+                "https://*.onrender.com",
+                "https://*.netlify.app",
+                "*"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

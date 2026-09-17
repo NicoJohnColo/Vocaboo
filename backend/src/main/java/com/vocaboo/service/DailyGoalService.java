@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;
@@ -60,7 +61,7 @@ public class DailyGoalService {
                 LearnerMastery mastery = learnerMasteryRepository.findByLearnerLearnerId(learnerId)
                         .orElseGet(() -> LearnerMastery.builder()
                                 .learner(learnerRepository.getReferenceById(learnerId))
-                                .overallAccuracy(0.0)
+                                .overallAccuracy(BigDecimal.ZERO)
                                 .masteryLevel("BEGINNER")
                                 .totalPoints(0)
                                 .build());

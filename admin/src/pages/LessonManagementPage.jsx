@@ -136,7 +136,7 @@ export default function LessonManagementPage() {
       flash(`"${lesson.lesson_title}" is now ${newStatus === 'PUBLISHED' ? '🚀 Published' : '📝 set to Draft'}.`);
       await load();
     } catch (err) {
-      setError(err?.message || `Failed to update status for "${lesson.lesson_title}". Note: Lessons require at least 5 vocabulary words before publishing.`);
+      setError(err?.message || `Failed to update status for "${lesson.lesson_title}". Note: Lessons require at least 1 vocabulary word before publishing.`);
     } finally {
       setTogglingId(null);
     }

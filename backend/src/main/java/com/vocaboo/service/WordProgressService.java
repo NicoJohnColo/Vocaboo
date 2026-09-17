@@ -92,8 +92,24 @@ public class WordProgressService {
                 .count();
 
         if (completedWordsCount == totalWordCount && totalWordCount > 0) {
-            // Calculate mastery score
-            // Let's count how many words were pronounced correctly in either module 1 or 3
+            // Calculate lesson score based on scored practice results (excluding non-scoring pronunciation/microphone items)
+            List<PracticeResult> practiceResults = practiceResultRepository != null
+                    ? practiceResultRepository.findBySessionLearnerLearnerIdAndWordLessonLessonId(session.getLearner().getLearnerId(), session.getLesson().getLessonId()).stream()
+                            .filter(r -> {
+                                String type = r.getActivityType();
+                                return type == null || (!type.equalsIgnoreCase("CONFUSABLE_DISTINCTION") 
+                                        && !type.equalsIgnoreCase("PRONUNCIATION_FEEDBACK") 
+                                        && !type.equalsIgnoreCase("PRONUNCIATION") 
+                                        && !type.equalsIgnoreCase("SPEAKING") 
+                                        && !type.equalsIgnoreCase("MICROPHONE"));
+                            })
+                            .collect(Collectors.toList())
+                    : List.of();
+
+            long practiceTotal = practiceResults.size();
+            long practiceCorrect = practiceResults.stream().filter(r -> Boolean.TRUE.equals(r.getIsCorrect())).count();
+
+            // Count pronunciation successes as consolidation bonus
             long correctWordsCount = 0;
             for (VocabularyWord word : totalWords) {
                 boolean correct = pronunciationAttemptRepository
@@ -113,8 +129,13 @@ public class WordProgressService {
                 }
             }
 
-            BigDecimal score = BigDecimal.valueOf((double) correctWordsCount / totalWordCount * 100.0)
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal score;
+            if (practiceTotal > 0) {
+                double baseAcc = (double) practiceCorrect / practiceTotal * 100.0;
+                score = BigDecimal.valueOf(baseAcc).setScale(2, RoundingMode.HALF_UP);
+            } else {
+                score = BigDecimal.valueOf(100.0);
+            }
 
             // Update session
             session.setIsActive(false);
@@ -150,7 +171,7 @@ public class WordProgressService {
 
             summary.setTotalWordsReviewed(totalWordCount);
             summary.setCorrectPronunciations((int) correctWordsCount);
-            summary.setIncorrectPronunciations(totalWordCount - (int) correctWordsCount);
+            summary.setIncorrectPronunciations(0);
             summary.setTotalAttempts(totalWordCount);
             summary.setAccuracyRate(score);
             summary.setStarsEarned(stars);
@@ -161,19 +182,17 @@ public class WordProgressService {
 
             // Update WordPerformance
             for (VocabularyWord word : totalWords) {
-                boolean correct = pronunciationAttemptRepository
+                List<PracticeResult> wordPracticeResults = practiceResults.stream()
+                        .filter(r -> r.getWord() != null && r.getWord().getWordId().equals(word.getWordId()))
+                        .collect(Collectors.toList());
+
+                boolean practiceCorrectForWord = wordPracticeResults.stream().anyMatch(r -> Boolean.TRUE.equals(r.getIsCorrect()));
+                boolean pronCorrectForWord = pronunciationAttemptRepository
                         .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(session.getSessionId(), word.getWordId(), 3)
+                        .stream().anyMatch(a -> Boolean.TRUE.equals(a.getIsCorrect()))
+                    || pronunciationAttemptRepository
+                        .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(session.getSessionId(), word.getWordId(), 1)
                         .stream().anyMatch(a -> Boolean.TRUE.equals(a.getIsCorrect()));
-                if (!correct) {
-                    correct = pronunciationAttemptRepository
-                            .findBySessionSessionIdAndWordWordIdAndModuleNumberOrderByAttemptNumberAsc(session.getSessionId(), word.getWordId(), 1)
-                            .stream().anyMatch(a -> Boolean.TRUE.equals(a.getIsCorrect()));
-                }
-                if (!correct) {
-                    correct = practiceResultRepository
-                            .findBySessionLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), word.getWordId())
-                            .stream().anyMatch(r -> Boolean.TRUE.equals(r.getIsCorrect()));
-                }
 
                 WordPerformance perf = performanceRepository.findByLearnerLearnerIdAndWordWordId(session.getLearner().getLearnerId(), word.getWordId())
                         .orElseGet(() -> WordPerformance.builder()
@@ -181,17 +200,20 @@ public class WordProgressService {
                                 .word(word)
                                 .build());
 
-                perf.setTotalAttempts(perf.getTotalAttempts() + 1);
-                if (correct) {
-                    perf.setCorrectCount(perf.getCorrectCount() + 1);
-                } else {
-                    perf.setIncorrectCount(perf.getIncorrectCount() + 1);
+                if (!wordPracticeResults.isEmpty() || pronCorrectForWord) {
+                    boolean isWordCorrect = practiceCorrectForWord || pronCorrectForWord;
+                    perf.setTotalAttempts(perf.getTotalAttempts() + 1);
+                    if (isWordCorrect) {
+                        perf.setCorrectCount(perf.getCorrectCount() + 1);
+                    } else {
+                        perf.setIncorrectCount(perf.getIncorrectCount() + 1);
+                    }
+                    double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
+                    BigDecimal candidateAcc = BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP);
+                    perf.setAccuracy(candidateAcc);
+                    perf.setLastPracticedAt(OffsetDateTime.now());
+                    performanceRepository.save(perf);
                 }
-                double wordAcc = (double) perf.getCorrectCount() / perf.getTotalAttempts() * 100.0;
-                BigDecimal candidateAcc = BigDecimal.valueOf(wordAcc).setScale(2, RoundingMode.HALF_UP);
-                perf.setAccuracy(candidateAcc);
-                perf.setLastPracticedAt(OffsetDateTime.now());
-                performanceRepository.save(perf);
             }
 
             // Update LearnerMastery
@@ -209,8 +231,8 @@ public class WordProgressService {
             int completedSessionsCount = summaryRepository.findByLearnerLearnerId(session.getLearner().getLearnerId()).size();
             int currentSessions = mastery.getTotalSessionsPlayed() != null ? mastery.getTotalSessionsPlayed() : 0;
             mastery.setTotalSessionsPlayed(Math.max(currentSessions, Math.max(1, completedSessionsCount)));
-            mastery.setTotalQuestionsAnswered(mastery.getTotalQuestionsAnswered() + totalWordCount);
-            mastery.setTotalCorrectAnswers(mastery.getTotalCorrectAnswers() + (int) correctWordsCount);
+            mastery.setTotalQuestionsAnswered(mastery.getTotalQuestionsAnswered() + (int) practiceTotal);
+            mastery.setTotalCorrectAnswers(mastery.getTotalCorrectAnswers() + (int) practiceCorrect);
 
             if (mastery.getTotalQuestionsAnswered() > 0) {
                 double overallAcc = (double) mastery.getTotalCorrectAnswers() / mastery.getTotalQuestionsAnswered() * 100.0;

@@ -53,6 +53,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
                 // Uploaded asset files — publicly readable (audio & images for mobile app)
                 .requestMatchers("/uploads/**").permitAll()
+                // Health check endpoint — publicly accessible for Render monitoring
+                .requestMatchers("/health").permitAll()
 
                 // ── Admin-only routes (account management, logs, admin logout) ──
                 // Teachers must NOT access these.

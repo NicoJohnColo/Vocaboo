@@ -1,6 +1,7 @@
 package com.vocaboo.repository;
 
 import com.vocaboo.entity.ClassEnrollment;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,8 +12,10 @@ import java.util.UUID;
 @Repository
 public interface ClassEnrollmentRepository extends JpaRepository<ClassEnrollment, UUID> {
 
+    @EntityGraph(attributePaths = {"learner"})
     List<ClassEnrollment> findByClassroomClassIdAndStatus(UUID classId, String status);
 
+    @EntityGraph(attributePaths = {"classroom", "classroom.teacher"})
     List<ClassEnrollment> findByLearnerLearnerIdAndStatus(UUID learnerId, String status);
 
     Optional<ClassEnrollment> findByClassroomClassIdAndLearnerLearnerId(UUID classId, UUID learnerId);

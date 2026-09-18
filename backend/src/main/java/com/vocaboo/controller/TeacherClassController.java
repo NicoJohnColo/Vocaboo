@@ -22,12 +22,15 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/teacher/classes")
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('TEACHER', 'ADMIN')")
+@Transactional(readOnly = true)
 public class TeacherClassController {
 
     private final ClassManagementService classManagementService;

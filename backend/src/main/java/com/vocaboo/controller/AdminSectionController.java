@@ -16,10 +16,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @RestController
 @RequestMapping("/api/admin/classes")
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+@Transactional(readOnly = true)
 public class AdminSectionController {
 
     private final AdminSectionService adminSectionService;

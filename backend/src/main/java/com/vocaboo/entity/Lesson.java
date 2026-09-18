@@ -29,6 +29,7 @@ public class Lesson {
     @Column(name = "lesson_id", updatable = false, nullable = false)
     private UUID lessonId;
 
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "teacher", "classroom"})
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     private VocabularyCategory category;
@@ -67,6 +68,7 @@ public class Lesson {
     @Column(name = "composite_review_after_lesson_id")
     private UUID compositeReviewAfterLessonId;
 
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "teacher"})
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "class_id")
     private Classroom classroom;

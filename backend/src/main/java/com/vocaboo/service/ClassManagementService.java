@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ClassManagementService {
 
     private static final Logger log = LoggerFactory.getLogger(ClassManagementService.class);

@@ -74,6 +74,7 @@ public class PublishWorkflowService {
     /**
      * Validate lesson content: word count, field completeness, etc.
      */
+    @Transactional(readOnly = true)
     public Map<String, Object> getValidationReport(UUID lessonId) {
         Lesson lesson = findActiveLesson(lessonId);
         return buildValidationReport(lessonId, lesson);

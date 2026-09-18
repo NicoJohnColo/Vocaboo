@@ -12,6 +12,7 @@ import com.vocaboo.service.MasteryBadgeService;
 import com.vocaboo.service.MasteryReviewService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.*;
@@ -62,6 +63,7 @@ public class MasteryController {
     }
 
     @GetMapping("/session/{sessionId}/summary")
+    @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getSessionSummary(
             @PathVariable("sessionId") UUID sessionId,
             Principal principal) {
@@ -79,6 +81,7 @@ public class MasteryController {
     }
 
     @GetMapping("/learners/{learnerId}/badges")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> getLearnerBadges(
             @PathVariable("learnerId") UUID learnerId) {
         List<Lesson> lessons = lessonRepository.findAll();

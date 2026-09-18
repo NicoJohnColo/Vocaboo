@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -97,6 +98,7 @@ public class AdminVocabularyController {
      * GET /api/admin/lessons/{lessonId}/vocabulary/bulk-import/template — Download CSV template
      */
     @GetMapping("/bulk-import/template")
+    @Transactional(readOnly = true)
     public ResponseEntity<byte[]> downloadTemplate(@PathVariable UUID lessonId) {
         String csv = bulkImportService.getCsvTemplate(lessonId);
         byte[] bytes = csv.getBytes(java.nio.charset.StandardCharsets.UTF_8);

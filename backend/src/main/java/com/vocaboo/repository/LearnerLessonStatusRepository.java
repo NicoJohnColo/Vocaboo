@@ -10,6 +10,8 @@ import java.util.UUID;
 @Repository
 public interface LearnerLessonStatusRepository extends JpaRepository<LearnerLessonStatus, UUID> {
     Optional<LearnerLessonStatus> findByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"lesson"})
     List<LearnerLessonStatus> findByLearnerLearnerId(UUID learnerId);
     List<LearnerLessonStatus> findByLessonLessonId(UUID lessonId);
     void deleteByLearnerLearnerId(UUID learnerId);

@@ -14,6 +14,8 @@ import java.util.UUID;
 @Repository
 public interface WordPerformanceRepository extends JpaRepository<WordPerformance, UUID> {
     Optional<WordPerformance> findByLearnerLearnerIdAndWordWordId(UUID learnerId, UUID wordId);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"word", "word.lesson"})
     List<WordPerformance> findByLearnerLearnerId(UUID learnerId);
     List<WordPerformance> findByLearnerLearnerIdOrderByLastPracticedAtDesc(UUID learnerId, org.springframework.data.domain.Pageable pageable);
     /** All performance rows for a learner within a specific lesson. */

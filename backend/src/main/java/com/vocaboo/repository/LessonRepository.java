@@ -17,6 +17,10 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     @EntityGraph(attributePaths = {"category", "classroom"})
     Optional<Lesson> findById(UUID id);
 
+    @Override
+    @EntityGraph(attributePaths = {"category", "classroom"})
+    List<Lesson> findAll();
+
     // Learner-facing
     List<Lesson> findByCategoryCategoryIdOrderByLessonOrderAsc(UUID categoryId);
 

@@ -9,6 +9,8 @@ import java.util.UUID;
 @Repository
 public interface SessionSummaryRepository extends JpaRepository<SessionSummary, UUID> {
     Optional<SessionSummary> findBySessionId(UUID sessionId);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"lesson"})
     java.util.List<SessionSummary> findByLearnerLearnerId(UUID learnerId);
     void deleteByLearnerLearnerId(UUID learnerId);
 }

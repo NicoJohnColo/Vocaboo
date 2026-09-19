@@ -168,7 +168,7 @@ public class AssetUploadService {
             s3Client.putObject(putObj, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
         } catch (Exception e) {
             log.error("Failed to upload to S3", e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload file to cloud storage.");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "S3 Upload Failed: " + e.getMessage());
         }
 
         String cdnUrl = publicUrlPrefix + objectKey;

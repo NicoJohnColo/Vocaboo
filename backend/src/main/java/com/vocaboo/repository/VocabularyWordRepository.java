@@ -19,6 +19,10 @@ public interface VocabularyWordRepository extends JpaRepository<VocabularyWord, 
     @EntityGraph(attributePaths = {"lesson"})
     List<VocabularyWord> findAll();
 
+    @Query("SELECT w FROM VocabularyWord w WHERE w.isDeleted = true")
+    List<VocabularyWord> findAllSoftDeleted();
+
+
     // Learner-facing (existing)
     List<VocabularyWord> findByLessonLessonIdOrderByWordOrderAsc(UUID lessonId);
 

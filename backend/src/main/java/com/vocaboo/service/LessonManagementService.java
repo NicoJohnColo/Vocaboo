@@ -14,7 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import jakarta.annotation.PostConstruct;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -32,13 +33,11 @@ public class LessonManagementService {
     private final ClassroomRepository classroomRepository;
     private final JdbcTemplate jdbcTemplate;
 
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void cleanupSoftDeletedLessons() {
         log.info("Cleaning up previously soft-deleted lessons from Supabase...");
-        List<Lesson> deletedLessons = lessonRepository.findAll().stream()
-                .filter(l -> Boolean.TRUE.equals(l.getIsDeleted()))
-                .toList();
+        List<Lesson> deletedLessons = lessonRepository.findAllSoftDeleted();
 
         for (Lesson l : deletedLessons) {
             UUID lessonId = l.getLessonId();

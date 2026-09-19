@@ -21,6 +21,10 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     @EntityGraph(attributePaths = {"category", "classroom"})
     List<Lesson> findAll();
 
+    @Query("SELECT l FROM Lesson l WHERE l.isDeleted = true")
+    List<Lesson> findAllSoftDeleted();
+
+
     // Learner-facing
     List<Lesson> findByCategoryCategoryIdOrderByLessonOrderAsc(UUID categoryId);
 

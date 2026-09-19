@@ -25,16 +25,31 @@ function getFilenameFromResponse(res, defaultName) {
 }
 
 async function handleResponseError(res, defaultMsg) {
+  let serverMsg = '';
+  try {
+    const text = await res.text();
+    if (text) {
+      try {
+        const json = JSON.parse(text);
+        serverMsg = json.message || json.error || json.details || '';
+      } catch {
+        serverMsg = text.length < 200 ? text : '';
+      }
+    }
+  } catch {
+    // Ignore body reading error
+  }
+
   if (res.status === 403) {
-    throw new Error('Access denied: Teachers can only export their own classes, and Administrators can only export global school-wide reports.');
+    throw new Error(serverMsg || 'Access denied: Teachers can only export their own classes, and Administrators can only export global school-wide reports.');
   }
   if (res.status === 400) {
-    throw new Error('Invalid report request or student is not actively enrolled in the specified classroom.');
+    throw new Error(serverMsg || 'Invalid report request or student is not actively enrolled in the specified classroom.');
   }
   if (res.status === 404) {
-    throw new Error('The requested class, student, or curriculum report resource was not found.');
+    throw new Error(serverMsg || 'The requested class, student, or curriculum report resource was not found.');
   }
-  throw new Error(defaultMsg);
+  throw new Error(serverMsg ? `${defaultMsg}: ${serverMsg}` : defaultMsg);
 }
 
 export const ReportService = {

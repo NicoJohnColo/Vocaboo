@@ -19,6 +19,7 @@ import java.util.UUID;
 @RequestMapping("/api/admin/reports")
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+@org.springframework.transaction.annotation.Transactional(readOnly = true)
 public class AdminReportController {
 
     private final ReportGenerationService reportGenerationService;

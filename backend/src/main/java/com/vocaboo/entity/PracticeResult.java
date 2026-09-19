@@ -64,6 +64,7 @@ public class PracticeResult {
         private Integer attemptNumber = 1;
         private String activityType;
         private Integer points = 0;
+        private OffsetDateTime recordedAt;
 
         public PracticeResultBuilder session(PracticeSession session) { this.session = session; return this; }
         public PracticeResultBuilder word(VocabularyWord word) { this.word = word; return this; }
@@ -71,7 +72,7 @@ public class PracticeResult {
         public PracticeResultBuilder attemptNumber(Integer attemptNumber) { this.attemptNumber = attemptNumber; return this; }
         public PracticeResultBuilder activityType(String activityType) { this.activityType = activityType; return this; }
         public PracticeResultBuilder points(Integer points) { this.points = points; return this; }
-        public PracticeResultBuilder recordedAt(OffsetDateTime recordedAt) { return this; }
+        public PracticeResultBuilder recordedAt(OffsetDateTime recordedAt) { this.recordedAt = recordedAt; return this; }
 
         public PracticeResult build() {
             PracticeResult r = new PracticeResult();
@@ -81,7 +82,7 @@ public class PracticeResult {
             r.attemptNumber = this.attemptNumber;
             r.activityType = this.activityType;
             r.points = this.points;
-            r.recordedAt = OffsetDateTime.now();
+            r.recordedAt = this.recordedAt != null ? this.recordedAt : OffsetDateTime.now();
             return r;
         }
     }

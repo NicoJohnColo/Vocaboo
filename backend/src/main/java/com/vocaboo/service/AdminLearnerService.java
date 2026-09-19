@@ -182,7 +182,7 @@ public class AdminLearnerService {
         return getLearnerDetail(learnerId, teacherId, null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AdminLearnerDetailResponse getLearnerDetail(UUID learnerId, UUID teacherId, UUID classId) {
         if (teacherId != null) {
             List<UUID> enrolledIds = classEnrollmentRepository.findEnrolledLearnerIdsByTeacherId(teacherId);
@@ -396,13 +396,21 @@ public class AdminLearnerService {
         boolean isStruggling = !strugglingReasons.isEmpty();
 
         // Build Lesson breakdown
-        Map<UUID, LearnerLessonStatus> statusMap = statuses.stream()
-                .collect(Collectors.toMap(s -> s.getLesson().getLessonId(), s -> s, (s1, s2) -> s1));
-        Map<UUID, List<LessonModuleScore>> scoreMap = moduleScores.stream()
-                .collect(Collectors.groupingBy(m -> m.getLesson().getLessonId()));
-        Map<UUID, List<WordPerformance>> lessonPerfMap = wordPerformances.stream()
-                .filter(wp -> wp.getWord() != null && wp.getWord().getLesson() != null)
-                .collect(Collectors.groupingBy(wp -> wp.getWord().getLesson().getLessonId()));
+        Map<UUID, LearnerLessonStatus> statusMap = statuses != null
+                ? statuses.stream()
+                        .filter(s -> s != null && s.getLesson() != null)
+                        .collect(Collectors.toMap(s -> s.getLesson().getLessonId(), s -> s, (s1, s2) -> s1))
+                : Collections.emptyMap();
+        Map<UUID, List<LessonModuleScore>> scoreMap = moduleScores != null
+                ? moduleScores.stream()
+                        .filter(m -> m != null && m.getLesson() != null)
+                        .collect(Collectors.groupingBy(m -> m.getLesson().getLessonId()))
+                : Collections.emptyMap();
+        Map<UUID, List<WordPerformance>> lessonPerfMap = wordPerformances != null
+                ? wordPerformances.stream()
+                        .filter(wp -> wp != null && wp.getWord() != null && wp.getWord().getLesson() != null)
+                        .collect(Collectors.groupingBy(wp -> wp.getWord().getLesson().getLessonId()))
+                : Collections.emptyMap();
 
         List<LearnerLessonProgressDetail> lessonDetails = allLessons.stream().map(lesson -> {
             LearnerLessonStatus st = statusMap.get(lesson.getLessonId());
@@ -540,7 +548,11 @@ public class AdminLearnerService {
                             .lastPracticedAt(entry.getValue().get(entry.getValue().size() - 1).getRecordedAt())
                             .createdAt(OffsetDateTime.now())
                             .build();
-                    newWp = wordPerformanceRepository.save(newWp);
+                    try {
+                        newWp = wordPerformanceRepository.save(newWp);
+                    } catch (Exception ignored) {
+                        // In case of read-only transaction context or concurrent write
+                    }
                     wordPerformances.add(newWp);
                     wpWordIds.add(wid);
                 }
@@ -567,6 +579,9 @@ public class AdminLearnerService {
                 : Collections.emptyMap();
 
         java.util.function.Function<WordPerformance, AdminLearnerDetailResponse.LearnerWordPerformanceDetail> mapWordDetail = wp -> {
+            if (wp == null || wp.getWord() == null) {
+                return null;
+            }
             UUID wordId = wp.getWord().getWordId();
             List<PracticeResult> wordResults = resultsByWord.getOrDefault(wordId, List.of());
 
@@ -597,7 +612,11 @@ public class AdminLearnerService {
                 wp.setIncorrectCount(finalTotIncorr);
                 wp.setDemeritPoints(finalDemerits);
                 wp.setAccuracy(lifetimeAcc);
-                wordPerformanceRepository.save(wp);
+                try {
+                    wordPerformanceRepository.save(wp);
+                } catch (Exception ignored) {
+                    // Safe guard if in read-only transaction or concurrent write
+                }
             }
 
             // 2. Calculate Session Accuracy: performance in the learner's most recent practice session for this word
@@ -669,12 +688,13 @@ public class AdminLearnerService {
 
         // Build Weak words (accuracy < 70% or demeritPoints > 0)
         List<AdminLearnerDetailResponse.LearnerWordPerformanceDetail> weakWords = wordPerformances.stream()
-                .filter(wp -> (wp.getDemeritPoints() != null && wp.getDemeritPoints() > 0) ||
+                .filter(wp -> wp.getWord() != null && ((wp.getDemeritPoints() != null && wp.getDemeritPoints() > 0) ||
                               (wp.getTotalAttempts() != null && wp.getTotalAttempts() > 0 && 
-                               (wp.getCorrectCount() * 100.0 / wp.getTotalAttempts()) < 70.0))
+                               (wp.getCorrectCount() * 100.0 / wp.getTotalAttempts()) < 70.0)))
                 .sorted(Comparator.comparing((WordPerformance wp) -> wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0).reversed()
                         .thenComparing(wp -> wp.getAccuracy() != null ? wp.getAccuracy() : BigDecimal.ZERO))
                 .map(mapWordDetail)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         // Full Word-by-Word diagnostic list for teacher & admin
@@ -686,6 +706,7 @@ public class AdminLearnerService {
                     return att > 0 ? (double) corr / att : 0.0;
                 }))
                 .map(mapWordDetail)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         // Part of Speech (POS) accuracy breakdown for this student

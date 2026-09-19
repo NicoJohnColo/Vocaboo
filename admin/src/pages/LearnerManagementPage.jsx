@@ -59,6 +59,7 @@ export default function LearnerManagementPage() {
   const [exportStudentClassScope, setExportStudentClassScope] = useState('');
   const [exportStudentFormat, setExportStudentFormat] = useState('pdf');
   const [downloadingStudentExport, setDownloadingStudentExport] = useState(false);
+  const [exportStudentError, setExportStudentError] = useState('');
   const [downloadingRoster, setDownloadingRoster] = useState(false);
 
   const flash = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3500); };
@@ -250,6 +251,7 @@ export default function LearnerManagementPage() {
   const handleOpenExportModal = async (l) => {
     setExportStudentTarget(l);
     setExportStudentFormat('pdf');
+    setExportStudentError('');
     setLoadingExportClasses(true);
     setExportStudentEnrolledClasses([]);
     setExportStudentClassScope('');
@@ -297,6 +299,7 @@ export default function LearnerManagementPage() {
     const lid = exportStudentTarget.learner_id || exportStudentTarget.learnerId;
     const dName = exportStudentTarget.display_name || exportStudentTarget.displayName;
     setDownloadingStudentExport(true);
+    setExportStudentError('');
     try {
       await ReportService.downloadIndividualReport(
         lid,
@@ -306,7 +309,9 @@ export default function LearnerManagementPage() {
       flash(`Generated ${exportStudentFormat.toUpperCase()} report for ${dName}.`);
       setExportStudentTarget(null);
     } catch (err) {
-      setError(err?.message || 'Failed to generate student report.');
+      const errorMsg = err?.message || 'Failed to generate student report.';
+      setExportStudentError(errorMsg);
+      setError(errorMsg);
     } finally {
       setDownloadingStudentExport(false);
     }
@@ -1093,6 +1098,23 @@ export default function LearnerManagementPage() {
               </div>
 
               <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {exportStudentError && (
+                  <div style={{
+                    padding: '12px 14px',
+                    background: '#fef2f2',
+                    border: '1.5px solid #fecaca',
+                    borderRadius: 8,
+                    fontSize: '0.84rem',
+                    color: '#991b1b',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                  }}>
+                    <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+                    <span style={{ flex: 1, lineHeight: 1.4 }}>{exportStudentError}</span>
+                  </div>
+                )}
+
                 {/* Scope Selection */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>

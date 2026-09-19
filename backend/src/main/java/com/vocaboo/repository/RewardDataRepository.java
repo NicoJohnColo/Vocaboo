@@ -10,6 +10,10 @@ import java.util.UUID;
 
 @Repository
 public interface RewardDataRepository extends JpaRepository<RewardData, UUID> {
+    @Override
+    @EntityGraph(attributePaths = {"learner"})
+    List<RewardData> findAll();
+
     @EntityGraph(attributePaths = {"lesson"})
     List<RewardData> findByLearnerLearnerId(UUID learnerId);
     List<RewardData> findByLearnerLearnerIdAndLessonLessonId(UUID learnerId, UUID lessonId);

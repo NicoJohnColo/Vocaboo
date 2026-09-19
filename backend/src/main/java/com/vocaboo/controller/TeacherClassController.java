@@ -50,18 +50,20 @@ public class TeacherClassController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ClassResponse>> getClasses(Authentication auth) {
-        UUID teacherId = parseUserId(auth);
+    public ResponseEntity<List<ClassResponse>> getClasses(
+            @RequestParam(required = false) String cohortType,
+            Authentication auth) {
         boolean isAdmin = isAdmin(auth);
-        return ResponseEntity.ok(classManagementService.getClassesForTeacher(teacherId, isAdmin));
+        UUID teacherId = parseUserIdSafe(auth);
+        return ResponseEntity.ok(classManagementService.getClassesForTeacher(teacherId, isAdmin, cohortType));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ClassDetailResponse> getClassDetail(
             @PathVariable UUID id,
             Authentication auth) {
-        UUID teacherId = parseUserId(auth);
         boolean isAdmin = isAdmin(auth);
+        UUID teacherId = parseUserIdSafe(auth);
         return ResponseEntity.ok(classManagementService.getClassDetail(id, teacherId, isAdmin));
     }
 
@@ -123,6 +125,15 @@ public class TeacherClassController {
         UUID teacherId = parseUserId(auth);
         classManagementService.unenrollStudent(id, learnerId, teacherId, false);
         return ResponseEntity.ok(Map.of("message", "Student successfully unenrolled from class"));
+    }
+
+    private UUID parseUserIdSafe(Authentication auth) {
+        if (auth == null || auth.getName() == null) return null;
+        try {
+            return UUID.fromString(auth.getName());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private UUID parseUserId(Authentication auth) {

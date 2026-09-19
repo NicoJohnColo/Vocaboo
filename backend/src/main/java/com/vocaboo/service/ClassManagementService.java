@@ -63,15 +63,40 @@ public class ClassManagementService {
     }
 
     public List<ClassResponse> getClassesForTeacher(UUID teacherId, boolean isAdmin) {
+        return getClassesForTeacher(teacherId, isAdmin, null);
+    }
+
+    public List<ClassResponse> getClassesForTeacher(UUID teacherId, boolean isAdmin, String cohortType) {
+        if ("INDEPENDENT".equalsIgnoreCase(cohortType)) {
+            // Independent learners are not enrolled in classroom cohorts
+            return Collections.emptyList();
+        }
+
         List<Classroom> classes;
         if (isAdmin) {
             classes = classroomRepository.findAllByOrderByCreatedAtDesc();
-        } else {
+        } else if (teacherId != null) {
             classes = classroomRepository.findByTeacherTeacherIdOrderByCreatedAtDesc(teacherId);
+        } else {
+            return Collections.emptyList();
+        }
+
+        // Batch active enrollment counts across classrooms to eliminate N+1 queries
+        Map<UUID, Long> countMap = new HashMap<>();
+        try {
+            List<Object[]> batchCounts = enrollmentRepository.countActiveEnrollmentsGroupByClassId();
+            for (Object[] row : batchCounts) {
+                if (row != null && row.length >= 2 && row[0] instanceof UUID) {
+                    countMap.put((UUID) row[0], ((Number) row[1]).longValue());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Batch count query failed, falling back to individual counts: {}", e.getMessage());
         }
 
         return classes.stream().map(c -> {
-            long count = enrollmentRepository.countByClassroomClassIdAndStatus(c.getClassId(), "ACTIVE");
+            long count = countMap.computeIfAbsent(c.getClassId(),
+                    id -> enrollmentRepository.countByClassroomClassIdAndStatus(id, "ACTIVE"));
             return toClassResponse(c, count);
         }).collect(Collectors.toList());
     }
@@ -479,18 +504,35 @@ public class ClassManagementService {
     }
 
     private ClassResponse toClassResponse(Classroom c, long studentCount) {
-        Teacher t = c.getTeacher();
-        String teacherName = t != null
-                ? ((t.getFirstname() != null ? t.getFirstname() + " " : "") + (t.getLastname() != null ? t.getLastname() : t.getUsername())).trim()
-                : "Vocaboo Teacher";
+        String teacherName = "Vocaboo Teacher";
+        UUID tId = null;
+        String tSchool = null;
+
+        try {
+            Teacher t = c.getTeacher();
+            if (t != null) {
+                tId = t.getTeacherId();
+                tSchool = t.getSchool();
+                String fn = t.getFirstname();
+                String ln = t.getLastname();
+                String un = t.getUsername();
+                if (fn != null || ln != null) {
+                    teacherName = ((fn != null ? fn + " " : "") + (ln != null ? ln : "")).trim();
+                } else if (un != null) {
+                    teacherName = un;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not lazily resolve teacher for class {}: {}", c.getClassId(), e.getMessage());
+        }
 
         return ClassResponse.builder()
                 .classId(c.getClassId())
                 .name(c.getName())
                 .classCode(c.getClassCode())
-                .teacherId(t != null ? t.getTeacherId() : null)
+                .teacherId(tId)
                 .teacherName(teacherName)
-                .teacherSchool(t != null ? t.getSchool() : null)
+                .teacherSchool(tSchool)
                 .studentCount(studentCount)
                 .gradeLevel(c.getGradeLevel())
                 .createdAt(c.getCreatedAt())

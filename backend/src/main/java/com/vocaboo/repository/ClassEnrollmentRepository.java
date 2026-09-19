@@ -22,7 +22,11 @@ public interface ClassEnrollmentRepository extends JpaRepository<ClassEnrollment
 
     boolean existsByClassroomClassIdAndLearnerLearnerIdAndStatus(UUID classId, UUID learnerId, String status);
 
-    long countByClassroomClassIdAndStatus(UUID classId, String status);
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(e) FROM ClassEnrollment e WHERE e.classroom.classId = :classId AND e.status = :status")
+    long countByClassroomClassIdAndStatus(@org.springframework.data.repository.query.Param("classId") UUID classId, @org.springframework.data.repository.query.Param("status") String status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT e.classroom.classId, COUNT(e) FROM ClassEnrollment e WHERE e.status = 'ACTIVE' GROUP BY e.classroom.classId")
+    List<Object[]> countActiveEnrollmentsGroupByClassId();
 
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT e.learner.learnerId FROM ClassEnrollment e WHERE e.classroom.teacher.teacherId = :teacherId AND e.status = 'ACTIVE'")
     List<UUID> findEnrolledLearnerIdsByTeacherId(@org.springframework.data.repository.query.Param("teacherId") UUID teacherId);

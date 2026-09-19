@@ -1394,6 +1394,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
     // 2. FAMILIAR Tier: Hints/tips MUST be in English (from HINT DEF / hint_definition / English clues)
     if (isFamiliar) {
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        return null;
+      }
+      
       // Primary: configured HINT (DEF) from the database table (hint_definition)
       if (item.hintDefinition != null && item.hintDefinition!.trim().isNotEmpty) {
         final text = item.hintDefinition!.trim();

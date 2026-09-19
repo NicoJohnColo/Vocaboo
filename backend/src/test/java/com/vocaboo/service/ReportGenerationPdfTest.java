@@ -127,5 +127,46 @@ class ReportGenerationPdfTest {
         byte[] csv = reportGenerationService.generateIndividualReportCsv(learnerId);
         assertNotNull(csv);
     }
+
+    @Test
+    void testGenerateClassReportPdf_fullData() {
+        UUID sectionId = UUID.randomUUID();
+        com.vocaboo.dto.response.AdminLearnerSummaryResponse summary = com.vocaboo.dto.response.AdminLearnerSummaryResponse.builder()
+                .learnerId(learnerId)
+                .userId("STU-100")
+                .displayName("Maria Santos")
+                .gradeLevel("GRADE_4")
+                .sectionName("Section A")
+                .completedLessonsCount(5)
+                .wordsMasteredCount(20)
+                .totalPoints(120)
+                .overallAccuracy(BigDecimal.valueOf(92.5))
+                .isActive(true)
+                .isStruggling(false)
+                .lastActiveAt(OffsetDateTime.now())
+                .build();
+
+        when(adminLearnerService.getAllLearnersSummary(sectionId, null, null)).thenReturn(List.of(summary));
+        when(classroomRepository.findById(sectionId)).thenReturn(java.util.Optional.of(
+                com.vocaboo.entity.Classroom.builder().classId(sectionId).name("Grade 4 - Diamond").classCode("G4-DIA").build()
+        ));
+
+        byte[] pdf = reportGenerationService.generateClassReportPdf(sectionId, null, null);
+        assertNotNull(pdf);
+
+        byte[] csv = reportGenerationService.generateClassReportCsv(sectionId, null, null);
+        assertNotNull(csv);
+    }
+
+    @Test
+    void testGenerateClassReportPdf_emptyData() {
+        when(adminLearnerService.getAllLearnersSummary(null, null, null)).thenReturn(List.of());
+
+        byte[] pdf = reportGenerationService.generateClassReportPdf(null, null, null);
+        assertNotNull(pdf);
+
+        byte[] csv = reportGenerationService.generateClassReportCsv(null, null, null);
+        assertNotNull(csv);
+    }
 }
 

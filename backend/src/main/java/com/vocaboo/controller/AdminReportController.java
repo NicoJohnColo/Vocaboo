@@ -38,11 +38,7 @@ public class AdminReportController {
             @RequestParam(required = false) GradeLevel gradeLevel,
             Authentication auth) {
 
-        // Admin can only export global school-wide reports (sectionId == null), not specific teacher classes
-        if (!isTeacher(auth) && sectionId != null) {
-            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
-        }
-
+        // If requested by a teacher, verify ownership of the classroom section
         final UUID teacherId = isTeacher(auth) ? parseUserId(auth) : null;
         if (teacherId != null && sectionId != null) {
             boolean ownsClass = classroomRepository.findById(sectionId)

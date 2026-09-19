@@ -260,8 +260,22 @@ export default function DashboardPage() {
   const [resetTarget, setResetTarget]         = useState(null);
   const [resetLoading, setResetLoading]       = useState(false);
   const [expandedChart, setExpandedChart]     = useState(null);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   const flash = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3500); };
+
+  const handleDownloadReport = async (format) => {
+    setDownloadingReport(true);
+    setError('');
+    try {
+      await ReportService.downloadClassReport(format, selectedSection || null, selectedGrade || null);
+      flash(`Class performance report (${format.toUpperCase()}) downloaded successfully.`);
+    } catch (err) {
+      setError(err?.message || `Failed to download class report (${format.toUpperCase()}).`);
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -415,17 +429,19 @@ export default function DashboardPage() {
 
             <button
               className="btn btn--ghost btn--sm"
-              onClick={() => ReportService.downloadClassReport('pdf', selectedSection, selectedGrade)}
+              onClick={() => handleDownloadReport('pdf')}
+              disabled={downloadingReport}
               title="Download Class Performance PDF"
             >
-              📄 PDF
+              {downloadingReport ? '⏳ PDF' : '📄 PDF'}
             </button>
             <button
               className="btn btn--ghost btn--sm"
-              onClick={() => ReportService.downloadClassReport('csv', selectedSection, selectedGrade)}
+              onClick={() => handleDownloadReport('csv')}
+              disabled={downloadingReport}
               title="Download Class Performance CSV"
             >
-              📥 CSV
+              {downloadingReport ? '⏳ CSV' : '📥 CSV'}
             </button>
           </div>
         </header>
@@ -509,7 +525,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <div style={{ fontWeight: 800, color: '#991b1b', fontSize: '1rem' }}>
-                  {flaggedCount} Learner{flaggedCount !== 1 ? 's' : ''} Need Immediate Teacher Attention
+                  {flaggedCount} Learner{flaggedCount !== 1 ? 's' : ''} {flaggedCount === 1 ? 'Needs' : 'Need'} Immediate Teacher Attention
                 </div>
                 <div style={{ fontSize: '0.82rem', color: '#b91c1c', marginTop: 2 }}>
                   Students have triggered multiple visual reintroductions or exceeded error limits at the LEARNING tier.

@@ -51,11 +51,12 @@ public class ReportGenerationService {
 
     public byte[] generateClassReportCsv(UUID sectionId, GradeLevel gradeLevel, UUID teacherId) {
         List<AdminLearnerSummaryResponse> learners = adminLearnerService.getAllLearnersSummary(sectionId, gradeLevel, teacherId);
+        if (learners == null) learners = Collections.emptyList();
 
         String scopeLabel = "ALL CLASSES (COMPREHENSIVE ROSTER)";
         if (sectionId != null) {
             String cName = classroomRepository.findById(sectionId)
-                    .map(c -> c.getName() + (c.getClassCode() != null ? " [Code: " + c.getClassCode() + "]" : ""))
+                    .map(c -> (c.getName() != null ? c.getName() : "Class") + (c.getClassCode() != null ? " [Code: " + c.getClassCode() + "]" : ""))
                     .orElse("Class ID: " + sectionId);
             scopeLabel = "CLASS: " + cName;
         } else if (teacherId != null) {
@@ -119,14 +120,16 @@ public class ReportGenerationService {
 
     public byte[] generateClassReportPdf(UUID sectionId, GradeLevel gradeLevel, UUID teacherId) {
         List<AdminLearnerSummaryResponse> learners = adminLearnerService.getAllLearnersSummary(sectionId, gradeLevel, teacherId);
+        if (learners == null) learners = Collections.emptyList();
 
         String scopeLabel = "Scope: All Classes (Comprehensive Cohort)";
         String classTitle = "Vocaboo - Class Performance Report";
         if (sectionId != null) {
             com.vocaboo.entity.Classroom classroom = classroomRepository.findById(sectionId).orElse(null);
             if (classroom != null) {
-                classTitle = "Vocaboo - " + classroom.getName() + " Performance Report";
-                scopeLabel = "Class Scope: " + classroom.getName() + (classroom.getClassCode() != null ? " [Code: " + classroom.getClassCode() + "]" : "");
+                String cName = classroom.getName() != null ? classroom.getName() : "Class";
+                classTitle = "Vocaboo - " + cName + " Performance Report";
+                scopeLabel = "Class Scope: " + cName + (classroom.getClassCode() != null ? " [Code: " + classroom.getClassCode() + "]" : "");
             } else {
                 scopeLabel = "Class Scope: ID " + sectionId;
             }

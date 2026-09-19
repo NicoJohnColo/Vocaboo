@@ -1238,8 +1238,17 @@ public class AdminLearnerService {
             masteryVal = mastery != null && mastery.getMasteryLevel() != null ? mastery.getMasteryLevel() : "LEARNING";
         }
 
-        UUID resSecId = learner.getSection() != null ? learner.getSection().getSectionId() : null;
-        String resSecName = learner.getSection() != null ? learner.getSection().getSectionName() : null;
+        UUID resSecId = null;
+        String resSecName = null;
+        try {
+            if (learner.getSection() != null) {
+                resSecId = learner.getSection().getSectionId();
+                resSecName = learner.getSection().getSectionName();
+            }
+        } catch (Exception e) {
+            resSecId = null;
+            resSecName = null;
+        }
 
         if (resSecName == null) {
             if (sectionId != null) {
@@ -1247,11 +1256,13 @@ public class AdminLearnerService {
                 resSecName = classroomRepository.findById(sectionId).map(com.vocaboo.entity.Classroom::getName).orElse(null);
             }
             if (resSecName == null) {
-                List<com.vocaboo.entity.ClassEnrollment> enrollments = classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learner.getLearnerId(), "ACTIVE");
-                if (!enrollments.isEmpty() && enrollments.get(0).getClassroom() != null) {
-                    resSecId = enrollments.get(0).getClassroom().getClassId();
-                    resSecName = enrollments.get(0).getClassroom().getName();
-                }
+                try {
+                    List<com.vocaboo.entity.ClassEnrollment> enrollments = classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learner.getLearnerId(), "ACTIVE");
+                    if (!enrollments.isEmpty() && enrollments.get(0).getClassroom() != null) {
+                        resSecId = enrollments.get(0).getClassroom().getClassId();
+                        resSecName = enrollments.get(0).getClassroom().getName();
+                    }
+                } catch (Exception ignored) {}
             }
         }
 
@@ -1428,67 +1439,7 @@ public class AdminLearnerService {
                     .build());
         }
 
-        // 2. Process severe struggles from WordPerformance (high demerits or low accuracy)
-        List<WordPerformance> performances = wordPerformanceRepository.findAll();
-        for (WordPerformance wp : performances) {
-            Learner learner = wp.getLearner();
-            VocabularyWord word = wp.getWord();
-            if (learner == null || word == null) continue;
-
-            if (enrolledIds != null) {
-                if (!enrolledIds.contains(learner.getLearnerId())) continue;
-            } else if (sectionId != null) {
-                if (learner.getSection() == null || !sectionId.equals(learner.getSection().getSectionId())) continue;
-            }
-
-            if (gradeLevel != null) {
-                if (learner.getGradeLevel() != gradeLevel) continue;
-            }
-
-            String key = learner.getLearnerId() + "_" + word.getWordId();
-            if (processedKeys.contains(key)) continue;
-
-            int demerits = wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0;
-            int totalAttempts = wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0;
-            BigDecimal accuracy = wp.getAccuracy() != null ? wp.getAccuracy() : BigDecimal.ZERO;
-            int incorrectCount = wp.getIncorrectCount() != null ? wp.getIncorrectCount() : 0;
-
-            boolean severeStruggle = demerits >= 20 || (totalAttempts >= 3 && accuracy.compareTo(BigDecimal.valueOf(60.0)) < 0 && incorrectCount >= 2);
-            if (!severeStruggle) continue;
-
-            processedKeys.add(key);
-
-            String reason;
-            if (demerits >= 20) {
-                reason = "High error severity (" + demerits + " demerit points accumulated)";
-            } else {
-                reason = "Low accuracy (" + accuracy.setScale(1, RoundingMode.HALF_UP) + "% with " + incorrectCount + " mistakes)";
-            }
-
-            responses.add(com.vocaboo.dto.response.FlaggedLearnerResponse.builder()
-                    .progressId(wp.getPerformanceId())
-                    .learnerId(learner.getLearnerId())
-                    .learnerName(learner.getDisplayName())
-                    .username(learner.getUserId() != null ? learner.getUserId() : learner.getLearnerId().toString().substring(0, 8))
-                    .sectionName(resolveSectionName(learner))
-                    .gradeLevel(learner.getGradeLevel() != null ? learner.getGradeLevel().name() : "")
-                    .wordId(word.getWordId())
-                    .englishWord(word.getEnglishWord())
-                    .cebuanoMeaning(word.getCebuanoMeaning())
-                    .partOfSpeech(word.getPartOfSpeech())
-                    .lessonId(word.getLesson() != null ? word.getLesson().getLessonId() : null)
-                    .lessonTitle(word.getLesson() != null ? word.getLesson().getLessonTitle() : "Unknown Lesson")
-                    .reintroductionCount(0)
-                    .consecutiveIncorrect(incorrectCount)
-                    .currentLevel("LEARNING")
-                    .flaggedAt(wp.getLastPracticedAt() != null ? wp.getLastPracticedAt() : wp.getUpdatedAt())
-                    .flagReason(reason)
-                    .totalAttempts(totalAttempts)
-                    .accuracy(accuracy)
-                    .build());
-        }
-
-        // Sort: most recent or highest error severity first
+        // Sort: most recent first
         responses.sort((a, b) -> {
             if (a.getFlaggedAt() != null && b.getFlaggedAt() != null) {
                 return b.getFlaggedAt().compareTo(a.getFlaggedAt());

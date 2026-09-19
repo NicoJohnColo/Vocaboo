@@ -26,5 +26,7 @@ services:
         sync: false
       - key: ADMIN_BASE_URL
         sync: false
-      - key: UPLOADS_BASE_URL
+      - key: SUPABASE_S3_ACCESS_KEY
+        sync: false
+      - key: SUPABASE_S3_SECRET_KEY
         sync: false

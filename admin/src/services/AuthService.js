@@ -130,10 +130,23 @@ export const AuthService = {
 
 export async function apiFetch(path, options = {}) {
   const token = AuthService.getToken();
+  // Proactively check expiry before sending — avoids silent 401s on expired sessions
+  if (!AuthService.isTokenValid()) {
+    AuthService.logout();
+    window.location.href = '/login';
+    throw new Error('Session expired. Please log in again.');
+  }
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers ?? {}),
   };
-  return fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // Redirect on server-side 401 (e.g., token rejected after expiry or revocation)
+  if (res.status === 401) {
+    AuthService.logout();
+    window.location.href = '/login';
+    throw new Error('Session expired. Please log in again.');
+  }
+  return res;
 }

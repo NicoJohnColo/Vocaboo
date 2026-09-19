@@ -75,7 +75,7 @@ export default function TeacherClassManagementPage() {
       setNewClassName('');
       setNewClassGrade('GRADE_4');
       setShowCreateModal(false);
-      loadClasses();
+      await loadClasses();
     } catch (err) {
       setError(err.message || 'Failed to create class');
     } finally {

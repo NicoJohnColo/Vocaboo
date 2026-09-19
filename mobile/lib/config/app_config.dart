@@ -19,7 +19,7 @@ class AppConfig {
 
   static String get baseHost {
     final uri = Uri.parse(baseUrl);
-    return '${uri.scheme}://${uri.host}:${uri.port}';
+    return uri.hasPort ? '${uri.scheme}://${uri.host}:${uri.port}' : '${uri.scheme}://${uri.host}';
   }
 
   static String sanitizeAssetPath(String path) {

@@ -2,22 +2,24 @@ import 'dart:io' show Platform;
 
 import 'package:flutter_tts/flutter_tts.dart';
 
-/// A simple wrapper around `flutter_tts` providing static helper methods.
+/// A high-performance wrapper around `flutter_tts` designed for rapid,
+/// spammable, zero-latency speech synthesis.
 ///
-/// The service is intentionally lightweight. It only exposes `initialize`,
-/// `speak`, and `stop` because that is all the app needs from multiple
-/// screens.
+/// Features:
+/// - Pre-warmed engine initialization with offline/local voice prioritization.
+/// - Immediate audio cancellation via `stop()` as the first line of any speak call.
+/// - Cached language and capability checks to avoid redundant IPC overhead.
 class TTSService {
   static final FlutterTts _flutterTts = FlutterTts();
   static Future<void>? _initializeFuture;
+  static bool _isInitialized = false;
+  static bool _filPhChecked = false;
+  static bool _filPhAvailable = true;
+  static String _currentLanguage = 'en-US';
 
-  /// Initializes the TTS engine.
-  static Future<void> initialize() async {
-    if (_initializeFuture != null) {
-      return _initializeFuture!;
-    }
-
-    _initializeFuture = _configureTts();
+  /// Initializes and pre-warms the TTS engine.
+  static Future<void> initialize() {
+    _initializeFuture ??= _configureTts();
     return _initializeFuture!;
   }
 
@@ -27,11 +29,24 @@ class TTSService {
         await _configureAndroidTts();
       }
 
-      await _flutterTts.setLanguage('en-US');
       await _flutterTts.setSpeechRate(0.4);
       await _flutterTts.setVolume(1.0);
       await _flutterTts.setPitch(1.0);
       await _flutterTts.awaitSpeakCompletion(false);
+      await _flutterTts.setLanguage('en-US');
+      _currentLanguage = 'en-US';
+
+      // Pre-check Cebuano/Tagalog availability once during initialization to avoid per-tap IPC
+      try {
+        final isAvailable = await _flutterTts.isLanguageAvailable('fil-PH');
+        _filPhAvailable = (isAvailable == true || isAvailable == 1);
+        _filPhChecked = true;
+      } catch (_) {
+        _filPhAvailable = true;
+        _filPhChecked = true;
+      }
+
+      _isInitialized = true;
     } catch (e) {
       // ignore: avoid_print
       print('TTSService.initialize error: $e');
@@ -52,17 +67,29 @@ class TTSService {
 
       final voices = await _flutterTts.getVoices;
       if (voices is List && voices.isNotEmpty) {
-        final englishVoice = voices
+        final englishVoices = voices
             .whereType<Map>()
             .map((voice) => voice.map((key, value) => MapEntry(key.toString(), value.toString())))
             .where((voice) {
               final locale = (voice['locale'] ?? '').toLowerCase();
-              return locale.startsWith('en') || locale.contains('en-');
+              return locale.startsWith('en') || locale.contains('en-') || locale.contains('en_');
             })
             .toList();
 
-        if (englishVoice.isNotEmpty) {
-          await _flutterTts.setVoice(englishVoice.first);
+        if (englishVoices.isNotEmpty) {
+          // Force local/fast offline voices: prioritize local voices and exclude network voices
+          // Network voices induce buffering latency when rapidly tapped
+          final localVoice = englishVoices.firstWhere(
+            (voice) {
+              final name = (voice['name'] ?? '').toLowerCase();
+              final features = (voice['features'] ?? '').toLowerCase();
+              final isNetwork = name.contains('network') || features.contains('network');
+              final isLocal = name.contains('local') || features.contains('local');
+              return isLocal || !isNetwork;
+            },
+            orElse: () => englishVoices.first,
+          );
+          await _flutterTts.setVoice(localVoice);
         }
       }
     } catch (e) {
@@ -72,37 +99,39 @@ class TTSService {
   }
 
   /// Speaks the provided [text] using the configured TTS engine (defaulting to English).
+  /// Instantly stops any playing audio before triggering new speech.
   static Future<void> speak(String text) async {
+    await _flutterTts.stop();
     await speakEnglish(text);
   }
 
   /// Speaks the provided [text] in Cebuano using the native fil-PH locale.
-  /// Returns true if successful, false if the language/engine is not supported.
+  /// Instantly stops any playing audio before triggering new speech.
   static Future<bool> speakCebuano(String text) async {
+    // 1. Instant cut-off: kill any existing speech immediately
+    await _flutterTts.stop();
     if (text.trim().isEmpty) return true;
 
     try {
-      await initialize();
-      
-      // Check language availability
-      final isAvailable = await _flutterTts.isLanguageAvailable('fil-PH');
-      if (isAvailable == null || isAvailable == false || isAvailable == 0) {
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      if (_filPhChecked && !_filPhAvailable) {
         // ignore: avoid_print
         print('TTSService: fil-PH language not available on this device');
         return false;
       }
 
-      await _flutterTts.stop();
-      await _flutterTts.setLanguage('fil-PH');
-      
+      if (_currentLanguage != 'fil-PH') {
+        await _flutterTts.setLanguage('fil-PH');
+        _currentLanguage = 'fil-PH';
+      }
+
       // Clean and normalize Cebuano text (diacritics/accents) for Tagalog TTS compatibility
       final cleanedText = cleanCebuanoDiacritics(text);
-      // ignore: avoid_print
-      print('TTSService.speakCebuano: "$cleanedText" (original: "$text")');
-      
-      // Add timeout to prevent hanging if TTS engine stalls
-      final result = await _flutterTts.speak(cleanedText).timeout(const Duration(seconds: 5), onTimeout: () => 0);
-      return result == 1; // 1 indicates success in flutter_tts API
+      final result = await _flutterTts.speak(cleanedText);
+      return result == 1;
     } catch (e) {
       // ignore: avoid_print
       print('TTSService.speakCebuano error: $e');
@@ -111,19 +140,23 @@ class TTSService {
   }
 
   /// Speaks the provided [text] in English using the native en-US locale.
-  /// Returns true if successful.
+  /// Instantly stops any playing audio before triggering new speech.
   static Future<bool> speakEnglish(String text) async {
+    // 1. Instant cut-off: kill any existing speech immediately
+    await _flutterTts.stop();
     if (text.trim().isEmpty) return true;
 
     try {
-      await initialize();
-      await _flutterTts.stop();
-      await _flutterTts.setLanguage('en-US');
-      
-      // ignore: avoid_print
-      print('TTSService.speakEnglish: "$text"');
-      // Add timeout to prevent hanging if TTS engine stalls
-      final result = await _flutterTts.speak(text).timeout(const Duration(seconds: 5), onTimeout: () => 0);
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      if (_currentLanguage != 'en-US') {
+        await _flutterTts.setLanguage('en-US');
+        _currentLanguage = 'en-US';
+      }
+
+      final result = await _flutterTts.speak(text);
       return result == 1;
     } catch (e) {
       // ignore: avoid_print
@@ -132,16 +165,25 @@ class TTSService {
     }
   }
 
-  /// Speaks an isolated phonetic sound (e.g. "ah", "sh", "buh") with clear articulation.
+  /// Speaks an isolated phonetic sound with clear articulation.
+  /// Instantly stops any playing audio before triggering new speech.
   static Future<bool> speakSound(String soundText) async {
+    await _flutterTts.stop();
     if (soundText.trim().isEmpty) return true;
+
     try {
-      await initialize();
-      await _flutterTts.stop();
-      await _flutterTts.setLanguage('en-US');
-      await _flutterTts.setSpeechRate(0.32); // Slightly slower for clear sound articulation
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      if (_currentLanguage != 'en-US') {
+        await _flutterTts.setLanguage('en-US');
+        _currentLanguage = 'en-US';
+      }
+
+      await _flutterTts.setSpeechRate(0.32);
       final result = await _flutterTts.speak(soundText);
-      await _flutterTts.setSpeechRate(0.4); // Reset to default
+      await _flutterTts.setSpeechRate(0.4);
       return result == 1;
     } catch (e) {
       // ignore: avoid_print
@@ -165,7 +207,7 @@ class TTSService {
       'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Ö': 'O', 'Õ': 'O',
       'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
     };
-    
+
     diacritics.forEach((accent, replacement) {
       cleaned = cleaned.replaceAll(accent, replacement);
     });
@@ -175,9 +217,7 @@ class TTSService {
   /// Stops any ongoing speech synthesis.
   static Future<void> stop() async {
     try {
-      if (_initializeFuture != null) {
-        await _flutterTts.stop();
-      }
+      await _flutterTts.stop();
     } catch (_) {
       // Safely ignore if engine is not currently bound
     }
@@ -185,16 +225,20 @@ class TTSService {
 }
 
 /// Backward-compatible instance wrapper for screens that still create `TtsService()`.
-@Deprecated('Use TTSService instead')
+/// Automatically pre-warms the engine in constructor to eliminate cold starts.
 class TtsService {
+  TtsService() {
+    TTSService.initialize();
+  }
+
   Future<void> initialize() => TTSService.initialize();
 
   Future<void> speak(String text) => TTSService.speak(text);
-  
+
   Future<bool> speakSound(String soundText) => TTSService.speakSound(soundText);
-  
+
   Future<bool> speakCebuano(String text) => TTSService.speakCebuano(text);
-  
+
   Future<bool> speakEnglish(String text) => TTSService.speakEnglish(text);
 
   Future<void> stop() => TTSService.stop();

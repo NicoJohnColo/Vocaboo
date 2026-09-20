@@ -246,15 +246,6 @@ public class DifficultyAdjustmentService {
             return toProgressResponse(progress);
         }
 
-        // True/False is a flat-rate exception: scores fixed points, but NEVER touches streak or tier either way
-        if ("TRUE_OR_FALSE".equalsIgnoreCase(activityType)) {
-            progress.setAttemptCountAtCurrentTier(progress.getAttemptCountAtCurrentTier() + 1);
-            progress.setLastAdjustedAt(OffsetDateTime.now());
-            progress.setUpdatedAt(OffsetDateTime.now());
-            progress = progressRepository.save(progress);
-            return toProgressResponse(progress);
-        }
-
         boolean isRecallType = isRecallActivity(activityType);
         log.info("CALCULATE_NEXT_ENTRY: word={} activity={} correct={} module={} oldLevel={} streakCorrect={} streakIncorrect={} recallFlag={}",
                 wordId, activityType, isCorrect, moduleNumber, oldLevel,

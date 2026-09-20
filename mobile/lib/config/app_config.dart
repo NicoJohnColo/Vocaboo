@@ -8,11 +8,12 @@ class AppConfig {
     if (overrideUrl.isNotEmpty) {
       return overrideUrl;
     }
-    if (Platform.isAndroid) {
-      // 1. Production build: --dart-define=BASE_URL=https://your-production-backend.com/api/v1
-      // 2. Android Emulator / USB ADB Reverse: 'http://127.0.0.1:8081/api/v1'
-      return 'http://127.0.0.1:8081/api/v1';
+    // Check if the app is running in release mode (e.g. built APK)
+    const bool isProduction = bool.fromEnvironment('dart.vm.product');
+    if (isProduction) {
+      return 'https://vocaboo.onrender.com/api/v1';
     }
+    // Otherwise fallback to local dev server
     return 'http://127.0.0.1:8081/api/v1';
   }
   

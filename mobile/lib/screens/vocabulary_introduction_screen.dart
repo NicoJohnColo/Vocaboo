@@ -269,14 +269,31 @@ class _VocabularyIntroductionScreenState
         }
 
         Completer<void> completer = Completer<void>();
-        StreamSubscription? sub;
-        sub = _audioPlayer.onPlayerComplete.listen((_) {
+        StreamSubscription? completeSub;
+        StreamSubscription? stateSub;
+        
+        completeSub = _audioPlayer.onPlayerComplete.listen((_) {
           if (!completer.isCompleted) completer.complete();
-          sub?.cancel();
+        });
+        
+        // Listen to state changes to handle playback errors or stops
+        stateSub = _audioPlayer.onPlayerStateChanged.listen((state) {
+          if (state == PlayerState.stopped || state == PlayerState.completed) {
+            if (!completer.isCompleted) completer.complete();
+          }
         });
 
-        await _audioPlayer.play(source);
-        await completer.future;
+        try {
+          await _audioPlayer.play(source);
+          // Fallback timeout in case events don't fire properly
+          await completer.future.timeout(const Duration(seconds: 15));
+        } catch (e) {
+          debugPrint('Error playing audio player: $e');
+          if (!completer.isCompleted) completer.complete();
+        } finally {
+          completeSub.cancel();
+          stateSub?.cancel();
+        }
       } else {
         final success = await _ttsService.speakEnglish(word.englishWord);
         if (!success && mounted) {

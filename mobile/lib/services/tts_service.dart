@@ -86,7 +86,7 @@ class TTSService {
       
       // Check language availability
       final isAvailable = await _flutterTts.isLanguageAvailable('fil-PH');
-      if (isAvailable == null || isAvailable == false) {
+      if (isAvailable == null || isAvailable == false || isAvailable == 0) {
         // ignore: avoid_print
         print('TTSService: fil-PH language not available on this device');
         return false;
@@ -100,7 +100,8 @@ class TTSService {
       // ignore: avoid_print
       print('TTSService.speakCebuano: "$cleanedText" (original: "$text")');
       
-      final result = await _flutterTts.speak(cleanedText);
+      // Add timeout to prevent hanging if TTS engine stalls
+      final result = await _flutterTts.speak(cleanedText).timeout(const Duration(seconds: 5), onTimeout: () => 0);
       return result == 1; // 1 indicates success in flutter_tts API
     } catch (e) {
       // ignore: avoid_print
@@ -121,7 +122,8 @@ class TTSService {
       
       // ignore: avoid_print
       print('TTSService.speakEnglish: "$text"');
-      final result = await _flutterTts.speak(text);
+      // Add timeout to prevent hanging if TTS engine stalls
+      final result = await _flutterTts.speak(text).timeout(const Duration(seconds: 5), onTimeout: () => 0);
       return result == 1;
     } catch (e) {
       // ignore: avoid_print

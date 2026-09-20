@@ -1984,9 +1984,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                 difficultyLevel: newLevel,
               ),
             );
-            final newFormat = (item.activityFormat == ActivityFormat.multipleChoice)
+            var newFormat = (item.activityFormat == ActivityFormat.multipleChoice)
                 ? ActivityFormat.fillInTheBlank
                 : ActivityFormat.multipleChoice;
+
+            if (_module2Activities != null && _module2Activities!.trim().isNotEmpty) {
+              ActivityFormat parseFormatLocal(String f) {
+                switch (f.trim().toUpperCase()) {
+                  case 'FILL_IN_BLANK': return ActivityFormat.fillInTheBlank;
+                  case 'MATCHING': return ActivityFormat.matching;
+                  case 'SENTENCE_ARRANGEMENT': return ActivityFormat.fillInTheBlank;
+                  case 'TYPE_WHAT_YOU_HEAR': return ActivityFormat.listeningTyping;
+                  case 'WORD_SCRAMBLE': return ActivityFormat.wordScramble;
+                  case 'IMAGE_LABELING':
+                  case 'IMAGE_MATCHING': return ActivityFormat.imageLabeling;
+                  case 'TRUE_OR_FALSE': return ActivityFormat.trueOrFalse;
+                  case 'HINT_TO_WORD': return ActivityFormat.hintToWord;
+                  default: return ActivityFormat.multipleChoice;
+                }
+              }
+              final allowed = _module2Activities!
+                  .split(';')
+                  .map((s) => parseFormatLocal(s))
+                  .toSet();
+              if (!allowed.contains(newFormat)) {
+                newFormat = allowed.isNotEmpty ? allowed.first : ActivityFormat.multipleChoice;
+              }
+            }
             final newItem = _createPracticeItem(targetWord, newFormat);
             _practiceQueue.add(newItem);
             _plannedScreens = _practiceQueue.length;
@@ -2155,6 +2179,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ActivityFormat.imageLabeling,
           ActivityFormat.trueOrFalse,
         ];
+      }
+
+      if (_module2Activities != null && _module2Activities!.trim().isNotEmpty) {
+        ActivityFormat parseFormatLocal(String f) {
+          switch (f.trim().toUpperCase()) {
+            case 'FILL_IN_BLANK': return ActivityFormat.fillInTheBlank;
+            case 'MATCHING': return ActivityFormat.matching;
+            case 'SENTENCE_ARRANGEMENT': return ActivityFormat.fillInTheBlank;
+            case 'TYPE_WHAT_YOU_HEAR': return ActivityFormat.listeningTyping;
+            case 'WORD_SCRAMBLE': return ActivityFormat.wordScramble;
+            case 'IMAGE_LABELING':
+            case 'IMAGE_MATCHING': return ActivityFormat.imageLabeling;
+            case 'TRUE_OR_FALSE': return ActivityFormat.trueOrFalse;
+            case 'HINT_TO_WORD': return ActivityFormat.hintToWord;
+            default: return ActivityFormat.multipleChoice;
+          }
+        }
+        final allowed = _module2Activities!
+            .split(';')
+            .map((s) => parseFormatLocal(s))
+            .toSet();
+        final filtered = eligibleFormats.where((f) => allowed.contains(f)).toList();
+        if (filtered.isNotEmpty) {
+          eligibleFormats = filtered;
+        } else {
+          eligibleFormats = allowed.toList();
+        }
       }
 
       final variedFormats = eligibleFormats

@@ -295,12 +295,13 @@ class _VocabularyIntroductionScreenState
           stateSub?.cancel();
         }
       } else {
-        final success = await _ttsService.speakEnglish(word.englishWord);
-        if (!success && mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-        }
+        _ttsService.speakEnglish(word.englishWord).then((success) {
+          if (!success && mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
+          }
+        });
       }
     } catch (e) {
       debugPrint('Error playing audio asset: $e');
@@ -318,12 +319,13 @@ class _VocabularyIntroductionScreenState
     if (mounted) setState(() => _isPlayingAudio = true);
 
     try {
-      final success = await _ttsService.speakCebuano(text);
-      if (!success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
+      _ttsService.speakCebuano(text).then((success) {
+        if (!success && mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
+        }
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -340,14 +342,15 @@ class _VocabularyIntroductionScreenState
     if (mounted) setState(() => _isPlayingAudio = true);
 
     try {
-      final success = await _ttsService.speakEnglish(
+      _ttsService.speakEnglish(
         _words[_currentWordIndex].exampleSentenceEnglish,
-      );
-      if (!success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
+      ).then((success) {
+        if (!success && mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
+        }
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

@@ -65,15 +65,8 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
 
 
   Future<void> _playAudio() async {
-
     if (!mounted) return;
-
-    setState(() => _isPlayingAudio = true);
-
-    await _ttsService.speak(widget.word.englishWord);
-
-    if (mounted) setState(() => _isPlayingAudio = false);
-
+    _ttsService.speak(widget.word.englishWord);
   }
 
 

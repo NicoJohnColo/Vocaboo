@@ -30,7 +30,6 @@ import java.util.UUID;
 @RequestMapping("/api/teacher/classes")
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('TEACHER', 'ADMIN')")
-@Transactional(readOnly = true)
 public class TeacherClassController {
 
     private final ClassManagementService classManagementService;

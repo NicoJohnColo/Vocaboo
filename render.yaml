@@ -30,3 +30,13 @@ services:
         sync: false
       - key: SUPABASE_S3_SECRET_KEY
         sync: false
+
+  - type: static
+    name: vocaboo-admin
+    rootDir: admin
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

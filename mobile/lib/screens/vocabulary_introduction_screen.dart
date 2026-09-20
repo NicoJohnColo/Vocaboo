@@ -253,12 +253,6 @@ class _VocabularyIntroductionScreenState
     if (mounted) setState(() => _isPlayingAudio = true);
 
     try {
-      final success = await _ttsService.speakEnglish(word.englishWord);
-      if (!success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
       if (word.audioAssetPath != null &&
           word.audioAssetPath!.trim().isNotEmpty) {
         final path = AppConfig.sanitizeAssetPath(word.audioAssetPath!);
@@ -283,6 +277,13 @@ class _VocabularyIntroductionScreenState
 
         await _audioPlayer.play(source);
         await completer.future;
+      } else {
+        final success = await _ttsService.speakEnglish(word.englishWord);
+        if (!success && mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
+        }
       }
     } catch (e) {
       debugPrint('Error playing audio asset: $e');
@@ -1147,7 +1148,7 @@ class _VocabularyIntroductionScreenState
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: onTap ?? () {},
         borderRadius: BorderRadius.circular(999),
         child: Container(
           width: 38,

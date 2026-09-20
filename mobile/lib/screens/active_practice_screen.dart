@@ -131,6 +131,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   final bool _isCompleted = false;
   bool _isNavigating = false;
   bool _isAdvancingNext = false; // Guard against rapid multi-tap on Continue button
+  bool _isCheckingAnswer = false; // Guard against rapid multi-tap on Check button
 
   // Timer Variables
   Timer? _questionTimer;
@@ -936,6 +937,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _secondsRemaining = 0;
     _checked = false;
     _isAdvancingNext = false; // Unlock continue button for new question
+    _isCheckingAnswer = false; // Unlock check button
     _showFeedback = false;
     _selectedOptionIndex = -1;
     _selectedCebuano = null;
@@ -1522,6 +1524,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // Check Answer Button pressed
   Future<void> _checkAnswer() async {
+    if (_isCheckingAnswer || _showFeedback) return;
+    setState(() {
+      _isCheckingAnswer = true;
+    });
+    
     final item = _practiceQueue[_currentIndex];
     bool correct = false;
     String learnerAns = '';
@@ -2016,6 +2023,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _checked = true;
       _isAnswerCorrect = correct;
       _showFeedback = true;
+      _isCheckingAnswer = false;
     });
 
     if (correct) {
@@ -2070,9 +2078,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _advanceNext() async {
-    // Guard against double-tap: drop any tap that arrives while already advancing
-    if (_isAdvancingNext) return;
-    _isAdvancingNext = true;
+    // Guard against double-tap: drop any tap that arrives while already advancing or if not in feedback state
+    if (!_showFeedback || _isAdvancingNext) return;
+    setState(() {
+      _isAdvancingNext = true;
+    });
+    
     debugPrint(
       'Continue button tapped, currentIndex: $_currentIndex, queueLength: ${_practiceQueue.length}',
     );
@@ -3098,29 +3109,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Show image only at LEARNING and FAMILIAR tiers
-        if (level !=
-                'PROFICIENT' &&
-            level != 'MASTERED' &&
-            item.imageAssetPath != null &&
-            item.imageAssetPath!.isNotEmpty &&
-            (item.imageAssetPath!.startsWith('http') ||
-                item.imageAssetPath!.startsWith('assets/')))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                item.imageAssetPath!,
-                height: 150,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const SizedBox.shrink();
-                },
-              ),
-            ),
-          ),
+
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -4448,7 +4437,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           children: [
             Expanded(
               child: ElevatedButton(
-                onPressed: isActionEnabled ? _checkAnswer : null,
+                onPressed: (isActionEnabled && !_isCheckingAnswer) ? _checkAnswer : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6), // Indigo/Blue
                   foregroundColor: Colors.white,
@@ -4564,7 +4553,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: _advanceNext,
+            onPressed: _isAdvancingNext ? null : _advanceNext,
             style: ElevatedButton.styleFrom(
               backgroundColor: btnBg,
               foregroundColor: Colors.white,

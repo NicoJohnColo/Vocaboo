@@ -45,8 +45,10 @@ public class ClassManagementService {
 
         GradeLevel gl = GradeLevel.GRADE_4;
         if (req.getGradeLevel() != null && !req.getGradeLevel().isBlank()) {
-            try { gl = GradeLevel.valueOf(req.getGradeLevel().trim().toUpperCase()); }
-            catch (Exception ignored) {}
+            try {
+                gl = GradeLevel.valueOf(req.getGradeLevel().trim().toUpperCase());
+            } catch (Exception ignored) {
+            }
         }
 
         Classroom classroom = Classroom.builder()
@@ -57,7 +59,8 @@ public class ClassManagementService {
                 .build();
 
         classroom = classroomRepository.save(classroom);
-        log.info("Teacher {} created class '{}' ({}) with code {}", teacher.getUsername(), classroom.getName(), gl, code);
+        log.info("Teacher {} created class '{}' ({}) with code {}", teacher.getUsername(), classroom.getName(), gl,
+                code);
 
         return toClassResponse(classroom, 0);
     }
@@ -126,13 +129,17 @@ public class ClassManagementService {
                     .gradeLevel(l.getGradeLevel())
                     .enrolledAt(e.getEnrolledAt())
                     .classPoints(cp != null && cp.getClassPoints() != null ? cp.getClassPoints() : 0)
-                    .classAccuracy(cp != null && cp.getClassAccuracy() != null ? cp.getClassAccuracy() : java.math.BigDecimal.ZERO)
-                    .classSessionsPlayed(cp != null && cp.getClassSessionsPlayed() != null ? cp.getClassSessionsPlayed() : 0)
-                    .classMasteryLevel(cp != null && cp.getClassMasteryLevel() != null ? cp.getClassMasteryLevel() : "LEARNING")
+                    .classAccuracy(cp != null && cp.getClassAccuracy() != null ? cp.getClassAccuracy()
+                            : java.math.BigDecimal.ZERO)
+                    .classSessionsPlayed(
+                            cp != null && cp.getClassSessionsPlayed() != null ? cp.getClassSessionsPlayed() : 0)
+                    .classMasteryLevel(
+                            cp != null && cp.getClassMasteryLevel() != null ? cp.getClassMasteryLevel() : "LEARNING")
                     .build();
         }).collect(Collectors.toList());
 
-        List<ClassJoinRequest> joinRequests = joinRequestRepository.findByClassroomClassIdAndStatusOrderByCreatedAtDesc(classId, "PENDING");
+        List<ClassJoinRequest> joinRequests = joinRequestRepository
+                .findByClassroomClassIdAndStatusOrderByCreatedAtDesc(classId, "PENDING");
         List<ClassDetailResponse.JoinRequestDto> requestList = joinRequests.stream().map(r -> {
             Learner l = r.getLearner();
             return ClassDetailResponse.JoinRequestDto.builder()
@@ -147,7 +154,8 @@ public class ClassManagementService {
                     .build();
         }).collect(Collectors.toList());
 
-        List<ClassInvitation> invitations = invitationRepository.findByClassroomClassIdAndStatusOrderByCreatedAtDesc(classId, "PENDING");
+        List<ClassInvitation> invitations = invitationRepository
+                .findByClassroomClassIdAndStatusOrderByCreatedAtDesc(classId, "PENDING");
         List<ClassDetailResponse.InvitationDto> inviteList = invitations.stream().map(i -> {
             Learner l = i.getLearner();
             return ClassDetailResponse.InvitationDto.builder()
@@ -162,19 +170,20 @@ public class ClassManagementService {
         }).collect(Collectors.toList());
 
         List<Lesson> lessons = lessonRepository.findByClassroomClassIdAndIsDeletedFalseOrderByLessonOrderAsc(classId);
-        List<ClassDetailResponse.ClassLessonSummaryDto> lessonList = lessons.stream().map(ls ->
-            ClassDetailResponse.ClassLessonSummaryDto.builder()
-                    .lessonId(ls.getLessonId())
-                    .lessonTitle(ls.getLessonTitle())
-                    .lessonDescription(ls.getLessonDescription())
-                    .lessonOrder(ls.getLessonOrder())
-                    .totalWordCount(ls.getTotalWordCount())
-                    .contentStatus(ls.getContentStatus())
-                    .build()
-        ).collect(Collectors.toList());
+        List<ClassDetailResponse.ClassLessonSummaryDto> lessonList = lessons.stream()
+                .map(ls -> ClassDetailResponse.ClassLessonSummaryDto.builder()
+                        .lessonId(ls.getLessonId())
+                        .lessonTitle(ls.getLessonTitle())
+                        .lessonDescription(ls.getLessonDescription())
+                        .lessonOrder(ls.getLessonOrder())
+                        .totalWordCount(ls.getTotalWordCount())
+                        .contentStatus(ls.getContentStatus())
+                        .build())
+                .collect(Collectors.toList());
 
         Teacher t = classroom.getTeacher();
-        String teacherName = (t.getFirstname() != null ? t.getFirstname() + " " : "") + (t.getLastname() != null ? t.getLastname() : t.getUsername());
+        String teacherName = (t.getFirstname() != null ? t.getFirstname() + " " : "")
+                + (t.getLastname() != null ? t.getLastname() : t.getUsername());
 
         return ClassDetailResponse.builder()
                 .classId(classroom.getClassId())
@@ -193,7 +202,8 @@ public class ClassManagementService {
     }
 
     @Transactional
-    public ClassDetailResponse.InvitationDto inviteLearner(UUID classId, String learnerIdentifier, UUID teacherId, boolean isAdmin) {
+    public ClassDetailResponse.InvitationDto inviteLearner(UUID classId, String learnerIdentifier, UUID teacherId,
+            boolean isAdmin) {
         Classroom classroom = classroomRepository.findById(classId)
                 .orElseThrow(() -> new IllegalArgumentException("Class not found"));
 
@@ -264,7 +274,8 @@ public class ClassManagementService {
                 .build();
 
         invitation = invitationRepository.save(invitation);
-        log.info("Teacher {} invited learner {} to class {}", teacher.getUsername(), learner.getDisplayName(), classroom.getName());
+        log.info("Teacher {} invited learner {} to class {}", teacher.getUsername(), learner.getDisplayName(),
+                classroom.getName());
 
         return ClassDetailResponse.InvitationDto.builder()
                 .invitationId(invitation.getInvitationId())
@@ -278,7 +289,8 @@ public class ClassManagementService {
     }
 
     @Transactional
-    public ClassDetailResponse.InvitationDto inviteLearner(UUID classId, UUID learnerId, UUID teacherId, boolean isAdmin) {
+    public ClassDetailResponse.InvitationDto inviteLearner(UUID classId, UUID learnerId, UUID teacherId,
+            boolean isAdmin) {
         return inviteLearner(classId, learnerId != null ? learnerId.toString() : null, teacherId, isAdmin);
     }
 
@@ -309,9 +321,11 @@ public class ClassManagementService {
 
         if ("APPROVED".equals(resolvedDecision)) {
             activateEnrollment(classroom, request.getLearner(), null);
-            log.info("Approved join request {} for learner {} in class {}", requestId, request.getLearner().getDisplayName(), classroom.getName());
+            log.info("Approved join request {} for learner {} in class {}", requestId,
+                    request.getLearner().getDisplayName(), classroom.getName());
         } else {
-            log.info("Rejected join request {} for learner {} in class {}", requestId, request.getLearner().getDisplayName(), classroom.getName());
+            log.info("Rejected join request {} for learner {} in class {}", requestId,
+                    request.getLearner().getDisplayName(), classroom.getName());
         }
     }
 
@@ -325,7 +339,8 @@ public class ClassManagementService {
 
         String normalizedCode = classCode.trim().toUpperCase();
         Classroom classroom = classroomRepository.findByClassCode(normalizedCode)
-                .orElseThrow(() -> new IllegalArgumentException("Class code '" + normalizedCode + "' not found. Please check and try again."));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Class code '" + normalizedCode + "' not found. Please check and try again."));
 
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
@@ -339,12 +354,15 @@ public class ClassManagementService {
                     + learnerGrade.name().replace("GRADE_", "Grade ") + ".");
         }
 
-        if (enrollmentRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(classroom.getClassId(), learnerId, "ACTIVE")) {
+        if (enrollmentRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(classroom.getClassId(), learnerId,
+                "ACTIVE")) {
             throw new IllegalArgumentException("You are already enrolled in " + classroom.getName() + ".");
         }
 
-        if (joinRequestRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(classroom.getClassId(), learnerId, "PENDING")) {
-            throw new IllegalArgumentException("You already have a pending join request for " + classroom.getName() + ".");
+        if (joinRequestRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(classroom.getClassId(),
+                learnerId, "PENDING")) {
+            throw new IllegalArgumentException(
+                    "You already have a pending join request for " + classroom.getName() + ".");
         }
 
         ClassJoinRequest request = ClassJoinRequest.builder()
@@ -354,20 +372,26 @@ public class ClassManagementService {
                 .build();
 
         request = joinRequestRepository.save(request);
-        log.info("Learner {} requested to join class {} via code {}", learner.getDisplayName(), classroom.getName(), normalizedCode);
+        log.info("Learner {} requested to join class {} via code {}", learner.getDisplayName(), classroom.getName(),
+                normalizedCode);
         return request;
     }
 
     public List<LearnerClassSummaryResponse> getLearnerClasses(UUID learnerId) {
         Learner learner = learnerRepository.findById(learnerId).orElse(null);
-        GradeLevel learnerGrade = learner != null ? (learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4) : null;
+        GradeLevel learnerGrade = learner != null
+                ? (learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4)
+                : null;
 
         List<ClassEnrollment> enrollments = enrollmentRepository.findByLearnerLearnerIdAndStatus(learnerId, "ACTIVE");
         if (learnerGrade != null) {
             enrollments = enrollments.stream()
                     .filter(e -> {
-                        if (e.getClassroom() == null) return false;
-                        GradeLevel classGrade = e.getClassroom().getGradeLevel() != null ? e.getClassroom().getGradeLevel() : GradeLevel.GRADE_4;
+                        if (e.getClassroom() == null)
+                            return false;
+                        GradeLevel classGrade = e.getClassroom().getGradeLevel() != null
+                                ? e.getClassroom().getGradeLevel()
+                                : GradeLevel.GRADE_4;
                         return classGrade == learnerGrade;
                     })
                     .collect(Collectors.toList());
@@ -376,9 +400,12 @@ public class ClassManagementService {
         return enrollments.stream().map(e -> {
             Classroom c = e.getClassroom();
             Teacher t = c.getTeacher();
-            String teacherName = (t.getFirstname() != null ? t.getFirstname() + " " : "") + (t.getLastname() != null ? t.getLastname() : t.getUsername());
+            String teacherName = (t.getFirstname() != null ? t.getFirstname() + " " : "")
+                    + (t.getLastname() != null ? t.getLastname() : t.getUsername());
             long count = enrollmentRepository.countByClassroomClassIdAndStatus(c.getClassId(), "ACTIVE");
-            List<Lesson> lessons = lessonRepository.findByClassroomClassIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(c.getClassId(), "PUBLISHED");
+            List<Lesson> lessons = lessonRepository
+                    .findByClassroomClassIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(c.getClassId(),
+                            "PUBLISHED");
             if (learnerGrade != null) {
                 lessons = lessons.stream()
                         .filter(l -> l.getGradeLevel() != null && l.getGradeLevel() == learnerGrade)
@@ -401,14 +428,20 @@ public class ClassManagementService {
 
     public List<LearnerInvitationResponse> getLearnerInvitations(UUID learnerId) {
         Learner learner = learnerRepository.findById(learnerId).orElse(null);
-        GradeLevel learnerGrade = learner != null ? (learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4) : null;
+        GradeLevel learnerGrade = learner != null
+                ? (learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4)
+                : null;
 
-        List<ClassInvitation> invites = invitationRepository.findByLearnerLearnerIdAndStatusOrderByCreatedAtDesc(learnerId, "PENDING");
+        List<ClassInvitation> invites = invitationRepository
+                .findByLearnerLearnerIdAndStatusOrderByCreatedAtDesc(learnerId, "PENDING");
         if (learnerGrade != null) {
             invites = invites.stream()
                     .filter(i -> {
-                        if (i.getClassroom() == null) return false;
-                        GradeLevel classGrade = i.getClassroom().getGradeLevel() != null ? i.getClassroom().getGradeLevel() : GradeLevel.GRADE_4;
+                        if (i.getClassroom() == null)
+                            return false;
+                        GradeLevel classGrade = i.getClassroom().getGradeLevel() != null
+                                ? i.getClassroom().getGradeLevel()
+                                : GradeLevel.GRADE_4;
                         return classGrade == learnerGrade;
                     })
                     .collect(Collectors.toList());
@@ -417,7 +450,8 @@ public class ClassManagementService {
         return invites.stream().map(i -> {
             Classroom c = i.getClassroom();
             Teacher t = i.getSentByTeacher();
-            String teacherName = (t.getFirstname() != null ? t.getFirstname() + " " : "") + (t.getLastname() != null ? t.getLastname() : t.getUsername());
+            String teacherName = (t.getFirstname() != null ? t.getFirstname() + " " : "")
+                    + (t.getLastname() != null ? t.getLastname() : t.getUsername());
 
             return LearnerInvitationResponse.builder()
                     .invitationId(i.getInvitationId())
@@ -452,25 +486,30 @@ public class ClassManagementService {
 
         if ("ACCEPTED".equals(resolved)) {
             activateEnrollment(invitation.getClassroom(), invitation.getLearner(), invitation.getSentByTeacher());
-            log.info("Learner {} accepted invitation to class {}", invitation.getLearner().getDisplayName(), invitation.getClassroom().getName());
+            log.info("Learner {} accepted invitation to class {}", invitation.getLearner().getDisplayName(),
+                    invitation.getClassroom().getName());
         } else {
-            log.info("Learner {} declined invitation to class {}", invitation.getLearner().getDisplayName(), invitation.getClassroom().getName());
+            log.info("Learner {} declined invitation to class {}", invitation.getLearner().getDisplayName(),
+                    invitation.getClassroom().getName());
         }
     }
 
     public List<Lesson> getClassLessons(UUID classId, UUID learnerId) {
         // Confirm learner is actively enrolled or class exists
-        boolean isEnrolled = enrollmentRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(classId, learnerId, "ACTIVE");
+        boolean isEnrolled = enrollmentRepository.existsByClassroomClassIdAndLearnerLearnerIdAndStatus(classId,
+                learnerId, "ACTIVE");
         if (!isEnrolled) {
             throw new AccessDeniedException("You must be enrolled in this class to view its lessons.");
         }
-        return lessonRepository.findByClassroomClassIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(classId, "PUBLISHED");
+        return lessonRepository.findByClassroomClassIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(classId,
+                "PUBLISHED");
     }
 
     // ── Internal Helpers ──────────────────────────────────────────────────────
 
     private void activateEnrollment(Classroom classroom, Learner learner, Teacher invitedBy) {
-        Optional<ClassEnrollment> existingOpt = enrollmentRepository.findByClassroomClassIdAndLearnerLearnerId(classroom.getClassId(), learner.getLearnerId());
+        Optional<ClassEnrollment> existingOpt = enrollmentRepository
+                .findByClassroomClassIdAndLearnerLearnerId(classroom.getClassId(), learner.getLearnerId());
         if (existingOpt.isPresent()) {
             ClassEnrollment enrollment = existingOpt.get();
             enrollment.setStatus("ACTIVE");

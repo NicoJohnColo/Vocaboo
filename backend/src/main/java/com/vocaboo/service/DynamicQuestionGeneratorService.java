@@ -53,6 +53,8 @@ public class DynamicQuestionGeneratorService {
                 List<String> filtered = typesList.stream().filter(f -> lessonFormats.contains(f.trim().toUpperCase())).collect(java.util.stream.Collectors.toList());
                 if (!filtered.isEmpty()) {
                     typesList = filtered;
+                } else {
+                    typesList = lessonFormats;
                 }
             }
             activityType = typesList.get(new java.util.Random().nextInt(typesList.size()));

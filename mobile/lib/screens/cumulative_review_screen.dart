@@ -1667,18 +1667,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF06A6FF), width: 2.5)),
           ),
         ),
-        const SizedBox(height: 14),
-        OutlinedButton.icon(
-          onPressed: () => _playAudio(correct),
-          icon: const Icon(Icons.volume_up_rounded, size: 20),
-          label: const Text('Hear word', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF06A6FF),
-            side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-        ),
       ],
     );
   }
@@ -1962,18 +1950,6 @@ class _CumulativeReviewScreenState extends State<CumulativeReviewScreen>
           correct: isTf ? (item['_tfIsTrue'] == true ? 'True (Tama)' : 'False (Sayop)') : correct,
           onTap: _checked ? null : () => setState(() => _selectedOptionIndex = e.key),
         )),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => _playAudio(correct),
-          icon: const Icon(Icons.volume_up_rounded, size: 20),
-          label: const Text('Hear word', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF06A6FF),
-            side: const BorderSide(color: Color(0xFF06A6FF), width: 1.5),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-        ),
       ],
     );
   }

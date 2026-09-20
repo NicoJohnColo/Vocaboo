@@ -13,24 +13,38 @@ import java.util.UUID;
 @Repository
 public interface LearnerRepository extends JpaRepository<Learner, UUID>, JpaSpecificationExecutor<Learner> {
     Optional<Learner> findByDisplayNameIgnoreCase(String displayName);
+
     boolean existsByDisplayNameIgnoreCase(String displayName);
+
     boolean existsByDisplayNameIgnoreCaseAndLearnerIdNot(String displayName, UUID learnerId);
 
     Optional<Learner> findByUserId(String userId);
+
     Optional<Learner> findByUserIdIgnoreCase(String userId);
+
     boolean existsByUserId(String userId);
 
     List<Learner> findBySectionSectionId(UUID sectionId);
+
     List<Learner> findBySectionSectionIdAndIsActiveTrue(UUID sectionId);
+
     List<Learner> findBySectionIsNullAndIsActiveTrue();
+
     List<Learner> findBySectionIsNotNullAndIsActiveTrue();
+
     List<Learner> findByGradeLevelAndIsActiveTrue(GradeLevel gradeLevel);
+
     List<Learner> findByIsActiveTrue();
 
     long countByIsActiveTrue();
+
     long countBySectionSectionId(UUID sectionId);
+
     long countBySectionSectionIdAndIsActiveTrue(UUID sectionId);
+
     long countBySectionIsNullAndIsActiveTrue();
+
     long countBySectionIsNotNullAndIsActiveTrue();
+
     long countByGradeLevelAndIsActiveTrue(GradeLevel gradeLevel);
 }

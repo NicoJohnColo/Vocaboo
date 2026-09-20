@@ -170,8 +170,8 @@ public class RetrievalActivityService {
             .filter(f -> tierFormats.stream().anyMatch(t -> t.equalsIgnoreCase(f.trim())))
             .collect(Collectors.toList());
 
-        // If intersection is empty (e.g. eligible list has types not in tier), use tier formats directly
-        if (filtered.isEmpty()) filtered = tierFormats;
+        // If intersection is empty (e.g. eligible list has types not in tier), use pool directly to enforce admin configurations
+        if (filtered.isEmpty()) filtered = pool;
 
         return filtered.get(random.nextInt(filtered.size()));
     }
@@ -203,8 +203,8 @@ public class RetrievalActivityService {
             .collect(Collectors.toList());
 
         if (filtered.isEmpty()) {
-            // All formats excluded — pick any except the excluded one
-            List<String> fallback = tierFormats.stream()
+            // All formats excluded — pick any except the excluded one from the admin configured pool
+            List<String> fallback = pool.stream()
                 .filter(f -> !f.equalsIgnoreCase(exclude))
                 .collect(Collectors.toList());
             return fallback.isEmpty() ? exclude : fallback.get(random.nextInt(fallback.size()));
@@ -343,8 +343,7 @@ public class RetrievalActivityService {
                             .collect(Collectors.toList()));
                 }
                 if (allowedM3.isEmpty()) {
-                    allowedM3.add("FILL_IN_BLANK");
-                    allowedM3.add("SENTENCE_ARRANGEMENT");
+                    continue; // Respect the empty state if all formats were disabled by admin
                 }
 
                 if (pronunciationUnlocked && currentLevel == DifficultyLevel.PROFICIENT && allowedM3.contains("PRONUNCIATION_FEEDBACK")) {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AdminNav from '../components/AdminNav';
 import LearnerDetailModal from '../components/LearnerDetailModal';
 import { TeacherClassService } from '../services/TeacherClassService';
+import { CategoryService } from '../services/CategoryService';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 
 export default function TeacherClassManagementPage() {
@@ -31,6 +32,13 @@ export default function TeacherClassManagementPage() {
   const [inviteLearnerId, setInviteLearnerId] = useState('');
   const [inviting, setInviting] = useState(false);
 
+  // Inline Lesson Creation (within class detail)
+  const [showLessonForm, setShowLessonForm] = useState(false);
+  const [lessonForm, setLessonForm] = useState({ title: '', description: '', categoryId: '', gradeLevel: 'GRADE_4' });
+  const [creatingLesson, setCreatingLesson] = useState(false);
+  const [lessonFormError, setLessonFormError] = useState('');
+  const [categories, setCategories] = useState([]);
+
   const flash = (msg) => {
     setSuccess(msg);
     setTimeout(() => setSuccess(''), 3500);
@@ -55,9 +63,19 @@ export default function TeacherClassManagementPage() {
   const loadClassDetail = async (id) => {
     setSelectedClassId(id);
     setDetailLoading(true);
+    setShowLessonForm(false);
+    setLessonFormError('');
     try {
-      const detail = await TeacherClassService.getClassDetail(id);
+      const [detail, cats] = await Promise.all([
+        TeacherClassService.getClassDetail(id),
+        CategoryService.getAll().catch(() => []),
+      ]);
       setClassDetail(detail);
+      setCategories(cats);
+      // Pre-fill grade level from class if available
+      if (detail?.gradeLevel) {
+        setLessonForm(f => ({ ...f, gradeLevel: detail.gradeLevel }));
+      }
     } catch {
       setError('Failed to load class details.');
     } finally {
@@ -129,6 +147,34 @@ export default function TeacherClassManagementPage() {
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
     flash(`Copied ${code} to clipboard!`);
+  };
+
+  const handleCreateClassLesson = async (e) => {
+    e.preventDefault();
+    if (!lessonForm.title.trim() || !lessonForm.categoryId || !selectedClassId) return;
+    setCreatingLesson(true);
+    setLessonFormError('');
+    try {
+      await TeacherClassService.createClassLesson(selectedClassId, {
+        lessonTitle: lessonForm.title.trim(),
+        lessonDescription: (() => {
+          const raw = lessonForm.description.trim() || lessonForm.title.trim();
+          return raw.length < 10 ? raw.padEnd(10, ' ') : raw;
+        })(),
+        categoryId: lessonForm.categoryId,
+        gradeLevel: lessonForm.gradeLevel,
+        lessonType: 'REGULAR',
+      });
+      flash(`Lesson "${lessonForm.title.trim()}" created! Add vocabulary words and publish it to make it visible to students.`);
+      setLessonForm(f => ({ ...f, title: '', description: '' }));
+      setShowLessonForm(false);
+      // Refresh class detail so new lesson appears in the list
+      loadClassDetail(selectedClassId);
+    } catch (err) {
+      setLessonFormError(err.message || 'Failed to create lesson. Make sure the category exists.');
+    } finally {
+      setCreatingLesson(false);
+    }
   };
 
   return (
@@ -916,18 +962,150 @@ export default function TeacherClassManagementPage() {
                   {/* TAB 4: Class Lessons */}
                   {detailTab === 'lessons' && (
                     <div>
+                      {/* Header row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                         <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
                           Lessons authored specifically for this classroom cohort.
                         </span>
-                        <a
-                          href="/lessons"
-                          className="btn btn--sm btn--ghost"
-                        >
-                          Open Lesson Builder →
-                        </a>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {isTeacher && (
+                            <button
+                              type="button"
+                              className={`btn btn--sm ${showLessonForm ? 'btn--ghost' : 'btn--primary'}`}
+                              onClick={() => { setShowLessonForm(v => !v); setLessonFormError(''); }}
+                            >
+                              {showLessonForm ? '✕ Cancel' : '+ Create Lesson'}
+                            </button>
+                          )}
+                          <a
+                            href="/lessons"
+                            className="btn btn--sm btn--ghost"
+                            title="Open full Lesson Builder to manage vocabulary and publish lessons"
+                          >
+                            Lesson Builder →
+                          </a>
+                        </div>
                       </div>
 
+                      {/* Inline lesson creation form */}
+                      {isTeacher && showLessonForm && (
+                        <form
+                          onSubmit={handleCreateClassLesson}
+                          style={{
+                            background: 'var(--color-surface-2)',
+                            border: '1.5px solid rgba(37,99,235,0.25)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: '20px 22px',
+                            marginBottom: 20,
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--color-text)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>📚</span> New Class Lesson
+                          </div>
+
+                          {lessonFormError && (
+                            <div style={{
+                              padding: '8px 12px',
+                              background: 'rgba(220,38,38,0.08)',
+                              border: '1px solid rgba(220,38,38,0.25)',
+                              borderRadius: 8,
+                              color: '#b91c1c',
+                              fontSize: '0.82rem',
+                              marginBottom: 12,
+                            }}>
+                              {lessonFormError}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Lesson Title *</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="e.g. Animals at Home"
+                                value={lessonForm.title}
+                                onChange={e => setLessonForm(f => ({ ...f, title: e.target.value }))}
+                                required
+                              />
+                            </div>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Category *</label>
+                              <select
+                                className="form-input"
+                                value={lessonForm.categoryId}
+                                onChange={e => setLessonForm(f => ({ ...f, categoryId: e.target.value }))}
+                                required
+                              >
+                                <option value="">— Select Category —</option>
+                                {categories.map(cat => (
+                                  <option key={cat.category_id || cat.categoryId} value={cat.category_id || cat.categoryId}>
+                                    {cat.category_name || cat.categoryName}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Description</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Short description (optional)"
+                                value={lessonForm.description}
+                                onChange={e => setLessonForm(f => ({ ...f, description: e.target.value }))}
+                              />
+                            </div>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Grade Level *</label>
+                              <select
+                                className="form-input"
+                                value={lessonForm.gradeLevel}
+                                onChange={e => setLessonForm(f => ({ ...f, gradeLevel: e.target.value }))}
+                                required
+                              >
+                                <option value="GRADE_4">Grade 4</option>
+                                <option value="GRADE_5">Grade 5</option>
+                                <option value="GRADE_6">Grade 6</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div style={{
+                            padding: '8px 12px',
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.3)',
+                            borderRadius: 8,
+                            fontSize: '0.78rem',
+                            color: '#92400e',
+                            marginBottom: 14,
+                          }}>
+                            ⚠️ After creating, go to <strong>Lesson Builder →</strong> to add vocabulary words and <strong>publish</strong> the lesson before students can see it.
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              className="btn btn--sm btn--ghost"
+                              onClick={() => { setShowLessonForm(false); setLessonFormError(''); }}
+                              disabled={creatingLesson}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              className="btn btn--sm btn--primary"
+                              disabled={creatingLesson || !lessonForm.title.trim() || !lessonForm.categoryId}
+                            >
+                              {creatingLesson ? <span className="spinner spinner--sm" /> : 'Create Lesson'}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {/* Lesson list */}
                       {classDetail?.lessons?.length === 0 ? (
                         <div style={{
                           padding: 32,
@@ -937,36 +1115,71 @@ export default function TeacherClassManagementPage() {
                           borderRadius: 'var(--radius-lg)',
                           border: '1px solid var(--color-border)',
                         }}>
-                          No custom lessons added to this class yet.
+                          <div style={{ fontSize: '2rem', marginBottom: 8 }}>📚</div>
+                          <p style={{ margin: '0 0 6px 0', fontWeight: 600, color: 'var(--color-text)' }}>
+                            No class lessons yet.
+                          </p>
+                          {isTeacher && (
+                            <p style={{ margin: 0, fontSize: '0.82rem' }}>
+                              Click <strong>+ Create Lesson</strong> above to add the first lesson for this class.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className="accounts-table-wrap">
                           <table className="accounts-table">
                             <thead>
                               <tr>
-                                <th>Order</th>
+                                <th>#</th>
                                 <th>Lesson Title</th>
                                 <th>Words</th>
                                 <th>Status</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                               </tr>
                             </thead>
                             <tbody>
                               {classDetail?.lessons?.map((ls) => (
                                 <tr key={ls.lessonId}>
-                                  <td>#{ls.lessonOrder}</td>
+                                  <td style={{ color: 'var(--color-text-muted)', fontWeight: 700 }}>#{ls.lessonOrder}</td>
                                   <td>
                                     <strong style={{ color: 'var(--color-text)' }}>{ls.lessonTitle}</strong>
+                                    {ls.lessonDescription && (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{ls.lessonDescription}</div>
+                                    )}
                                   </td>
-                                  <td>{ls.totalWordCount} words</td>
+                                  <td style={{ fontWeight: 600 }}>{ls.totalWordCount} words</td>
                                   <td>
-                                    <span className="status-pill status-pill--success">
-                                      {ls.contentStatus}
+                                    <span className={`status-pill ${ls.contentStatus === 'PUBLISHED' ? 'status-pill--success' : 'status-pill--warning'}`}>
+                                      {ls.contentStatus === 'PUBLISHED' ? '🚀 Published' : '📝 Draft'}
                                     </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <a
+                                      href={`/lessons`}
+                                      className="btn btn--xs btn--ghost"
+                                      title="Open Lesson Builder to manage vocabulary and publish"
+                                      style={{ fontSize: '0.75rem' }}
+                                    >
+                                      Manage →
+                                    </a>
                                   </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
+                          {classDetail?.lessons?.some(l => l.contentStatus !== 'PUBLISHED') && (
+                            <div style={{
+                              marginTop: 10,
+                              padding: '8px 14px',
+                              background: 'rgba(245,158,11,0.08)',
+                              border: '1px solid rgba(245,158,11,0.25)',
+                              borderRadius: 8,
+                              fontSize: '0.78rem',
+                              color: '#92400e',
+                            }}>
+                              📝 Draft lessons are not visible to students. Use <strong>Lesson Builder →</strong> to add vocabulary and publish them.
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

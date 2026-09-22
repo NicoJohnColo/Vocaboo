@@ -3146,7 +3146,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           item: item,
           options: _options,
           selectedIndex: _selectedOptionIndex,
-          onSelect: (idx) => _selectMcOption(idx),
+          onSelect: _checked ? null : (idx) => _selectMcOption(idx),
         ),
       ],
     );
@@ -3214,7 +3214,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: () => _selectMcOption(0),
+                onTap: _checked ? null : () => _selectMcOption(0),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
@@ -3247,7 +3247,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: GestureDetector(
-                onTap: () => _selectMcOption(1),
+                onTap: _checked ? null : () => _selectMcOption(1),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
@@ -3419,7 +3419,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: GestureDetector(
-              onTap: () => _selectMcOption(index),
+              onTap: _checked ? null : () => _selectMcOption(index),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(
@@ -3633,7 +3633,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: GestureDetector(
-              onTap: () => _selectMcOption(index),
+              onTap: _checked ? null : () => _selectMcOption(index),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(

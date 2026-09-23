@@ -29,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequestMapping({"/api/learner/classes", "/api/v1/learner/classes"})
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('LEARNER')")
-@Transactional(readOnly = true)
 public class LearnerClassController {
 
     private final ClassManagementService classManagementService;

@@ -384,18 +384,6 @@ public class ClassManagementService {
                 : null;
 
         List<ClassEnrollment> enrollments = enrollmentRepository.findByLearnerLearnerIdAndStatus(learnerId, "ACTIVE");
-        if (learnerGrade != null) {
-            enrollments = enrollments.stream()
-                    .filter(e -> {
-                        if (e.getClassroom() == null)
-                            return false;
-                        GradeLevel classGrade = e.getClassroom().getGradeLevel() != null
-                                ? e.getClassroom().getGradeLevel()
-                                : GradeLevel.GRADE_4;
-                        return classGrade == learnerGrade;
-                    })
-                    .collect(Collectors.toList());
-        }
 
         return enrollments.stream().map(e -> {
             Classroom c = e.getClassroom();
@@ -406,11 +394,6 @@ public class ClassManagementService {
             List<Lesson> lessons = lessonRepository
                     .findByClassroomClassIdAndContentStatusAndIsDeletedFalseOrderByLessonOrderAsc(c.getClassId(),
                             "PUBLISHED");
-            if (learnerGrade != null) {
-                lessons = lessons.stream()
-                        .filter(l -> l.getGradeLevel() != null && l.getGradeLevel() == learnerGrade)
-                        .collect(Collectors.toList());
-            }
 
             return LearnerClassSummaryResponse.builder()
                     .classId(c.getClassId())
@@ -427,25 +410,8 @@ public class ClassManagementService {
     }
 
     public List<LearnerInvitationResponse> getLearnerInvitations(UUID learnerId) {
-        Learner learner = learnerRepository.findById(learnerId).orElse(null);
-        GradeLevel learnerGrade = learner != null
-                ? (learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4)
-                : null;
-
         List<ClassInvitation> invites = invitationRepository
                 .findByLearnerLearnerIdAndStatusOrderByCreatedAtDesc(learnerId, "PENDING");
-        if (learnerGrade != null) {
-            invites = invites.stream()
-                    .filter(i -> {
-                        if (i.getClassroom() == null)
-                            return false;
-                        GradeLevel classGrade = i.getClassroom().getGradeLevel() != null
-                                ? i.getClassroom().getGradeLevel()
-                                : GradeLevel.GRADE_4;
-                        return classGrade == learnerGrade;
-                    })
-                    .collect(Collectors.toList());
-        }
 
         return invites.stream().map(i -> {
             Classroom c = i.getClassroom();

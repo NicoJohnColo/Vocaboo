@@ -283,6 +283,7 @@ public class ClassManagementService {
 
         GradeLevel classGrade = classroom.getGradeLevel() != null ? classroom.getGradeLevel() : GradeLevel.GRADE_4;
         GradeLevel learnerGrade = learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4;
+
         if (classGrade != learnerGrade) {
             throw new IllegalArgumentException("Cannot invite " + learner.getDisplayName() + ": Student is in "
                     + learnerGrade.name().replace("GRADE_", "Grade ")
@@ -327,6 +328,26 @@ public class ClassManagementService {
     public ClassDetailResponse.InvitationDto inviteLearner(UUID classId, UUID learnerId, UUID teacherId,
             boolean isAdmin) {
         return inviteLearner(classId, learnerId != null ? learnerId.toString() : null, teacherId, isAdmin);
+    }
+
+    @Transactional
+    public void cancelInvitation(UUID classId, UUID invitationId, UUID teacherId, boolean isAdmin) {
+        Classroom classroom = classroomRepository.findById(classId)
+                .orElseThrow(() -> new IllegalArgumentException("Class not found"));
+
+        if (!isAdmin && !classroom.getTeacher().getTeacherId().equals(teacherId)) {
+            throw new AccessDeniedException("You do not have permission to cancel invitations for this class.");
+        }
+
+        ClassInvitation invitation = invitationRepository.findById(invitationId)
+                .orElseThrow(() -> new IllegalArgumentException("Invitation not found"));
+
+        if (!invitation.getClassroom().getClassId().equals(classId)) {
+            throw new IllegalArgumentException("Invitation does not belong to this class.");
+        }
+
+        invitationRepository.delete(invitation);
+        log.info("Teacher {} canceled invitation {} for class {}", teacherId, invitationId, classId);
     }
 
     @Transactional

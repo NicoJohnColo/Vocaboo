@@ -161,6 +161,16 @@ export default function TeacherClassManagementPage() {
     }
   };
 
+  const handleCancelInvitation = async (invitationId) => {
+    try {
+      await TeacherClassService.cancelInvitation(selectedClassId, invitationId);
+      flash('Invitation cancelled!');
+      loadClassDetail(selectedClassId);
+    } catch (err) {
+      setError(err.message || 'Failed to cancel invitation');
+    }
+  };
+
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
     flash(`Copied ${code} to clipboard!`);
@@ -903,7 +913,7 @@ export default function TeacherClassManagementPage() {
                           <input
                             type="text"
                             className="form-input"
-                            placeholder="Enter student user ID (e.g. 26-0001-290) or UUID..."
+                            placeholder="Enter student user ID, UUID, or display name..."
                             value={inviteLearnerId}
                             onChange={(e) => setInviteLearnerId(e.target.value)}
                             style={{ flex: 1 }}
@@ -941,6 +951,7 @@ export default function TeacherClassManagementPage() {
                                 <th>Student</th>
                                 <th>Status</th>
                                 <th>Sent Date</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -977,6 +988,18 @@ export default function TeacherClassManagementPage() {
                                   </td>
                                   <td style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
                                     {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : '—'}
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    {isTeacher && (
+                                      <button
+                                        type="button"
+                                        className="btn btn--xs btn--danger-ghost"
+                                        onClick={() => handleCancelInvitation(inv.invitationId)}
+                                        title="Cancel this invitation"
+                                      >
+                                        ✕ Cancel
+                                      </button>
+                                    )}
                                   </td>
                                 </tr>
                               ))}

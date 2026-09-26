@@ -59,6 +59,17 @@ export const TeacherClassService = {
     return res.json();
   },
 
+  async cancelInvitation(classId, invitationId) {
+    const res = await apiFetch(`/api/teacher/classes/${classId}/invitations/${invitationId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Failed to cancel invitation' }));
+      throw new Error(err.message || 'Failed to cancel invitation');
+    }
+    return res.json();
+  },
+
   async reviewJoinRequest(classId, requestId, status) {
     const res = await apiFetch(`/api/teacher/classes/${classId}/requests/${requestId}`, {
       method: 'PATCH',

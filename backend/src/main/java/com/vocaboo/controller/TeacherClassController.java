@@ -88,6 +88,18 @@ public class TeacherClassController {
         ClassDetailResponse.InvitationDto dto = classManagementService.inviteLearner(id, req.getLearnerId(), teacherId, false);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
+    @DeleteMapping("/{id}/invitations/{invitationId}")
+    public ResponseEntity<Map<String, String>> cancelInvitation(
+            @PathVariable UUID id,
+            @PathVariable UUID invitationId,
+            Authentication auth) {
+        if (isAdmin(auth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Main admin has view-only access to teacher classrooms.");
+        }
+        UUID teacherId = parseUserId(auth);
+        classManagementService.cancelInvitation(id, invitationId, teacherId, false);
+        return ResponseEntity.ok(Map.of("message", "Invitation cancelled successfully"));
+    }
 
     @PatchMapping("/{id}/requests/{requestId}")
     public ResponseEntity<Map<String, String>> reviewJoinRequest(

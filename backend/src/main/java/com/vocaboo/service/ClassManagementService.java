@@ -243,12 +243,14 @@ public class ClassManagementService {
         }
         return learnerRepository.searchActiveLearnersByDisplayNameOrUserId(query.trim()).stream()
                 .limit(10)
-                .map(l -> Map.of(
-                        "learnerId", l.getLearnerId(),
-                        "userId", l.getUserId() != null ? l.getUserId() : "",
-                        "displayName", l.getDisplayName() != null ? l.getDisplayName() : "",
-                        "gradeLevel", l.getGradeLevel() != null ? l.getGradeLevel().name() : ""
-                ))
+                .map(l -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("learnerId", l.getLearnerId());
+                    map.put("userId", l.getUserId() != null ? l.getUserId() : "");
+                    map.put("displayName", l.getDisplayName() != null ? l.getDisplayName() : "");
+                    map.put("gradeLevel", l.getGradeLevel() != null ? l.getGradeLevel().name() : "");
+                    return map;
+                })
                 .collect(Collectors.toList());
     }
 

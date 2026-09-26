@@ -48,16 +48,24 @@ export const TeacherClassService = {
   },
 
   async searchLearners(query) {
-    const res = await apiFetch(`/api/admin/learners/invite-search?search=${encodeURIComponent(query)}&size=10`);
-    if (!res.ok) throw new Error('Failed to search learners');
-    const page = await res.json();
-    // Map admin response shape to our expected { learnerId, userId, displayName, gradeLevel }
-    return (page.content || []).map(l => ({
-      learnerId: l.learnerId,
-      userId: l.userId,
-      displayName: l.displayName,
-      gradeLevel: l.gradeLevel,
-    }));
+    let res = await apiFetch(`/api/teacher/classes/search?q=${encodeURIComponent(query)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    }
+    // Fallback to invite-search if /search endpoint is not available
+    res = await apiFetch(`/api/admin/learners/invite-search?search=${encodeURIComponent(query)}&size=10`);
+    if (res.ok) {
+      const page = await res.json();
+      return (page.content || []).map(l => ({
+        learnerId: l.learnerId,
+        userId: l.userId,
+        displayName: l.displayName,
+        gradeLevel: l.gradeLevel,
+      }));
+    }
+    const body = await res.text().catch(() => '');
+    throw new Error(`Search failed (HTTP ${res.status}): ${body.slice(0, 100) || 'Unable to load learners'}`);
   },
 
   async inviteLearner(classId, learnerId) {

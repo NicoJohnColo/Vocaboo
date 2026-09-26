@@ -59,11 +59,7 @@ public class TeacherClassController {
 
     @GetMapping("/search")
     public ResponseEntity<List<Map<String, Object>>> searchLearners(
-            @RequestParam("q") String query,
-            Authentication auth) {
-        if (isAdmin(auth)) {
-            throw new org.springframework.security.access.AccessDeniedException("Main admin has view-only access to teacher classrooms.");
-        }
+            @RequestParam("q") String query) {
         return ResponseEntity.ok(classManagementService.searchLearnersForInvitation(query));
     }
 
@@ -112,11 +108,7 @@ public class TeacherClassController {
     }
     @GetMapping("/learners/search")
     public ResponseEntity<List<Map<String, Object>>> searchLearnersDeprecated(
-            @RequestParam("q") String query,
-            Authentication auth) {
-        if (isAdmin(auth)) {
-            throw new org.springframework.security.access.AccessDeniedException("Main admin has view-only access to teacher classrooms.");
-        }
+            @RequestParam("q") String query) {
         return ResponseEntity.ok(classManagementService.searchLearnersForInvitation(query));
     }
 

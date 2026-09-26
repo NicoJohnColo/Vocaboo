@@ -22,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequestMapping("/api/admin/classes")
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
-@Transactional(readOnly = true)
 public class AdminSectionController {
 
     private final AdminSectionService adminSectionService;

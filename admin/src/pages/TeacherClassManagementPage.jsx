@@ -35,6 +35,7 @@ export default function TeacherClassManagementPage() {
   const [inviting, setInviting] = useState(false);
   const [learnerSearchResults, setLearnerSearchResults] = useState([]);
   const [isSearchingLearners, setIsSearchingLearners] = useState(false);
+  const [searchLearnerError, setSearchLearnerError] = useState('');
   const [showLearnerDropdown, setShowLearnerDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -178,6 +179,7 @@ export default function TeacherClassManagementPage() {
 
   const handleLearnerSearch = async (query) => {
     setInviteLearnerId(query);
+    setSearchLearnerError('');
     if (!query.trim() || query.trim().length < 2) {
       setShowLearnerDropdown(false);
       setLearnerSearchResults([]);
@@ -189,7 +191,8 @@ export default function TeacherClassManagementPage() {
       const results = await TeacherClassService.searchLearners(query.trim());
       setLearnerSearchResults(results);
     } catch (err) {
-      console.error(err);
+      setSearchLearnerError(err.message || 'Failed to search');
+      setLearnerSearchResults([]);
     } finally {
       setIsSearchingLearners(false);
     }
@@ -977,6 +980,10 @@ export default function TeacherClassManagementPage() {
                                 {isSearchingLearners ? (
                                   <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-text-muted)' }}>
                                     <span className="spinner spinner--sm" /> Searching...
+                                  </div>
+                                ) : searchLearnerError ? (
+                                  <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-error)' }}>
+                                    {searchLearnerError}
                                   </div>
                                 ) : learnerSearchResults.length > 0 ? (
                                   learnerSearchResults.map(l => (

@@ -212,7 +212,7 @@ public class AdminLearnerManagementController {
      * Search all active learners by name or user ID for teacher invitation purposes.
      * Unlike the main list endpoint, this does NOT scope results to the teacher's own class.
      */
-    @GetMapping("/invite-search")
+    @GetMapping("/invite-search") // v2: global learner search for teacher invitations
     public ResponseEntity<Page<AdminLearnerSummaryResponse>> inviteSearch(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,

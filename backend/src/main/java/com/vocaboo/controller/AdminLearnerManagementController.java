@@ -207,6 +207,25 @@ public class AdminLearnerManagementController {
         return ResponseEntity.ok(Map.of("status", "resolved", "message", "Teacher review flag cleared successfully."));
     }
 
+    /**
+     * GET /api/admin/learners/invite-search
+     * Search all active learners by name or user ID for teacher invitation purposes.
+     * Unlike the main list endpoint, this does NOT scope results to the teacher's own class.
+     */
+    @GetMapping("/invite-search")
+    public ResponseEntity<Page<AdminLearnerSummaryResponse>> inviteSearch(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            Authentication auth) {
+        Sort sort = Sort.by("displayName").ascending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+        // Pass teacherId=null so results are NOT scoped to the teacher's own students
+        Page<AdminLearnerSummaryResponse> result = adminLearnerService.searchLearners(
+                search, null, null, null, null, null, pageable);
+        return ResponseEntity.ok(result);
+    }
+
     private UUID parseAdminId(Authentication auth) {
         if (auth == null || auth.getName() == null) return null;
         try {

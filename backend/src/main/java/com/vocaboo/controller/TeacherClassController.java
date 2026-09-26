@@ -100,6 +100,15 @@ public class TeacherClassController {
         classManagementService.cancelInvitation(id, invitationId, teacherId, false);
         return ResponseEntity.ok(Map.of("message", "Invitation cancelled successfully"));
     }
+    @GetMapping("/learners/search")
+    public ResponseEntity<List<Map<String, Object>>> searchLearners(
+            @RequestParam("q") String query,
+            Authentication auth) {
+        if (isAdmin(auth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Main admin has view-only access to teacher classrooms.");
+        }
+        return ResponseEntity.ok(classManagementService.searchLearnersForInvitation(query));
+    }
 
     @PatchMapping("/{id}/requests/{requestId}")
     public ResponseEntity<Map<String, String>> reviewJoinRequest(

@@ -33,6 +33,21 @@ export default function TeacherClassManagementPage() {
   // Invitation Form
   const [inviteLearnerId, setInviteLearnerId] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [learnerSearchResults, setLearnerSearchResults] = useState([]);
+  const [isSearchingLearners, setIsSearchingLearners] = useState(false);
+  const [showLearnerDropdown, setShowLearnerDropdown] = useState(false);
+  const dropdownRef = React.useRef(null);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowLearnerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Inline Lesson Creation (within class detail)
   const [showLessonForm, setShowLessonForm] = useState(false);
@@ -159,6 +174,30 @@ export default function TeacherClassManagementPage() {
     } finally {
       setInviting(false);
     }
+  };
+
+  const handleLearnerSearch = async (query) => {
+    setInviteLearnerId(query);
+    if (!query.trim() || query.trim().length < 2) {
+      setShowLearnerDropdown(false);
+      setLearnerSearchResults([]);
+      return;
+    }
+    setIsSearchingLearners(true);
+    setShowLearnerDropdown(true);
+    try {
+      const results = await TeacherClassService.searchLearners(query.trim());
+      setLearnerSearchResults(results);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearchingLearners(false);
+    }
+  };
+
+  const selectLearnerFromDropdown = (learner) => {
+    setInviteLearnerId(learner.userId || learner.displayName);
+    setShowLearnerDropdown(false);
   };
 
   const handleCancelInvitation = async (invitationId) => {
@@ -910,14 +949,64 @@ export default function TeacherClassManagementPage() {
                       {/* Invite Learner Form */}
                       {isTeacher ? (
                         <form onSubmit={handleInviteLearner} style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-                          <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Enter student user ID, UUID, or display name..."
-                            value={inviteLearnerId}
-                            onChange={(e) => setInviteLearnerId(e.target.value)}
-                            style={{ flex: 1 }}
-                          />
+                          <div style={{ position: 'relative', flex: 1 }} ref={dropdownRef}>
+                            <input
+                              type="text"
+                              className="form-input"
+                              placeholder="Enter student user ID, UUID, or display name..."
+                              value={inviteLearnerId}
+                              onChange={(e) => handleLearnerSearch(e.target.value)}
+                              onFocus={() => { if (inviteLearnerId.trim().length >= 2) setShowLearnerDropdown(true); }}
+                              style={{ width: '100%' }}
+                            />
+                            {showLearnerDropdown && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                marginTop: 4,
+                                background: '#fff',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-md)',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                zIndex: 10,
+                                maxHeight: 200,
+                                overflowY: 'auto'
+                              }}>
+                                {isSearchingLearners ? (
+                                  <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                    <span className="spinner spinner--sm" /> Searching...
+                                  </div>
+                                ) : learnerSearchResults.length > 0 ? (
+                                  learnerSearchResults.map(l => (
+                                    <div
+                                      key={l.learnerId}
+                                      onClick={() => selectLearnerFromDropdown(l)}
+                                      style={{
+                                        padding: '8px 12px',
+                                        cursor: 'pointer',
+                                        borderBottom: '1px solid var(--color-surface-2)',
+                                        display: 'flex',
+                                        flexDirection: 'column'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-2)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <strong style={{ fontSize: '0.9rem', color: 'var(--color-text)' }}>{l.displayName}</strong>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                        ID: {l.userId} • {l.gradeLevel?.replace('_', ' ')}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                    No learners found.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           <button
                             type="submit"
                             className="btn btn--primary"

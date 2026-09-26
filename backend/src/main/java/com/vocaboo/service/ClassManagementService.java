@@ -236,6 +236,22 @@ public class ClassManagementService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> searchLearnersForInvitation(String query) {
+        if (query == null || query.trim().length() < 2) {
+            return List.of();
+        }
+        return learnerRepository.searchActiveLearnersByDisplayNameOrUserId(query.trim()).stream()
+                .limit(10)
+                .map(l -> Map.of(
+                        "learnerId", l.getLearnerId(),
+                        "userId", l.getUserId() != null ? l.getUserId() : "",
+                        "displayName", l.getDisplayName() != null ? l.getDisplayName() : "",
+                        "gradeLevel", l.getGradeLevel() != null ? l.getGradeLevel().name() : ""
+                ))
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public ClassDetailResponse.InvitationDto inviteLearner(UUID classId, String learnerIdentifier, UUID teacherId,
             boolean isAdmin) {

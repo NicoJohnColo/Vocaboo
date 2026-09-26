@@ -47,6 +47,12 @@ export const TeacherClassService = {
     return res.json();
   },
 
+  async searchLearners(query) {
+    const res = await apiFetch(`/api/teacher/classes/learners/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error('Failed to search learners');
+    return res.json();
+  },
+
   async inviteLearner(classId, learnerId) {
     const res = await apiFetch(`/api/teacher/classes/${classId}/invitations`, {
       method: 'POST',

@@ -578,6 +578,7 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                         (detail?.cumulative_reviews || detail?.cumulativeReviews).map((cs, idx) => {
                           const sid = cs.session_id || cs.sessionId || idx;
                           const pairName = cs.category_name || cs.categoryName || cs.lesson_pair_id || cs.lessonPairId || 'Cumulative Review';
+                          const lessonNames = cs.lesson_names || cs.lessonNames;
                           const acc = cs.accuracy_percent ?? cs.accuracyPercent;
                           const badge = cs.badge_awarded || cs.badgeAwarded;
                           const pts = cs.points_earned ?? cs.pointsEarned ?? 0;
@@ -587,7 +588,10 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
 
                           return (
                             <tr key={sid}>
-                              <td><strong>{pairName}</strong></td>
+                              <td>
+                                <strong>{pairName}</strong>
+                                {lessonNames && <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>{lessonNames}</div>}
+                              </td>
                               <td style={{ fontWeight: 700, color: Number(acc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
                                 {acc != null ? `${Number(acc).toFixed(1)}%` : '—'}
                               </td>

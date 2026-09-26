@@ -630,6 +630,9 @@ public class AdminLearnerDetailResponse {
         @JsonProperty("category_name")
         private String categoryName;
 
+        @JsonProperty("lesson_names")
+        private String lessonNames;
+
         @JsonProperty("accuracy_percent")
         private BigDecimal accuracyPercent;
 
@@ -665,6 +668,7 @@ public class AdminLearnerDetailResponse {
             private UUID sessionId;
             private String lessonPairId;
             private String categoryName;
+            private String lessonNames;
             private BigDecimal accuracyPercent;
             private String badgeAwarded;
             private Integer pointsEarned;
@@ -676,6 +680,7 @@ public class AdminLearnerDetailResponse {
             public CumulativeReviewPerformanceDetailBuilder sessionId(UUID sessionId) { this.sessionId = sessionId; return this; }
             public CumulativeReviewPerformanceDetailBuilder lessonPairId(String lessonPairId) { this.lessonPairId = lessonPairId; return this; }
             public CumulativeReviewPerformanceDetailBuilder categoryName(String categoryName) { this.categoryName = categoryName; return this; }
+            public CumulativeReviewPerformanceDetailBuilder lessonNames(String lessonNames) { this.lessonNames = lessonNames; return this; }
             public CumulativeReviewPerformanceDetailBuilder accuracyPercent(BigDecimal accuracyPercent) { this.accuracyPercent = accuracyPercent; return this; }
             public CumulativeReviewPerformanceDetailBuilder badgeAwarded(String badgeAwarded) { this.badgeAwarded = badgeAwarded; return this; }
             public CumulativeReviewPerformanceDetailBuilder pointsEarned(Integer pointsEarned) { this.pointsEarned = pointsEarned; return this; }
@@ -689,6 +694,7 @@ public class AdminLearnerDetailResponse {
                 d.sessionId = this.sessionId;
                 d.lessonPairId = this.lessonPairId;
                 d.categoryName = this.categoryName;
+                d.lessonNames = this.lessonNames;
                 d.accuracyPercent = this.accuracyPercent;
                 d.badgeAwarded = this.badgeAwarded;
                 d.pointsEarned = this.pointsEarned;

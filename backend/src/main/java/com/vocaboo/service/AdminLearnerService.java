@@ -783,10 +783,11 @@ public class AdminLearnerService {
         List<AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail> cumDetails = completedCum.stream().map(cs -> {
             String pairId = cs.getLessonPairId();
             String displayName = pairId;
+            String lessonNamesStr = null;
+            String catName = null;
             if (pairId != null && !pairId.isBlank()) {
                 String[] parts = pairId.split("_");
                 List<String> names = new ArrayList<>();
-                String catName = null;
                 for (String p : parts) {
                     try {
                         UUID lid = UUID.fromString(p.trim());
@@ -800,14 +801,18 @@ public class AdminLearnerService {
                     } catch (Exception ignored) {}
                 }
                 if (!names.isEmpty()) {
-                    displayName = (catName != null ? catName + ": " : "") + String.join(" & ", names);
+                    lessonNamesStr = String.join(" + ", names);
+                    if (catName == null) {
+                        catName = "Cumulative Review";
+                    }
                 }
             }
 
             return AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail.builder()
                     .sessionId(cs.getId())
                     .lessonPairId(cs.getLessonPairId())
-                    .categoryName(displayName)
+                    .categoryName(catName != null ? catName : displayName)
+                    .lessonNames(lessonNamesStr != null ? lessonNamesStr : "")
                     .accuracyPercent(cs.getAccuracyPercent())
                     .badgeAwarded(cs.getBadgeAwarded())
                     .pointsEarned(cs.getPointsEarned())

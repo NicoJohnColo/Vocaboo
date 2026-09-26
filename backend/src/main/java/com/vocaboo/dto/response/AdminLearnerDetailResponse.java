@@ -636,6 +636,9 @@ public class AdminLearnerDetailResponse {
         @JsonProperty("accuracy_percent")
         private BigDecimal accuracyPercent;
 
+        @JsonProperty("overall_accuracy")
+        private BigDecimal overallAccuracy;
+
         @JsonProperty("badge_awarded")
         private String badgeAwarded;
 
@@ -656,6 +659,7 @@ public class AdminLearnerDetailResponse {
 
         public String getLessonPairId() { return lessonPairId; }
         public BigDecimal getAccuracyPercent() { return accuracyPercent; }
+        public BigDecimal getOverallAccuracy() { return overallAccuracy; }
         public String getBadgeAwarded() { return badgeAwarded; }
         public Integer getPointsEarned() { return pointsEarned; }
         public Integer getCorrectCount() { return correctCount; }
@@ -670,6 +674,7 @@ public class AdminLearnerDetailResponse {
             private String categoryName;
             private String lessonNames;
             private BigDecimal accuracyPercent;
+            private BigDecimal overallAccuracy;
             private String badgeAwarded;
             private Integer pointsEarned;
             private Integer correctCount;
@@ -682,6 +687,7 @@ public class AdminLearnerDetailResponse {
             public CumulativeReviewPerformanceDetailBuilder categoryName(String categoryName) { this.categoryName = categoryName; return this; }
             public CumulativeReviewPerformanceDetailBuilder lessonNames(String lessonNames) { this.lessonNames = lessonNames; return this; }
             public CumulativeReviewPerformanceDetailBuilder accuracyPercent(BigDecimal accuracyPercent) { this.accuracyPercent = accuracyPercent; return this; }
+            public CumulativeReviewPerformanceDetailBuilder overallAccuracy(BigDecimal overallAccuracy) { this.overallAccuracy = overallAccuracy; return this; }
             public CumulativeReviewPerformanceDetailBuilder badgeAwarded(String badgeAwarded) { this.badgeAwarded = badgeAwarded; return this; }
             public CumulativeReviewPerformanceDetailBuilder pointsEarned(Integer pointsEarned) { this.pointsEarned = pointsEarned; return this; }
             public CumulativeReviewPerformanceDetailBuilder correctCount(Integer correctCount) { this.correctCount = correctCount; return this; }
@@ -696,6 +702,7 @@ public class AdminLearnerDetailResponse {
                 d.categoryName = this.categoryName;
                 d.lessonNames = this.lessonNames;
                 d.accuracyPercent = this.accuracyPercent;
+                d.overallAccuracy = this.overallAccuracy;
                 d.badgeAwarded = this.badgeAwarded;
                 d.pointsEarned = this.pointsEarned;
                 d.correctCount = this.correctCount;

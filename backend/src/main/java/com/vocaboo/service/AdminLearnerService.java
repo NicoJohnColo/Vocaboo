@@ -785,9 +785,11 @@ public class AdminLearnerService {
             String displayName = pairId;
             String lessonNamesStr = null;
             String catName = null;
+            BigDecimal overallAccuracy = null;
             if (pairId != null && !pairId.isBlank()) {
                 String[] parts = pairId.split("_");
                 List<String> names = new ArrayList<>();
+                List<Double> lessonAccuracies = new ArrayList<>();
                 for (String p : parts) {
                     try {
                         UUID lid = UUID.fromString(p.trim());
@@ -797,6 +799,16 @@ public class AdminLearnerService {
                             if (catName == null && l.getCategory() != null && l.getCategory().getCategoryName() != null) {
                                 catName = l.getCategory().getCategoryName();
                             }
+                            
+                            // Find corresponding lesson detail to get its mastery score
+                            lessonDetails.stream()
+                                    .filter(ld -> lid.equals(ld.getLessonId()))
+                                    .findFirst()
+                                    .ifPresent(ld -> {
+                                        if (ld.getMasteryScore() != null) {
+                                            lessonAccuracies.add(ld.getMasteryScore().doubleValue());
+                                        }
+                                    });
                         }
                     } catch (Exception ignored) {}
                 }
@@ -806,6 +818,18 @@ public class AdminLearnerService {
                         catName = "Cumulative Review";
                     }
                 }
+                
+                if (!lessonAccuracies.isEmpty() && cs.getAccuracyPercent() != null) {
+                    double lessonAvg = lessonAccuracies.stream().mapToDouble(d -> d).average().orElse(0.0);
+                    double cumScore = cs.getAccuracyPercent().doubleValue();
+                    double overall = (lessonAvg * 0.60) + (cumScore * 0.40);
+                    overallAccuracy = BigDecimal.valueOf(overall).setScale(2, RoundingMode.HALF_UP);
+                } else if (!lessonAccuracies.isEmpty()) {
+                    double lessonAvg = lessonAccuracies.stream().mapToDouble(d -> d).average().orElse(0.0);
+                    overallAccuracy = BigDecimal.valueOf(lessonAvg).setScale(2, RoundingMode.HALF_UP);
+                } else if (cs.getAccuracyPercent() != null) {
+                    overallAccuracy = cs.getAccuracyPercent().setScale(2, RoundingMode.HALF_UP);
+                }
             }
 
             return AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail.builder()
@@ -814,6 +838,7 @@ public class AdminLearnerService {
                     .categoryName(catName != null ? catName : displayName)
                     .lessonNames(lessonNamesStr != null ? lessonNamesStr : "")
                     .accuracyPercent(cs.getAccuracyPercent())
+                    .overallAccuracy(overallAccuracy)
                     .badgeAwarded(cs.getBadgeAwarded())
                     .pointsEarned(cs.getPointsEarned())
                     .correctCount(cs.getCorrectCount())
@@ -960,6 +985,13 @@ public class AdminLearnerService {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found: " + learnerId));
         String displayName = learner.getDisplayName();
+
+        // Safely wipe all child records to avoid FK constraints
+        learnerService.resetProgress(learnerId);
+        classPerformanceRepository.deleteByLearnerLearnerId(learnerId);
+        masteryRepository.deleteByLearnerLearnerId(learnerId);
+        classEnrollmentRepository.deleteByLearnerLearnerId(learnerId);
+
         learnerRepository.delete(learner);
 
         if (adminId != null) {

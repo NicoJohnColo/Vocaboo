@@ -54,7 +54,8 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
   const classSessions = detail?.class_sessions_played ?? detail?.classSessionsPlayed;
   const posBreakdown = detail?.pos_breakdown || detail?.posBreakdown || [];
   const allWords = detail?.all_words || detail?.allWords || [];
-  const lessons = detail?.lessons || detail?.lessonBreakdowns || [];
+  const allLessonsRaw = detail?.lessons || detail?.lessonBreakdowns || [];
+  const lessons = allLessonsRaw.filter(lb => lb.status && lb.status !== 'NOT_STARTED');
   const weakWords = detail?.weak_words || detail?.weakWords || [];
   const isStruggling = detail?.is_struggling ?? detail?.struggling ?? false;
   const strugglingReasons = detail?.struggling_reasons || detail?.strugglingReasons || [];
@@ -560,7 +561,8 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                     <thead>
                       <tr>
                         <th>Lesson Pair / Category</th>
-                        <th>Accuracy</th>
+                        <th>Overall Accuracy</th>
+                        <th>Session Accuracy</th>
                         <th>Badge</th>
                         <th>Points Earned</th>
                         <th>Questions</th>
@@ -570,7 +572,7 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                     <tbody>
                       {(!detail?.cumulative_reviews && !detail?.cumulativeReviews || (detail?.cumulative_reviews || detail?.cumulativeReviews).length === 0) ? (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>
+                          <td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>
                             No cumulative review sessions completed yet.
                           </td>
                         </tr>
@@ -579,6 +581,7 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                           const sid = cs.session_id || cs.sessionId || idx;
                           const pairName = cs.category_name || cs.categoryName || cs.lesson_pair_id || cs.lessonPairId || 'Cumulative Review';
                           const lessonNames = cs.lesson_names || cs.lessonNames;
+                          const overallAcc = cs.overall_accuracy ?? cs.overallAccuracy;
                           const acc = cs.accuracy_percent ?? cs.accuracyPercent;
                           const badge = cs.badge_awarded || cs.badgeAwarded;
                           const pts = cs.points_earned ?? cs.pointsEarned ?? 0;
@@ -591,6 +594,9 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                               <td>
                                 <strong>{pairName}</strong>
                                 {lessonNames && <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>{lessonNames}</div>}
+                              </td>
+                              <td style={{ fontWeight: 700, color: Number(overallAcc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
+                                {overallAcc != null ? `${Number(overallAcc).toFixed(2)}%` : '—'}
                               </td>
                               <td style={{ fontWeight: 700, color: Number(acc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
                                 {acc != null ? `${Number(acc).toFixed(1)}%` : '—'}

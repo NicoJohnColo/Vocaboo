@@ -33,4 +33,6 @@ public interface ClassEnrollmentRepository extends JpaRepository<ClassEnrollment
 
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT e.learner.learnerId FROM ClassEnrollment e WHERE e.classroom.classId = :classId AND e.status = 'ACTIVE'")
     List<UUID> findEnrolledLearnerIdsByClassId(@org.springframework.data.repository.query.Param("classId") UUID classId);
+
+    void deleteByLearnerLearnerId(UUID learnerId);
 }

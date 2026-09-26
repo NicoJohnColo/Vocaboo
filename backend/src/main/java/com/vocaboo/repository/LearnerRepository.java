@@ -14,7 +14,7 @@ import java.util.UUID;
 public interface LearnerRepository extends JpaRepository<Learner, UUID>, JpaSpecificationExecutor<Learner> {
     Optional<Learner> findByDisplayNameIgnoreCase(String displayName);
 
-    @org.springframework.data.jpa.repository.Query("SELECT l FROM Learner l WHERE l.isActive = true AND (LOWER(l.displayName) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(l.userId) LIKE LOWER(CONCAT('%', :query, '%')))")
+    @org.springframework.data.jpa.repository.Query("SELECT l FROM Learner l WHERE (l.isActive = true OR l.isActive IS NULL) AND (LOWER(l.displayName) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(l.userId) LIKE LOWER(CONCAT('%', :query, '%')))")
     List<Learner> searchActiveLearnersByDisplayNameOrUserId(@org.springframework.data.repository.query.Param("query") String query);
 
     boolean existsByDisplayNameIgnoreCase(String displayName);

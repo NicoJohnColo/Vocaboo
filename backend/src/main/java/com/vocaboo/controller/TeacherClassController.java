@@ -61,9 +61,6 @@ public class TeacherClassController {
     public ResponseEntity<List<Map<String, Object>>> searchLearners(
             @RequestParam("q") String query,
             Authentication auth) {
-        if (isAdmin(auth)) {
-            throw new org.springframework.security.access.AccessDeniedException("Main admin has view-only access to teacher classrooms.");
-        }
         return ResponseEntity.ok(classManagementService.searchLearnersForInvitation(query));
     }
 

@@ -66,6 +66,16 @@ public class TeacherClassController {
         return ResponseEntity.ok(classManagementService.getClassDetail(id, teacherId, isAdmin));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> deleteClass(
+            @PathVariable UUID id,
+            Authentication auth) {
+        boolean isAdmin = isAdmin(auth);
+        UUID teacherId = parseUserIdSafe(auth);
+        classManagementService.deleteClass(id, teacherId, isAdmin);
+        return ResponseEntity.ok(Map.of("message", "Class deleted successfully"));
+    }
+
     @PostMapping("/{id}/invitations")
     public ResponseEntity<ClassDetailResponse.InvitationDto> inviteLearner(
             @PathVariable UUID id,

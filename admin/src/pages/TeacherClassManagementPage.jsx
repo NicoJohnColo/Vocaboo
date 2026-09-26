@@ -19,6 +19,8 @@ export default function TeacherClassManagementPage() {
   const [newClassName, setNewClassName] = useState('');
   const [newClassGrade, setNewClassGrade] = useState('GRADE_4');
   const [creating, setCreating] = useState(false);
+  const [classToDelete, setClassToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [selectedClassId, setSelectedClassId] = useState(null);
   const [classDetail, setClassDetail] = useState(null);
@@ -98,6 +100,21 @@ export default function TeacherClassManagementPage() {
       setError(err.message || 'Failed to create class');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    if (!classToDelete) return;
+    setDeleting(true);
+    try {
+      await TeacherClassService.deleteClass(classToDelete.classId);
+      flash(`Class "${classToDelete.name}" deleted successfully.`);
+      setClassToDelete(null);
+      await loadClasses();
+    } catch (err) {
+      setError(err.message || 'Failed to delete class');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -381,13 +398,24 @@ export default function TeacherClassManagementPage() {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className="btn btn--sm btn--primary"
-                          onClick={() => loadClassDetail(cls.classId)}
-                        >
-                          {isTeacher ? 'Manage Roster & Lessons →' : 'View Roster & Lessons →'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--primary"
+                            onClick={() => loadClassDetail(cls.classId)}
+                          >
+                            {isTeacher ? 'Manage Roster & Lessons →' : 'View Roster & Lessons →'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--danger btn--icon"
+                            onClick={() => setClassToDelete(cls)}
+                            title="Delete Class"
+                            style={{ padding: '0.4rem', height: '100%', minWidth: '32px' }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1256,6 +1284,40 @@ export default function TeacherClassManagementPage() {
                 >
                   {unenrolling ? <span className="spinner spinner--sm" /> : 'Confirm Unenroll'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* ── DELETE CLASS MODAL ─────────────────────────────────────────── */}
+        {classToDelete && (
+          <div className="modal-overlay" onClick={() => setClassToDelete(null)}>
+            <div className="modal modal--sm" onClick={(e) => e.stopPropagation()}>
+              <div className="modal__header">
+                <div>
+                  <h2 className="modal__title">Delete Class?</h2>
+                  <p className="modal__subtitle">Permanently delete this classroom</p>
+                </div>
+                <button className="modal__close" onClick={() => setClassToDelete(null)}>✕</button>
+              </div>
+              <div className="modal__content" style={{ padding: '20px' }}>
+                <p>Are you sure you want to delete <strong>{classToDelete.name}</strong>?</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--color-danger)', marginTop: '8px' }}>
+                  This will unenroll all students and delete all class records. This action cannot be undone.
+                </p>
+                
+                <div style={{ display: 'flex', gap: '10px', marginTop: '24px', justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn btn--secondary" onClick={() => setClassToDelete(null)}>
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn--danger" 
+                    onClick={handleDeleteClass}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Deleting...' : 'Delete Class'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

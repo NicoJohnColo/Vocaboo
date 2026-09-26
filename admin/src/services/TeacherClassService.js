@@ -13,6 +13,17 @@ export const TeacherClassService = {
     return res.json();
   },
 
+  async deleteClass(classId) {
+    const res = await apiFetch(`/api/teacher/classes/${classId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Failed to delete class' }));
+      throw new Error(err.message || 'Failed to delete class');
+    }
+    return res.json();
+  },
+
   async createClass(name, gradeLevel = 'GRADE_4') {
     const res = await apiFetch('/api/teacher/classes', {
       method: 'POST',

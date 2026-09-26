@@ -65,6 +65,38 @@ public class ClassManagementService {
         return toClassResponse(classroom, 0);
     }
 
+    @Transactional
+    public void deleteClass(UUID classId, UUID teacherId, boolean isAdmin) {
+        Classroom classroom = classroomRepository.findById(classId)
+                .orElseThrow(() -> new IllegalArgumentException("Class not found: " + classId));
+
+        if (!isAdmin && !classroom.getTeacher().getTeacherId().equals(teacherId)) {
+            throw new AccessDeniedException("You do not have permission to delete this class.");
+        }
+
+        // Unenroll students explicitly
+        List<ClassEnrollment> enrollments = enrollmentRepository.findByClassroomClassId(classId);
+        enrollmentRepository.deleteAll(enrollments);
+
+        // Delete invitations
+        List<ClassInvitation> invitations = invitationRepository.findByClassroomClassId(classId);
+        invitationRepository.deleteAll(invitations);
+
+        // Delete join requests
+        List<ClassJoinRequest> joinRequests = joinRequestRepository.findByClassroomClassId(classId);
+        joinRequestRepository.deleteAll(joinRequests);
+
+        // Disconnect lessons
+        List<Lesson> lessons = lessonRepository.findByClassroomClassIdAndIsDeletedFalseOrderByLessonOrderAsc(classId);
+        for (Lesson lesson : lessons) {
+            lesson.setClassroom(null);
+            lesson.setDeleted(true); 
+            lessonRepository.save(lesson);
+        }
+        
+        classroomRepository.delete(classroom);
+    }
+
     public List<ClassResponse> getClassesForTeacher(UUID teacherId, boolean isAdmin) {
         return getClassesForTeacher(teacherId, isAdmin, null);
     }

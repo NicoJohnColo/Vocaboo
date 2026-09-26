@@ -48,9 +48,16 @@ export const TeacherClassService = {
   },
 
   async searchLearners(query) {
-    const res = await apiFetch(`/api/teacher/classes/search?q=${encodeURIComponent(query)}`);
+    const res = await apiFetch(`/api/admin/learners?search=${encodeURIComponent(query)}&isActive=true&size=10`);
     if (!res.ok) throw new Error('Failed to search learners');
-    return res.json();
+    const page = await res.json();
+    // Map admin response shape to our expected { learnerId, userId, displayName, gradeLevel }
+    return (page.content || []).map(l => ({
+      learnerId: l.learnerId,
+      userId: l.userId,
+      displayName: l.displayName,
+      gradeLevel: l.gradeLevel,
+    }));
   },
 
   async inviteLearner(classId, learnerId) {

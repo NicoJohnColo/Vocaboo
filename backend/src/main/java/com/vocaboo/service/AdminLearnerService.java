@@ -466,32 +466,39 @@ public class AdminLearnerService {
 
             boolean isCompleted = st != null && st.getStatus() == LessonStatus.COMPLETED;
             BigDecimal displayScore = null;
-            if (isCompleted) {
-                if (st.getMasteryScore() != null && st.getMasteryScore().compareTo(BigDecimal.ZERO) > 0) {
-                    displayScore = st.getMasteryScore();
-                } else if (totAtt > 0) {
-                    displayScore = BigDecimal.valueOf(totCorr * 100.0 / totAtt).setScale(2, RoundingMode.HALF_UP);
-                } else if (wordsWithAcc > 0) {
-                    displayScore = BigDecimal.valueOf(wordAccSum / wordsWithAcc).setScale(2, RoundingMode.HALF_UP);
-                } else if (!lms.isEmpty()) {
-                    Optional<LessonModuleScore> mod4Opt = lms.stream()
-                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
-                            .findFirst();
-                    if (mod4Opt.isPresent()) {
-                        displayScore = mod4Opt.get().getScore();
-                    } else {
-                        double avg = lms.stream()
-                                .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() > 1 && m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
-                                .mapToDouble(m -> m.getScore().doubleValue())
-                                .average()
-                                .orElse(0.0);
-                        if (avg > 0.0) {
-                            displayScore = BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP);
-                        }
+            
+            if (st != null && st.getMasteryScore() != null && st.getMasteryScore().compareTo(BigDecimal.ZERO) > 0) {
+                displayScore = st.getMasteryScore();
+            } else if (totAtt > 0) {
+                displayScore = BigDecimal.valueOf(totCorr * 100.0 / totAtt).setScale(2, RoundingMode.HALF_UP);
+            } else if (wordsWithAcc > 0) {
+                displayScore = BigDecimal.valueOf(wordAccSum / wordsWithAcc).setScale(2, RoundingMode.HALF_UP);
+            } else if (!lms.isEmpty()) {
+                Optional<LessonModuleScore> mod4Opt = lms.stream()
+                        .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
+                        .findFirst();
+                if (mod4Opt.isPresent()) {
+                    displayScore = mod4Opt.get().getScore();
+                } else {
+                    double avg = lms.stream()
+                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() > 1 && m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
+                            .mapToDouble(m -> m.getScore().doubleValue())
+                            .average()
+                            .orElse(0.0);
+                    if (avg > 0.0) {
+                        displayScore = BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP);
                     }
                 }
-                if (displayScore != null) {
-                    displayScore = displayScore.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+            if (displayScore != null) {
+                displayScore = displayScore.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+
+            String finalStatus = "NOT_STARTED";
+            if (st != null && st.getStatus() != null) {
+                finalStatus = st.getStatus().name();
+                if ("UNLOCKED".equals(finalStatus) && (totAtt > 0 || wordsWithAcc > 0 || !lms.isEmpty())) {
+                    finalStatus = "IN_PROGRESS";
                 }
             }
 
@@ -503,15 +510,15 @@ public class AdminLearnerService {
                     .lessonId(lesson.getLessonId())
                     .lessonTitle(lesson.getLessonTitle())
                     .gradeLevel(lesson.getGradeLevel() != null ? lesson.getGradeLevel().name() : "")
-                    .status(st != null && st.getStatus() != null ? st.getStatus().name() : "NOT_STARTED")
+                    .status(finalStatus)
                     .masteryScore(displayScore)
-                    .module1Score(isCompleted ? m1 : null)
-                    .module2Score(isCompleted ? m2 : null)
-                    .module3Score(isCompleted ? m3 : null)
-                    .module4Score(isCompleted ? m4 : null)
+                    .module1Score(m1)
+                    .module2Score(m2)
+                    .module3Score(m3)
+                    .module4Score(m4)
                     .starsEarned(starsEarned)
                     .masteryBonusAwarded(bonusAwarded)
-                    .moduleScores(isCompleted ? modDetails : List.of())
+                    .moduleScores(modDetails)
                     .completedAt(isCompleted && st != null ? st.getCompletedAt() : null)
                     .lastPracticedAt(lastPracticed)
                     .build();

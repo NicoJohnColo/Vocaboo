@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminNav from '../components/AdminNav';
 import LearnerDetailModal from '../components/LearnerDetailModal';
 import { TeacherClassService } from '../services/TeacherClassService';
@@ -36,10 +36,10 @@ export default function TeacherClassManagementPage() {
   const [learnerSearchResults, setLearnerSearchResults] = useState([]);
   const [isSearchingLearners, setIsSearchingLearners] = useState(false);
   const [showLearnerDropdown, setShowLearnerDropdown] = useState(false);
-  const dropdownRef = React.useRef(null);
+  const dropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
-  React.useEffect(() => {
+  useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowLearnerDropdown(false);

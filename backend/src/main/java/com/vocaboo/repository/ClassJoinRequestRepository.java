@@ -20,4 +20,6 @@ public interface ClassJoinRequestRepository extends JpaRepository<ClassJoinReque
     Optional<ClassJoinRequest> findByClassroomClassIdAndLearnerLearnerIdAndStatus(UUID classId, UUID learnerId, String status);
 
     boolean existsByClassroomClassIdAndLearnerLearnerIdAndStatus(UUID classId, UUID learnerId, String status);
+
+    List<ClassJoinRequest> findByClassroomClassId(UUID classId);
 }

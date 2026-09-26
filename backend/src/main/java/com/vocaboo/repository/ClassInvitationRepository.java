@@ -21,4 +21,6 @@ public interface ClassInvitationRepository extends JpaRepository<ClassInvitation
     Optional<ClassInvitation> findByClassroomClassIdAndLearnerLearnerIdAndStatus(UUID classId, UUID learnerId, String status);
 
     boolean existsByClassroomClassIdAndLearnerLearnerIdAndStatus(UUID classId, UUID learnerId, String status);
+
+    List<ClassInvitation> findByClassroomClassId(UUID classId);
 }

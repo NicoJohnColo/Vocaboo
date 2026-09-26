@@ -86,13 +86,16 @@ public class ClassManagementService {
         List<ClassJoinRequest> joinRequests = joinRequestRepository.findByClassroomClassId(classId);
         joinRequestRepository.deleteAll(joinRequests);
 
-        // Disconnect lessons
-        List<Lesson> lessons = lessonRepository.findByClassroomClassIdAndIsDeletedFalseOrderByLessonOrderAsc(classId);
-        for (Lesson lesson : lessons) {
-            lesson.setClassroom(null);
-            lesson.setDeleted(true); 
-            lessonRepository.save(lesson);
-        }
+        // Delete class performance records
+        List<ClassPerformance> classPerformances = classPerformanceRepository.findByClassroomClassId(classId);
+        classPerformanceRepository.deleteAll(classPerformances);
+
+        // Disconnect lessons and unlink all references
+        classroomRepository.unlinkAndSoftDeleteLessons(classId);
+        classroomRepository.unlinkCategories(classId);
+        classroomRepository.unlinkSessionSummaries(classId);
+        classroomRepository.unlinkPointTransactions(classId);
+        classroomRepository.unlinkLessonModuleScores(classId);
         
         classroomRepository.delete(classroom);
     }

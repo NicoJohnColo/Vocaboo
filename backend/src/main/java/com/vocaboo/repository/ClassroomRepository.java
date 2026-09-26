@@ -37,5 +37,25 @@ public interface ClassroomRepository extends JpaRepository<Classroom, UUID> {
 
     @Query("SELECT c FROM Classroom c LEFT JOIN FETCH c.teacher ORDER BY c.name ASC")
     List<Classroom> findAllByOrderByNameAsc();
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE VocabularyCategory v SET v.classroom = null WHERE v.classroom.classId = :classId")
+    void unlinkCategories(@Param("classId") UUID classId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE SessionSummary s SET s.classroom = null WHERE s.classroom.classId = :classId")
+    void unlinkSessionSummaries(@Param("classId") UUID classId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE PointTransaction p SET p.classroom = null WHERE p.classroom.classId = :classId")
+    void unlinkPointTransactions(@Param("classId") UUID classId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE LessonModuleScore l SET l.classroom = null WHERE l.classroom.classId = :classId")
+    void unlinkLessonModuleScores(@Param("classId") UUID classId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Lesson l SET l.classroom = null, l.isDeleted = true WHERE l.classroom.classId = :classId")
+    void unlinkAndSoftDeleteLessons(@Param("classId") UUID classId);
 }
 

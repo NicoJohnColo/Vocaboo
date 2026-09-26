@@ -807,6 +807,47 @@ public class AdminLearnerService {
                                     .ifPresent(ld -> {
                                         if (ld.getMasteryScore() != null) {
                                             lessonAccuracies.add(ld.getMasteryScore().doubleValue());
+                                        } else {
+                                            // Fallback: calculate accuracy from raw attempts exactly like DashboardService does
+                                            // for lessons that are "In Progress" but have practice data.
+                                            List<WordPerformance> lPerfs = lessonPerfMap.getOrDefault(lid, List.of());
+                                            int totAtt = lPerfs.stream().mapToInt(wp -> wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0).sum();
+                                            int totCorr = lPerfs.stream().mapToInt(wp -> wp.getCorrectCount() != null ? wp.getCorrectCount() : 0).sum();
+                                            
+                                            double wordAccSum = 0.0;
+                                            int wordsWithAcc = 0;
+                                            for (WordPerformance wp : lPerfs) {
+                                                if (wp.getAccuracy() != null && (wp.getTotalAttempts() == null || wp.getTotalAttempts() > 0)) {
+                                                    wordAccSum += wp.getAccuracy().doubleValue();
+                                                    wordsWithAcc++;
+                                                }
+                                            }
+                                            
+                                            if (wordsWithAcc > 0) {
+                                                lessonAccuracies.add(wordAccSum / wordsWithAcc);
+                                            } else if (totAtt > 0) {
+                                                lessonAccuracies.add((double) totCorr * 100.0 / totAtt);
+                                            } else {
+                                                // Module scores fallback
+                                                List<LessonModuleScore> lms = scoreMap.getOrDefault(lid, List.of());
+                                                if (!lms.isEmpty()) {
+                                                    Optional<LessonModuleScore> mod4Opt = lms.stream()
+                                                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
+                                                            .findFirst();
+                                                    if (mod4Opt.isPresent()) {
+                                                        lessonAccuracies.add(mod4Opt.get().getScore().doubleValue());
+                                                    } else {
+                                                        double avg = lms.stream()
+                                                                .filter(m -> m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
+                                                                .mapToDouble(m -> m.getScore().doubleValue())
+                                                                .average()
+                                                                .orElse(0.0);
+                                                        if (avg > 0.0) {
+                                                            lessonAccuracies.add(avg);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     });
                         }

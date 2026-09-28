@@ -421,7 +421,9 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                     <tr>
                       <th>Lesson</th>
                       <th>Status</th>
-                      <th>Mastery Score</th>
+                      <th title="High-water mark: Highest overall score achieved upon completing the lesson">Mastery Score</th>
+                      <th title="Accuracy achieved in the learner's most recent practice session for this lesson">Current Acc</th>
+                      <th title="Cumulative historical accuracy across all attempts and retries for this lesson">Lifetime Acc</th>
                       <th>M1 Intro</th>
                       <th>M2 Practice</th>
                       <th>M3 Review</th>
@@ -432,7 +434,7 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                   <tbody>
                     {lessons.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
+                        <td colSpan={10} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
                           {isClassScoped ? 'No lessons published in this classroom yet.' : 'No lesson activity recorded yet.'}
                         </td>
                       </tr>
@@ -468,6 +470,21 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                       const m3 = clampScore(rawM3);
                       const m4 = clampScore(rawM4);
                       const safeMScore = clampScore(mScore);
+
+                      const currAcc = lb.current_accuracy ?? lb.currentAccuracy;
+                      const lifeAcc = lb.lifetime_accuracy ?? lb.lifetimeAccuracy;
+                      const currCorr = lb.current_correct ?? lb.currentCorrect;
+                      const currAtt = lb.current_attempts ?? lb.currentAttempts;
+                      const lifeCorr = lb.lifetime_correct ?? lb.lifetimeCorrect;
+                      const lifeAtt = lb.lifetime_attempts ?? lb.lifetimeAttempts;
+
+                      // Fallback if not directly provided in payload
+                      const fallbackCurr = rawM4 ?? rawM3 ?? rawM2 ?? mScore;
+                      const fallbackLife = (rawM2 != null && rawM3 != null) ? ((Number(rawM2) + Number(rawM3) + (rawM4 != null ? Number(rawM4) : 0)) / (rawM4 != null ? 3 : 2)) : mScore;
+
+                      const safeCurrAcc = clampScore(currAcc ?? fallbackCurr);
+                      const safeLifeAcc = clampScore(lifeAcc ?? fallbackLife);
+
                       const lastPracticed = lb.last_practiced_at || lb.lastPracticedAt || lb.completed_at || lb.completedAt || detail?.last_active_at || detail?.lastActiveAt;
 
                       return (
@@ -485,7 +502,33 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                             </span>
                           </td>
                           <td style={{ fontWeight: 700 }}>
-                            {safeMScore != null ? `${safeMScore.toFixed(0)}%` : '—'}
+                            <span title="High-water mark: Highest overall score achieved upon completing the lesson">
+                              {safeMScore != null ? `${safeMScore.toFixed(0)}%` : '—'}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 700, color: safeCurrAcc != null ? (safeCurrAcc >= 85 ? 'var(--color-success)' : safeCurrAcc < 70 ? 'var(--color-danger)' : 'var(--color-text-main)') : 'inherit' }}>
+                            {safeCurrAcc != null ? (
+                              <span title={currAtt > 0 ? `${currCorr}/${currAtt} correct in latest session` : 'Latest session accuracy'}>
+                                <div>{safeCurrAcc.toFixed(0)}%</div>
+                                {currAtt > 0 && (
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                                    {currCorr}/{currAtt} session
+                                  </div>
+                                )}
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td style={{ fontWeight: 600, color: safeLifeAcc != null ? (safeLifeAcc >= 85 ? 'var(--color-success)' : safeLifeAcc < 70 ? 'var(--color-danger)' : 'var(--color-text-main)') : 'inherit' }}>
+                            {safeLifeAcc != null ? (
+                              <span title={lifeAtt > 0 ? `${lifeCorr}/${lifeAtt} correct across all attempts and retries` : 'Cumulative historical accuracy across all attempts'}>
+                                <div>{safeLifeAcc.toFixed(0)}%</div>
+                                {lifeAtt > 0 && (
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                                    {lifeCorr}/{lifeAtt} lifetime
+                                  </div>
+                                )}
+                              </span>
+                            ) : '—'}
                           </td>
                           <td>
                             {m1Completed ? (

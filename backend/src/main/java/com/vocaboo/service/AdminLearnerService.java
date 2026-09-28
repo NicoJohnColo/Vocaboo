@@ -395,6 +395,25 @@ public class AdminLearnerService {
         }
         boolean isStruggling = !strugglingReasons.isEmpty();
 
+        // Pre-fetch session summaries and practice results for authentic lesson & word accuracy
+        List<SessionSummary> allSummaries = summaryRepository.findByLearnerLearnerId(learnerId);
+        Map<UUID, List<SessionSummary>> summariesByLesson = (allSummaries != null ? allSummaries : List.<SessionSummary>of()).stream()
+                .filter(s -> s != null && s.getLesson() != null)
+                .collect(Collectors.groupingBy(s -> s.getLesson().getLessonId()));
+
+        List<PracticeResult> allPracticeResults = practiceResultRepository.findBySessionLearnerLearnerId(learnerId);
+        Map<UUID, List<PracticeResult>> practiceResultsByLesson = (allPracticeResults != null ? allPracticeResults : List.<PracticeResult>of()).stream()
+                .filter(pr -> pr != null && (
+                        (pr.getWord() != null && pr.getWord().getLesson() != null) ||
+                        (pr.getSession() != null && pr.getSession().getLesson() != null)
+                ))
+                .collect(Collectors.groupingBy(pr -> {
+                    if (pr.getWord() != null && pr.getWord().getLesson() != null) {
+                        return pr.getWord().getLesson().getLessonId();
+                    }
+                    return pr.getSession().getLesson().getLessonId();
+                }));
+
         // Build Lesson breakdown
         Map<UUID, LearnerLessonStatus> statusMap = statuses != null
                 ? statuses.stream()
@@ -451,9 +470,22 @@ public class AdminLearnerService {
                 }
             }
 
-            List<WordPerformance> lPerfs = lessonPerfMap.getOrDefault(lesson.getLessonId(), List.of());
-            int totAtt = lPerfs.stream().mapToInt(wp -> wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0).sum();
-            int totCorr = lPerfs.stream().mapToInt(wp -> wp.getCorrectCount() != null ? wp.getCorrectCount() : 0).sum();
+            UUID lesId = lesson.getLessonId();
+            List<WordPerformance> lPerfs = lessonPerfMap.getOrDefault(lesId, List.of());
+            List<PracticeResult> lResults = practiceResultsByLesson.getOrDefault(lesId, List.of());
+            List<SessionSummary> lSummaries = summariesByLesson.getOrDefault(lesId, List.of());
+
+            int wpAtt = lPerfs.stream().mapToInt(wp -> wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0).sum();
+            int wpCorr = lPerfs.stream().mapToInt(wp -> wp.getCorrectCount() != null ? wp.getCorrectCount() : 0).sum();
+
+            int prTot = lResults.size();
+            int prCorr = (int) lResults.stream().filter(pr -> Boolean.TRUE.equals(pr.getIsCorrect())).count();
+
+            int finalLifeAtt = Math.max(wpAtt, prTot);
+            int finalLifeCorr = Math.max(wpCorr, prCorr);
+            if (finalLifeCorr > finalLifeAtt) {
+                finalLifeCorr = finalLifeAtt;
+            }
 
             double wordAccSum = 0.0;
             int wordsWithAcc = 0;
@@ -469,8 +501,8 @@ public class AdminLearnerService {
             
             if (st != null && st.getMasteryScore() != null && st.getMasteryScore().compareTo(BigDecimal.ZERO) > 0) {
                 displayScore = st.getMasteryScore();
-            } else if (totAtt > 0) {
-                displayScore = BigDecimal.valueOf(totCorr * 100.0 / totAtt).setScale(2, RoundingMode.HALF_UP);
+            } else if (finalLifeAtt > 0) {
+                displayScore = BigDecimal.valueOf(finalLifeCorr * 100.0 / finalLifeAtt).setScale(2, RoundingMode.HALF_UP);
             } else if (wordsWithAcc > 0) {
                 displayScore = BigDecimal.valueOf(wordAccSum / wordsWithAcc).setScale(2, RoundingMode.HALF_UP);
             } else if (!lms.isEmpty()) {
@@ -494,15 +526,106 @@ public class AdminLearnerService {
                 displayScore = displayScore.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
             }
 
+            // 1. Calculate Lifetime Accuracy across all attempts and retries for this lesson
+            BigDecimal lifetimeAcc = null;
+            if (finalLifeAtt > 0) {
+                lifetimeAcc = BigDecimal.valueOf(finalLifeCorr * 100.0 / finalLifeAtt).setScale(2, RoundingMode.HALF_UP);
+            } else if (!lms.isEmpty()) {
+                int modTot = lms.stream().mapToInt(m -> m.getTotalCount() != null ? m.getTotalCount() : 0).sum();
+                int modCorr = lms.stream().mapToInt(m -> m.getCorrectCount() != null ? m.getCorrectCount() : 0).sum();
+                if (modTot > 0) {
+                    finalLifeAtt = modTot;
+                    finalLifeCorr = Math.min(modCorr, modTot);
+                    lifetimeAcc = BigDecimal.valueOf(finalLifeCorr * 100.0 / finalLifeAtt).setScale(2, RoundingMode.HALF_UP);
+                }
+            }
+            if (lifetimeAcc == null && displayScore != null && isCompleted) {
+                lifetimeAcc = displayScore;
+            }
+            if (lifetimeAcc != null) {
+                lifetimeAcc = lifetimeAcc.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+
+            // 2. Calculate Current Accuracy (accuracy from latest practice session or attempt for this lesson)
+            BigDecimal currentAcc = null;
+            Integer currentCorr = null;
+            Integer currentAtt = null;
+
+            SessionSummary latestSummary = lSummaries.stream()
+                    .filter(Objects::nonNull)
+                    .max(Comparator.comparing(s -> s.getCompletedAt() != null ? s.getCompletedAt() : OffsetDateTime.MIN))
+                    .orElse(null);
+
+            if (latestSummary != null && latestSummary.getAccuracyRate() != null) {
+                currentAcc = latestSummary.getAccuracyRate();
+                currentAtt = latestSummary.getTotalAttempts();
+                currentCorr = latestSummary.getCorrectPronunciations();
+            }
+
+            if (currentAcc == null && !lResults.isEmpty()) {
+                Map<UUID, List<PracticeResult>> sessionMap = lResults.stream()
+                        .filter(pr -> pr.getSession() != null && pr.getSession().getSessionId() != null)
+                        .collect(Collectors.groupingBy(pr -> pr.getSession().getSessionId()));
+
+                List<PracticeResult> latestSessResults = null;
+                OffsetDateTime latestTime = null;
+
+                for (List<PracticeResult> sList : sessionMap.values()) {
+                    if (sList.isEmpty()) continue;
+                    OffsetDateTime maxTime = sList.stream()
+                            .map(pr -> pr.getRecordedAt() != null ? pr.getRecordedAt() : (pr.getSession() != null ? pr.getSession().getCreatedAt() : null))
+                            .filter(Objects::nonNull)
+                            .max(OffsetDateTime::compareTo)
+                            .orElse(null);
+                    if (latestTime == null || (maxTime != null && maxTime.isAfter(latestTime))) {
+                        latestTime = maxTime;
+                        latestSessResults = sList;
+                    }
+                }
+
+                if (latestSessResults != null && !latestSessResults.isEmpty()) {
+                    int sTot = latestSessResults.size();
+                    int sCorr = (int) latestSessResults.stream().filter(pr -> Boolean.TRUE.equals(pr.getIsCorrect())).count();
+                    if (sTot > 0) {
+                        currentAtt = sTot;
+                        currentCorr = sCorr;
+                        currentAcc = BigDecimal.valueOf(sCorr * 100.0 / sTot).setScale(2, RoundingMode.HALF_UP);
+                    }
+                }
+            }
+
+            if (currentAcc == null) {
+                if (m4 != null) {
+                    currentAcc = m4;
+                } else if (m3 != null) {
+                    currentAcc = m3;
+                } else if (m2 != null) {
+                    currentAcc = m2;
+                }
+            }
+
+            if (currentAcc == null && lifetimeAcc != null) {
+                currentAcc = lifetimeAcc;
+                currentAtt = finalLifeAtt;
+                currentCorr = finalLifeCorr;
+            }
+
+            if (currentAcc != null) {
+                currentAcc = currentAcc.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+
             String finalStatus = "NOT_STARTED";
             if (st != null && st.getStatus() != null) {
                 finalStatus = st.getStatus().name();
-                if ("UNLOCKED".equals(finalStatus) && (totAtt > 0 || wordsWithAcc > 0 || !lms.isEmpty())) {
+                if ("UNLOCKED".equals(finalStatus) && (finalLifeAtt > 0 || wordsWithAcc > 0 || !lms.isEmpty())) {
                     finalStatus = "IN_PROGRESS";
                 }
             }
 
             OffsetDateTime lastPracticed = st != null ? (st.getCompletedAt() != null ? st.getCompletedAt() : st.getUpdatedAt()) : null;
+            if (lastPracticed == null && latestSummary != null) {
+                lastPracticed = latestSummary.getCompletedAt();
+            }
             boolean bonusAwarded = st != null && (Boolean.TRUE.equals(st.getLessonCompletionBonusAwarded()) || Boolean.TRUE.equals(st.getPerfectScoreBonusAwarded()));
             int starsEarned = isCompleted && st != null && st.getBestLessonPoints() != null ? Math.min(3, st.getBestLessonPoints() / 100) : 0;
 
@@ -512,6 +635,12 @@ public class AdminLearnerService {
                     .gradeLevel(lesson.getGradeLevel() != null ? lesson.getGradeLevel().name() : "")
                     .status(finalStatus)
                     .masteryScore(displayScore)
+                    .currentAccuracy(currentAcc)
+                    .lifetimeAccuracy(lifetimeAcc)
+                    .currentCorrect(currentCorr)
+                    .currentAttempts(currentAtt)
+                    .lifetimeCorrect(finalLifeAtt > 0 ? finalLifeCorr : null)
+                    .lifetimeAttempts(finalLifeAtt > 0 ? finalLifeAtt : null)
                     .module1Score(m1)
                     .module2Score(m2)
                     .module3Score(m3)
@@ -524,8 +653,7 @@ public class AdminLearnerService {
                     .build();
         }).collect(Collectors.toList());
 
-        // Pre-fetch all practice results for this learner to calculate authentic per-word lesson & session accuracy
-        List<PracticeResult> allPracticeResults = practiceResultRepository.findBySessionLearnerLearnerId(learnerId);
+        // Group pre-fetched practice results by word for per-word calculations
         Map<UUID, List<PracticeResult>> resultsByWord = allPracticeResults.stream()
                 .filter(pr -> pr.getWord() != null)
                 .collect(Collectors.groupingBy(pr -> pr.getWord().getWordId()));

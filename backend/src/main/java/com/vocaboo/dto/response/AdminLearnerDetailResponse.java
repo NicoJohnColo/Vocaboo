@@ -335,6 +335,24 @@ public class AdminLearnerDetailResponse {
         @JsonProperty("mastery_score")
         private BigDecimal masteryScore;
 
+        @JsonProperty("current_accuracy")
+        private BigDecimal currentAccuracy;
+
+        @JsonProperty("lifetime_accuracy")
+        private BigDecimal lifetimeAccuracy;
+
+        @JsonProperty("current_correct")
+        private Integer currentCorrect;
+
+        @JsonProperty("current_attempts")
+        private Integer currentAttempts;
+
+        @JsonProperty("lifetime_correct")
+        private Integer lifetimeCorrect;
+
+        @JsonProperty("lifetime_attempts")
+        private Integer lifetimeAttempts;
+
         @JsonProperty("module_1_score")
         private BigDecimal module1Score;
 
@@ -362,15 +380,23 @@ public class AdminLearnerDetailResponse {
         @JsonProperty("last_practiced_at")
         private OffsetDateTime lastPracticedAt;
 
+        public UUID getLessonId() { return lessonId; }
         public String getLessonTitle() { return lessonTitle; }
         public String getGradeLevel() { return gradeLevel; }
         public String getStatus() { return status; }
         public BigDecimal getMasteryScore() { return masteryScore; }
+        public BigDecimal getCurrentAccuracy() { return currentAccuracy; }
+        public BigDecimal getLifetimeAccuracy() { return lifetimeAccuracy; }
+        public Integer getCurrentCorrect() { return currentCorrect; }
+        public Integer getCurrentAttempts() { return currentAttempts; }
+        public Integer getLifetimeCorrect() { return lifetimeCorrect; }
+        public Integer getLifetimeAttempts() { return lifetimeAttempts; }
         public BigDecimal getModule1Score() { return module1Score; }
         public BigDecimal getModule2Score() { return module2Score; }
         public BigDecimal getModule3Score() { return module3Score; }
         public BigDecimal getModule4Score() { return module4Score; }
         public OffsetDateTime getCompletedAt() { return completedAt; }
+        public OffsetDateTime getLastPracticedAt() { return lastPracticedAt; }
 
         public static LearnerLessonProgressDetailBuilder builder() {
             return new LearnerLessonProgressDetailBuilder();
@@ -382,6 +408,12 @@ public class AdminLearnerDetailResponse {
             private String gradeLevel;
             private String status;
             private BigDecimal masteryScore;
+            private BigDecimal currentAccuracy;
+            private BigDecimal lifetimeAccuracy;
+            private Integer currentCorrect;
+            private Integer currentAttempts;
+            private Integer lifetimeCorrect;
+            private Integer lifetimeAttempts;
             private BigDecimal module1Score;
             private BigDecimal module2Score;
             private BigDecimal module3Score;
@@ -397,6 +429,12 @@ public class AdminLearnerDetailResponse {
             public LearnerLessonProgressDetailBuilder gradeLevel(String gradeLevel) { this.gradeLevel = gradeLevel; return this; }
             public LearnerLessonProgressDetailBuilder status(String status) { this.status = status; return this; }
             public LearnerLessonProgressDetailBuilder masteryScore(BigDecimal masteryScore) { this.masteryScore = masteryScore; return this; }
+            public LearnerLessonProgressDetailBuilder currentAccuracy(BigDecimal currentAccuracy) { this.currentAccuracy = currentAccuracy; return this; }
+            public LearnerLessonProgressDetailBuilder lifetimeAccuracy(BigDecimal lifetimeAccuracy) { this.lifetimeAccuracy = lifetimeAccuracy; return this; }
+            public LearnerLessonProgressDetailBuilder currentCorrect(Integer currentCorrect) { this.currentCorrect = currentCorrect; return this; }
+            public LearnerLessonProgressDetailBuilder currentAttempts(Integer currentAttempts) { this.currentAttempts = currentAttempts; return this; }
+            public LearnerLessonProgressDetailBuilder lifetimeCorrect(Integer lifetimeCorrect) { this.lifetimeCorrect = lifetimeCorrect; return this; }
+            public LearnerLessonProgressDetailBuilder lifetimeAttempts(Integer lifetimeAttempts) { this.lifetimeAttempts = lifetimeAttempts; return this; }
             public LearnerLessonProgressDetailBuilder module1Score(BigDecimal module1Score) { this.module1Score = module1Score; return this; }
             public LearnerLessonProgressDetailBuilder module2Score(BigDecimal module2Score) { this.module2Score = module2Score; return this; }
             public LearnerLessonProgressDetailBuilder module3Score(BigDecimal module3Score) { this.module3Score = module3Score; return this; }
@@ -414,6 +452,12 @@ public class AdminLearnerDetailResponse {
                 d.gradeLevel = this.gradeLevel;
                 d.status = this.status;
                 d.masteryScore = this.masteryScore;
+                d.currentAccuracy = this.currentAccuracy;
+                d.lifetimeAccuracy = this.lifetimeAccuracy;
+                d.currentCorrect = this.currentCorrect;
+                d.currentAttempts = this.currentAttempts;
+                d.lifetimeCorrect = this.lifetimeCorrect;
+                d.lifetimeAttempts = this.lifetimeAttempts;
                 d.module1Score = this.module1Score;
                 d.module2Score = this.module2Score;
                 d.module3Score = this.module3Score;

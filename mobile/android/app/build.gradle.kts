@@ -28,10 +28,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // Only build for x86_64 emulator to avoid paging file exhaustion on Windows
-        ndk {
-            abiFilters += listOf("x86_64")
-        }
     }
 
     buildTypes {

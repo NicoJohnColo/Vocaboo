@@ -17,9 +17,11 @@ public interface ClassPerformanceRepository extends JpaRepository<ClassPerforman
     Optional<ClassPerformance> findByLearnerLearnerIdAndClassroomClassId(UUID learnerId, UUID classId);
 
     /** Fetch all performance records for a given class (for class leaderboard). */
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"learner"})
     List<ClassPerformance> findByClassroomClassId(UUID classId);
 
     /** Fetch all classes a learner has performance data for. */
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"classroom"})
     List<ClassPerformance> findByLearnerLearnerId(UUID learnerId);
 
     /** Sum of class points for weekly class leaderboard queries. */

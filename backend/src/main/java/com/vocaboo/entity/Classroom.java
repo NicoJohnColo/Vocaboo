@@ -1,5 +1,6 @@
 package com.vocaboo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -8,6 +9,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "classes")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -26,6 +28,7 @@ public class Classroom {
     @Column(name = "class_code", nullable = false, unique = true, length = 10)
     private String classCode;
 
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;

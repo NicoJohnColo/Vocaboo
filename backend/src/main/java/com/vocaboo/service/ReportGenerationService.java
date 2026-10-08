@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@org.springframework.transaction.annotation.Transactional(readOnly = true)
 public class ReportGenerationService {
 
     private final AdminLearnerService adminLearnerService;
@@ -50,11 +51,12 @@ public class ReportGenerationService {
 
     public byte[] generateClassReportCsv(UUID sectionId, GradeLevel gradeLevel, UUID teacherId) {
         List<AdminLearnerSummaryResponse> learners = adminLearnerService.getAllLearnersSummary(sectionId, gradeLevel, teacherId);
+        if (learners == null) learners = Collections.emptyList();
 
         String scopeLabel = "ALL CLASSES (COMPREHENSIVE ROSTER)";
         if (sectionId != null) {
             String cName = classroomRepository.findById(sectionId)
-                    .map(c -> c.getName() + (c.getClassCode() != null ? " [Code: " + c.getClassCode() + "]" : ""))
+                    .map(c -> (c.getName() != null ? c.getName() : "Class") + (c.getClassCode() != null ? " [Code: " + c.getClassCode() + "]" : ""))
                     .orElse("Class ID: " + sectionId);
             scopeLabel = "CLASS: " + cName;
         } else if (teacherId != null) {
@@ -118,14 +120,16 @@ public class ReportGenerationService {
 
     public byte[] generateClassReportPdf(UUID sectionId, GradeLevel gradeLevel, UUID teacherId) {
         List<AdminLearnerSummaryResponse> learners = adminLearnerService.getAllLearnersSummary(sectionId, gradeLevel, teacherId);
+        if (learners == null) learners = Collections.emptyList();
 
         String scopeLabel = "Scope: All Classes (Comprehensive Cohort)";
         String classTitle = "Vocaboo - Class Performance Report";
         if (sectionId != null) {
             com.vocaboo.entity.Classroom classroom = classroomRepository.findById(sectionId).orElse(null);
             if (classroom != null) {
-                classTitle = "Vocaboo - " + classroom.getName() + " Performance Report";
-                scopeLabel = "Class Scope: " + classroom.getName() + (classroom.getClassCode() != null ? " [Code: " + classroom.getClassCode() + "]" : "");
+                String cName = classroom.getName() != null ? classroom.getName() : "Class";
+                classTitle = "Vocaboo - " + cName + " Performance Report";
+                scopeLabel = "Class Scope: " + cName + (classroom.getClassCode() != null ? " [Code: " + classroom.getClassCode() + "]" : "");
             } else {
                 scopeLabel = "Class Scope: ID " + sectionId;
             }
@@ -346,8 +350,14 @@ public class ReportGenerationService {
             }
 
             // ── 2. Lesson Progress & Module Breakdown ──
-            if (detail.getLessons() != null && !detail.getLessons().isEmpty()) {
-                Paragraph lessonHeader = new Paragraph("Curriculum Lesson Progress & Module Scores (" + detail.getLessons().size() + " lessons)", sectionTitleFont);
+            List<LearnerLessonProgressDetail> activeLessons = detail.getLessons() != null
+                    ? detail.getLessons().stream()
+                        .filter(l -> l.getStatus() != null && !"NOT_STARTED".equals(l.getStatus()))
+                        .collect(Collectors.toList())
+                    : Collections.emptyList();
+
+            if (!activeLessons.isEmpty()) {
+                Paragraph lessonHeader = new Paragraph("Curriculum Lesson Progress & Module Scores (" + activeLessons.size() + " lessons)", sectionTitleFont);
                 lessonHeader.setSpacingAfter(4);
                 document.add(lessonHeader);
 
@@ -366,7 +376,7 @@ public class ReportGenerationService {
                 }
 
                 boolean alt = false;
-                for (LearnerLessonProgressDetail l : detail.getLessons()) {
+                for (LearnerLessonProgressDetail l : activeLessons) {
                     Color bg = alt ? new Color(245, 245, 250) : Color.WHITE;
                     boolean isCompleted = "COMPLETED".equalsIgnoreCase(l.getStatus());
 
@@ -401,12 +411,12 @@ public class ReportGenerationService {
                 cumHeader.setSpacingAfter(4);
                 document.add(cumHeader);
 
-                PdfPTable cumTable = new PdfPTable(6);
+                PdfPTable cumTable = new PdfPTable(7);
                 cumTable.setWidthPercentage(100);
-                cumTable.setWidths(new float[]{4.0f, 2.0f, 2.5f, 1.8f, 2.0f, 2.5f});
+                cumTable.setWidths(new float[]{3.5f, 1.8f, 1.8f, 2.0f, 1.5f, 2.0f, 2.5f});
                 cumTable.setSpacingAfter(10);
 
-                String[] cHeaders = {"Category / Lesson Pair", "Accuracy", "Badge Earned", "Points", "Questions", "Date Completed"};
+                String[] cHeaders = {"Lesson Pair / Category", "Overall Acc", "Session Acc", "Badge", "Pts", "Questions", "Date Completed"};
                 for (String h : cHeaders) {
                     PdfPCell cell = new PdfPCell(new Phrase(h, tableHeaderFont));
                     cell.setBackgroundColor(new Color(245, 158, 11));
@@ -418,7 +428,14 @@ public class ReportGenerationService {
                 boolean altC = false;
                 for (AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail cr : detail.getCumulativeReviews()) {
                     Color bg = altC ? new Color(255, 251, 235) : Color.WHITE;
-                    cumTable.addCell(createCell(cr.getLessonPairId() != null ? cr.getLessonPairId() : "Category Review", tableBodyFont, bg, Element.ALIGN_LEFT));
+                    
+                    String catName = cr.getCategoryName() != null ? cr.getCategoryName() : (cr.getLessonPairId() != null ? cr.getLessonPairId() : "Cumulative Review");
+                    if (cr.getLessonNames() != null && !cr.getLessonNames().isEmpty()) {
+                        catName += "\n" + cr.getLessonNames();
+                    }
+                    
+                    cumTable.addCell(createCell(catName, tableBodyFont, bg, Element.ALIGN_LEFT));
+                    cumTable.addCell(createCell(cr.getOverallAccuracy() != null ? cr.getOverallAccuracy().setScale(2, RoundingMode.HALF_UP) + "%" : "—", tableBodyFont, bg, Element.ALIGN_CENTER));
                     cumTable.addCell(createCell(cr.getAccuracyPercent() != null ? cr.getAccuracyPercent().setScale(1, RoundingMode.HALF_UP) + "%" : "—", tableBodyFont, bg, Element.ALIGN_CENTER));
                     cumTable.addCell(createCell(cr.getBadgeAwarded() != null ? cr.getBadgeAwarded() : "BRONZE", tableBodyFont, bg, Element.ALIGN_CENTER));
                     cumTable.addCell(createCell(String.valueOf(cr.getPointsEarned() != null ? cr.getPointsEarned() : 0), tableBodyFont, bg, Element.ALIGN_CENTER));

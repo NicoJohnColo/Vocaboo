@@ -36,14 +36,29 @@ class _PendingInvitationsSheetState extends State<PendingInvitationsSheet> {
     setState(() => _processingId = null);
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      // Capture the messenger and message BEFORE popping (pop unmounts the context)
+      final messenger = ScaffoldMessenger.of(context);
+      final message = decision == 'ACCEPTED'
+          ? '✅ Joined ${invite.className}! Check your Classrooms list.'
+          : 'Invitation declined.';
+      final bg = decision == 'ACCEPTED' ? const Color(0xFF10B981) : const Color(0xFF64748B);
+
+      // Close the sheet so parent LearnerClassesScreen rebuilds with updated enrollment
+      Navigator.of(context).pop();
+
+      // Show the snackbar on the parent screen
+      messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            decision == 'ACCEPTED'
-                ? 'Joined ${invite.className}!'
-                : 'Invitation declined',
-          ),
-          backgroundColor: decision == 'ACCEPTED' ? const Color(0xFF10B981) : const Color(0xFF64748B),
+          content: Text(message),
+          backgroundColor: bg,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Something went wrong. Please try again.'),
+          backgroundColor: Color(0xFFEF4444),
         ),
       );
     }

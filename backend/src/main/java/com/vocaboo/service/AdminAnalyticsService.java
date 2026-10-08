@@ -10,6 +10,7 @@ import com.vocaboo.entity.*;
 import com.vocaboo.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -20,6 +21,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Transactional(readOnly = true)
 public class AdminAnalyticsService {
 
     private final LearnerRepository learnerRepository;
@@ -1033,7 +1035,7 @@ public class AdminAnalyticsService {
                 .map(Lesson::getLessonId)
                 .collect(Collectors.toSet());
 
-        List<VocabularyWord> allWords = vocabularyWordRepository.findAll();
+        List<VocabularyWord> allWords = vocabularyWordRepository.findAllWithLesson();
         List<VocabularyWord> targetWords;
         if (!visibleLessonIds.isEmpty()) {
             targetWords = allWords.stream()

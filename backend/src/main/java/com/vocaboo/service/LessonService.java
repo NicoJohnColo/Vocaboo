@@ -64,10 +64,12 @@ public class LessonService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
+    @Transactional(readOnly = true)
     public List<CategoryResponse> getCategories() {
         return getCategories(null);
     }
 
+    @Transactional(readOnly = true)
     public List<CategoryResponse> getCategories(UUID learnerId) {
         Learner learner = learnerId != null ? learnerRepository.findById(learnerId).orElse(null) : null;
         GradeLevel learnerGrade = learner != null ? (learner.getGradeLevel() != null ? learner.getGradeLevel() : GradeLevel.GRADE_4) : null;
@@ -638,6 +640,7 @@ public class LessonService {
         return responses;
     }
 
+    @Transactional(readOnly = true)
     public List<VocabularyWordResponse> getVocabularyForLesson(UUID lessonId, String partOfSpeech) {
         return wordRepository.findByLessonLessonIdAndIsDeletedFalseOrderByWordOrderAsc(lessonId).stream()
                 .filter(word -> partOfSpeech == null || partOfSpeech.equalsIgnoreCase(word.getPartOfSpeech()))
@@ -801,6 +804,7 @@ public class LessonService {
         return responses;
     }
 
+    @Transactional(readOnly = true)
     public List<ConfusableWordPairResponse> getConfusablePairsForLesson(UUID lessonId) {
         List<ConfusableWordPair> pairs = confusableRepository.findByLessonLessonId(lessonId);
         return pairs.stream()

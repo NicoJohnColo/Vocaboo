@@ -9,35 +9,68 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AssetUploadService {
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AssetUploadService.class);
-
     private final AssetUploadRepository assetUploadRepository;
 
-    @Value("${vocaboo.uploads.dir:uploads}")
-    private String uploadsDir;
+    @Value("${vocaboo.uploads.s3.endpoint}")
+    private String s3Endpoint;
 
-    @Value("${vocaboo.uploads.base-url:http://localhost:8081/uploads}")
-    private String baseUrl;
+    @Value("${vocaboo.uploads.s3.access-key}")
+    private String s3AccessKey;
+
+    @Value("${vocaboo.uploads.s3.secret-key}")
+    private String s3SecretKey;
+
+    @Value("${vocaboo.uploads.s3.bucket}")
+    private String s3Bucket;
+
+    @Value("${vocaboo.uploads.s3.public-url-prefix}")
+    private String publicUrlPrefix;
+
+    private S3Client s3Client;
 
     private static final long MAX_AUDIO_BYTES = 5 * 1024 * 1024; // 5 MB
     private static final long MAX_IMAGE_BYTES = 6 * 1024 * 1024; // 6 MB
     private static final Set<String> AUDIO_TYPES = Set.of("audio/mpeg", "audio/wav", "audio/wave", "audio/x-wav");
     private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg");
+
+    @PostConstruct
+    public void init() {
+        if (s3AccessKey == null || s3AccessKey.isBlank() || s3SecretKey == null || s3SecretKey.isBlank()) {
+            log.warn("Supabase S3 credentials not provided. Asset uploads will fail.");
+            return;
+        }
+        
+        AwsBasicCredentials credentials = AwsBasicCredentials.create(s3AccessKey, s3SecretKey);
+        s3Client = S3Client.builder()
+                .credentialsProvider(StaticCredentialsProvider.create(credentials))
+                .endpointOverride(URI.create(s3Endpoint))
+                .region(Region.AP_SOUTHEAST_1) // Supabase usually ignores region for S3 compat, but AWS SDK requires it
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                .build();
+    }
 
     /**
      * Upload an audio file for a vocabulary word.
@@ -78,11 +111,15 @@ public class AssetUploadService {
         AssetUpload asset = assetUploadRepository.findById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Asset not found"));
         try {
-            // Derive local path from URL
-            String relativePath = asset.getCdnUrl().replace(baseUrl, "").replace("/uploads", "");
-            Path filePath = Paths.get(uploadsDir).resolve(relativePath.startsWith("/") ? relativePath.substring(1) : relativePath);
-            Files.deleteIfExists(filePath);
-        } catch (IOException e) {
+            String objectKey = extractObjectKey(asset.getCdnUrl());
+            if (s3Client != null && objectKey != null) {
+                DeleteObjectRequest deleteReq = DeleteObjectRequest.builder()
+                        .bucket(s3Bucket)
+                        .key(objectKey)
+                        .build();
+                s3Client.deleteObject(deleteReq);
+            }
+        } catch (Exception e) {
             log.warn("Could not delete file for asset {}: {}", assetId, e.getMessage());
         }
         assetUploadRepository.delete(asset);
@@ -109,16 +146,32 @@ public class AssetUploadService {
     }
 
     private Map<String, Object> storeFile(MultipartFile file, UUID lessonId, UUID wordId, String assetType, UUID adminId) throws IOException {
+        if (s3Client == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "S3 client is not configured.");
+        }
+
         String subDir = "AUDIO".equals(assetType) ? "audio" : "images";
         String originalFilename = sanitizeFilename(file.getOriginalFilename());
         String storedName = (wordId != null ? wordId : UUID.randomUUID()) + "_" + originalFilename;
 
-        Path dir = Paths.get(uploadsDir, "lessons", lessonId.toString(), subDir);
-        Files.createDirectories(dir);
-        Path dest = dir.resolve(storedName);
-        file.transferTo(dest);
+        // Path inside bucket: lessons/{lessonId}/{subDir}/{filename}
+        String objectKey = "lessons/" + lessonId + "/" + subDir + "/" + storedName;
+        String contentType = file.getContentType();
 
-        String cdnUrl = baseUrl + "/lessons/" + lessonId + "/" + subDir + "/" + storedName;
+        try {
+            PutObjectRequest putObj = PutObjectRequest.builder()
+                    .bucket(s3Bucket)
+                    .key(objectKey)
+                    .contentType(contentType)
+                    .build();
+
+            s3Client.putObject(putObj, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+        } catch (Exception e) {
+            log.error("Failed to upload to S3", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "S3 Upload Failed: " + e.getMessage());
+        }
+
+        String cdnUrl = publicUrlPrefix + objectKey;
         int sizeKb = (int) (file.getSize() / 1024);
 
         AssetUpload record = AssetUpload.builder()
@@ -144,5 +197,13 @@ public class AssetUploadService {
     private String sanitizeFilename(String name) {
         if (name == null) return "file";
         return name.replaceAll("[^a-zA-Z0-9._-]", "_").toLowerCase();
+    }
+    
+    private String extractObjectKey(String url) {
+        if (url == null) return null;
+        if (url.startsWith(publicUrlPrefix)) {
+            return url.substring(publicUrlPrefix.length());
+        }
+        return null;
     }
 }

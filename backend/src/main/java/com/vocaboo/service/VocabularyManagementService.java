@@ -15,7 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import jakarta.annotation.PostConstruct;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -30,13 +31,11 @@ public class VocabularyManagementService {
     private final LessonRepository lessonRepository;
     private final JdbcTemplate jdbcTemplate;
 
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void cleanupSoftDeletedWords() {
         log.info("Cleaning up previously soft-deleted words from Supabase...");
-        List<VocabularyWord> deletedWords = wordRepository.findAll().stream()
-                .filter(w -> Boolean.TRUE.equals(w.getIsDeleted()))
-                .toList();
+        List<VocabularyWord> deletedWords = wordRepository.findAllSoftDeleted();
 
         for (VocabularyWord word : deletedWords) {
             UUID wordId = word.getWordId();

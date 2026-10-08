@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminNav from '../components/AdminNav';
 import LearnerDetailModal from '../components/LearnerDetailModal';
 import { TeacherClassService } from '../services/TeacherClassService';
+import { CategoryService } from '../services/CategoryService';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 
 export default function TeacherClassManagementPage() {
@@ -18,6 +19,8 @@ export default function TeacherClassManagementPage() {
   const [newClassName, setNewClassName] = useState('');
   const [newClassGrade, setNewClassGrade] = useState('GRADE_4');
   const [creating, setCreating] = useState(false);
+  const [classToDelete, setClassToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [selectedClassId, setSelectedClassId] = useState(null);
   const [classDetail, setClassDetail] = useState(null);
@@ -30,6 +33,29 @@ export default function TeacherClassManagementPage() {
   // Invitation Form
   const [inviteLearnerId, setInviteLearnerId] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [learnerSearchResults, setLearnerSearchResults] = useState([]);
+  const [isSearchingLearners, setIsSearchingLearners] = useState(false);
+  const [searchLearnerError, setSearchLearnerError] = useState('');
+  const [showLearnerDropdown, setShowLearnerDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowLearnerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Inline Lesson Creation (within class detail)
+  const [showLessonForm, setShowLessonForm] = useState(false);
+  const [lessonForm, setLessonForm] = useState({ title: '', description: '', categoryId: '', gradeLevel: 'GRADE_4' });
+  const [creatingLesson, setCreatingLesson] = useState(false);
+  const [lessonFormError, setLessonFormError] = useState('');
+  const [categories, setCategories] = useState([]);
 
   const flash = (msg) => {
     setSuccess(msg);
@@ -55,9 +81,19 @@ export default function TeacherClassManagementPage() {
   const loadClassDetail = async (id) => {
     setSelectedClassId(id);
     setDetailLoading(true);
+    setShowLessonForm(false);
+    setLessonFormError('');
     try {
-      const detail = await TeacherClassService.getClassDetail(id);
+      const [detail, cats] = await Promise.all([
+        TeacherClassService.getClassDetail(id),
+        CategoryService.getAll().catch(() => []),
+      ]);
       setClassDetail(detail);
+      setCategories(cats);
+      // Pre-fill grade level from class if available
+      if (detail?.gradeLevel) {
+        setLessonForm(f => ({ ...f, gradeLevel: detail.gradeLevel }));
+      }
     } catch {
       setError('Failed to load class details.');
     } finally {
@@ -75,11 +111,26 @@ export default function TeacherClassManagementPage() {
       setNewClassName('');
       setNewClassGrade('GRADE_4');
       setShowCreateModal(false);
-      loadClasses();
+      await loadClasses();
     } catch (err) {
       setError(err.message || 'Failed to create class');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    if (!classToDelete) return;
+    setDeleting(true);
+    try {
+      await TeacherClassService.deleteClass(classToDelete.classId);
+      flash(`Class "${classToDelete.name}" deleted successfully.`);
+      setClassToDelete(null);
+      await loadClasses();
+    } catch (err) {
+      setError(err.message || 'Failed to delete class');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -126,9 +177,73 @@ export default function TeacherClassManagementPage() {
     }
   };
 
+  const handleLearnerSearch = async (query) => {
+    setInviteLearnerId(query);
+    setSearchLearnerError('');
+    if (!query.trim() || query.trim().length < 2) {
+      setShowLearnerDropdown(false);
+      setLearnerSearchResults([]);
+      return;
+    }
+    setIsSearchingLearners(true);
+    setShowLearnerDropdown(true);
+    try {
+      const results = await TeacherClassService.searchLearners(query.trim());
+      setLearnerSearchResults(results);
+    } catch (err) {
+      setSearchLearnerError(err.message || 'Failed to search');
+      setLearnerSearchResults([]);
+    } finally {
+      setIsSearchingLearners(false);
+    }
+  };
+
+  const selectLearnerFromDropdown = (learner) => {
+    setInviteLearnerId(learner.userId || learner.displayName);
+    setShowLearnerDropdown(false);
+  };
+
+  const handleCancelInvitation = async (invitationId) => {
+    try {
+      await TeacherClassService.cancelInvitation(selectedClassId, invitationId);
+      flash('Invitation cancelled!');
+      loadClassDetail(selectedClassId);
+    } catch (err) {
+      setError(err.message || 'Failed to cancel invitation');
+    }
+  };
+
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
     flash(`Copied ${code} to clipboard!`);
+  };
+
+  const handleCreateClassLesson = async (e) => {
+    e.preventDefault();
+    if (!lessonForm.title.trim() || !lessonForm.categoryId || !selectedClassId) return;
+    setCreatingLesson(true);
+    setLessonFormError('');
+    try {
+      await TeacherClassService.createClassLesson(selectedClassId, {
+        lessonTitle: lessonForm.title.trim(),
+        lessonDescription: (() => {
+          const raw = lessonForm.description.trim() || lessonForm.title.trim();
+          return raw.length < 10 ? raw.padEnd(10, ' ') : raw;
+        })(),
+        categoryId: lessonForm.categoryId,
+        gradeLevel: lessonForm.gradeLevel,
+        lessonType: 'REGULAR',
+      });
+      flash(`Lesson "${lessonForm.title.trim()}" created! Add vocabulary words and publish it to make it visible to students.`);
+      setLessonForm(f => ({ ...f, title: '', description: '' }));
+      setShowLessonForm(false);
+      // Refresh class detail so new lesson appears in the list
+      loadClassDetail(selectedClassId);
+    } catch (err) {
+      setLessonFormError(err.message || 'Failed to create lesson. Make sure the category exists.');
+    } finally {
+      setCreatingLesson(false);
+    }
   };
 
   return (
@@ -335,13 +450,24 @@ export default function TeacherClassManagementPage() {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className="btn btn--sm btn--primary"
-                          onClick={() => loadClassDetail(cls.classId)}
-                        >
-                          {isTeacher ? 'Manage Roster & Lessons →' : 'View Roster & Lessons →'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--primary"
+                            onClick={() => loadClassDetail(cls.classId)}
+                          >
+                            {isTeacher ? 'Manage Roster & Lessons →' : 'View Roster & Lessons →'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--danger btn--icon"
+                            onClick={() => setClassToDelete(cls)}
+                            title="Delete Class"
+                            style={{ padding: '0.4rem', height: '100%', minWidth: '32px' }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -826,14 +952,68 @@ export default function TeacherClassManagementPage() {
                       {/* Invite Learner Form */}
                       {isTeacher ? (
                         <form onSubmit={handleInviteLearner} style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-                          <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Enter student user ID (e.g. 26-0001-290) or UUID..."
-                            value={inviteLearnerId}
-                            onChange={(e) => setInviteLearnerId(e.target.value)}
-                            style={{ flex: 1 }}
-                          />
+                          <div style={{ position: 'relative', flex: 1 }} ref={dropdownRef}>
+                            <input
+                              type="text"
+                              className="form-input"
+                              placeholder="Enter student user ID, UUID, or display name..."
+                              value={inviteLearnerId}
+                              onChange={(e) => handleLearnerSearch(e.target.value)}
+                              onFocus={() => { if (inviteLearnerId.trim().length >= 2) setShowLearnerDropdown(true); }}
+                              style={{ width: '100%' }}
+                            />
+                            {showLearnerDropdown && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                marginTop: 4,
+                                background: '#fff',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-md)',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                zIndex: 10,
+                                maxHeight: 200,
+                                overflowY: 'auto'
+                              }}>
+                                {isSearchingLearners ? (
+                                  <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                    <span className="spinner spinner--sm" /> Searching...
+                                  </div>
+                                ) : searchLearnerError ? (
+                                  <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-error)' }}>
+                                    {searchLearnerError}
+                                  </div>
+                                ) : learnerSearchResults.length > 0 ? (
+                                  learnerSearchResults.map(l => (
+                                    <div
+                                      key={l.learnerId}
+                                      onClick={() => selectLearnerFromDropdown(l)}
+                                      style={{
+                                        padding: '8px 12px',
+                                        cursor: 'pointer',
+                                        borderBottom: '1px solid var(--color-surface-2)',
+                                        display: 'flex',
+                                        flexDirection: 'column'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-2)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <strong style={{ fontSize: '0.9rem', color: 'var(--color-text)' }}>{l.displayName}</strong>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                        ID: {l.userId} • {l.gradeLevel?.replace('_', ' ')}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div style={{ padding: 12, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                    No learners found.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           <button
                             type="submit"
                             className="btn btn--primary"
@@ -867,6 +1047,7 @@ export default function TeacherClassManagementPage() {
                                 <th>Student</th>
                                 <th>Status</th>
                                 <th>Sent Date</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -904,6 +1085,18 @@ export default function TeacherClassManagementPage() {
                                   <td style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
                                     {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : '—'}
                                   </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    {isTeacher && (
+                                      <button
+                                        type="button"
+                                        className="btn btn--xs btn--danger-ghost"
+                                        onClick={() => handleCancelInvitation(inv.invitationId)}
+                                        title="Cancel this invitation"
+                                      >
+                                        ✕ Cancel
+                                      </button>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -916,18 +1109,150 @@ export default function TeacherClassManagementPage() {
                   {/* TAB 4: Class Lessons */}
                   {detailTab === 'lessons' && (
                     <div>
+                      {/* Header row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                         <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
                           Lessons authored specifically for this classroom cohort.
                         </span>
-                        <a
-                          href="/lessons"
-                          className="btn btn--sm btn--ghost"
-                        >
-                          Open Lesson Builder →
-                        </a>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {isTeacher && (
+                            <button
+                              type="button"
+                              className={`btn btn--sm ${showLessonForm ? 'btn--ghost' : 'btn--primary'}`}
+                              onClick={() => { setShowLessonForm(v => !v); setLessonFormError(''); }}
+                            >
+                              {showLessonForm ? '✕ Cancel' : '+ Create Lesson'}
+                            </button>
+                          )}
+                          <a
+                            href="/lessons"
+                            className="btn btn--sm btn--ghost"
+                            title="Open full Lesson Builder to manage vocabulary and publish lessons"
+                          >
+                            Lesson Builder →
+                          </a>
+                        </div>
                       </div>
 
+                      {/* Inline lesson creation form */}
+                      {isTeacher && showLessonForm && (
+                        <form
+                          onSubmit={handleCreateClassLesson}
+                          style={{
+                            background: 'var(--color-surface-2)',
+                            border: '1.5px solid rgba(37,99,235,0.25)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: '20px 22px',
+                            marginBottom: 20,
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--color-text)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>📚</span> New Class Lesson
+                          </div>
+
+                          {lessonFormError && (
+                            <div style={{
+                              padding: '8px 12px',
+                              background: 'rgba(220,38,38,0.08)',
+                              border: '1px solid rgba(220,38,38,0.25)',
+                              borderRadius: 8,
+                              color: '#b91c1c',
+                              fontSize: '0.82rem',
+                              marginBottom: 12,
+                            }}>
+                              {lessonFormError}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Lesson Title *</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="e.g. Animals at Home"
+                                value={lessonForm.title}
+                                onChange={e => setLessonForm(f => ({ ...f, title: e.target.value }))}
+                                required
+                              />
+                            </div>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Category *</label>
+                              <select
+                                className="form-input"
+                                value={lessonForm.categoryId}
+                                onChange={e => setLessonForm(f => ({ ...f, categoryId: e.target.value }))}
+                                required
+                              >
+                                <option value="">— Select Category —</option>
+                                {categories.map(cat => (
+                                  <option key={cat.category_id || cat.categoryId} value={cat.category_id || cat.categoryId}>
+                                    {cat.category_name || cat.categoryName}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Description</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Short description (optional)"
+                                value={lessonForm.description}
+                                onChange={e => setLessonForm(f => ({ ...f, description: e.target.value }))}
+                              />
+                            </div>
+                            <div className="form-field" style={{ margin: 0 }}>
+                              <label className="form-label">Grade Level *</label>
+                              <select
+                                className="form-input"
+                                value={lessonForm.gradeLevel}
+                                onChange={e => setLessonForm(f => ({ ...f, gradeLevel: e.target.value }))}
+                                required
+                              >
+                                <option value="GRADE_4">Grade 4</option>
+                                <option value="GRADE_5">Grade 5</option>
+                                <option value="GRADE_6">Grade 6</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div style={{
+                            padding: '8px 12px',
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.3)',
+                            borderRadius: 8,
+                            fontSize: '0.78rem',
+                            color: '#92400e',
+                            marginBottom: 14,
+                          }}>
+                            ⚠️ After creating, go to <strong>Lesson Builder →</strong> to add vocabulary words and <strong>publish</strong> the lesson before students can see it.
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              className="btn btn--sm btn--ghost"
+                              onClick={() => { setShowLessonForm(false); setLessonFormError(''); }}
+                              disabled={creatingLesson}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              className="btn btn--sm btn--primary"
+                              disabled={creatingLesson || !lessonForm.title.trim() || !lessonForm.categoryId}
+                            >
+                              {creatingLesson ? <span className="spinner spinner--sm" /> : 'Create Lesson'}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {/* Lesson list */}
                       {classDetail?.lessons?.length === 0 ? (
                         <div style={{
                           padding: 32,
@@ -937,36 +1262,71 @@ export default function TeacherClassManagementPage() {
                           borderRadius: 'var(--radius-lg)',
                           border: '1px solid var(--color-border)',
                         }}>
-                          No custom lessons added to this class yet.
+                          <div style={{ fontSize: '2rem', marginBottom: 8 }}>📚</div>
+                          <p style={{ margin: '0 0 6px 0', fontWeight: 600, color: 'var(--color-text)' }}>
+                            No class lessons yet.
+                          </p>
+                          {isTeacher && (
+                            <p style={{ margin: 0, fontSize: '0.82rem' }}>
+                              Click <strong>+ Create Lesson</strong> above to add the first lesson for this class.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className="accounts-table-wrap">
                           <table className="accounts-table">
                             <thead>
                               <tr>
-                                <th>Order</th>
+                                <th>#</th>
                                 <th>Lesson Title</th>
                                 <th>Words</th>
                                 <th>Status</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                               </tr>
                             </thead>
                             <tbody>
                               {classDetail?.lessons?.map((ls) => (
                                 <tr key={ls.lessonId}>
-                                  <td>#{ls.lessonOrder}</td>
+                                  <td style={{ color: 'var(--color-text-muted)', fontWeight: 700 }}>#{ls.lessonOrder}</td>
                                   <td>
                                     <strong style={{ color: 'var(--color-text)' }}>{ls.lessonTitle}</strong>
+                                    {ls.lessonDescription && (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{ls.lessonDescription}</div>
+                                    )}
                                   </td>
-                                  <td>{ls.totalWordCount} words</td>
+                                  <td style={{ fontWeight: 600 }}>{ls.totalWordCount} words</td>
                                   <td>
-                                    <span className="status-pill status-pill--success">
-                                      {ls.contentStatus}
+                                    <span className={`status-pill ${ls.contentStatus === 'PUBLISHED' ? 'status-pill--success' : 'status-pill--warning'}`}>
+                                      {ls.contentStatus === 'PUBLISHED' ? '🚀 Published' : '📝 Draft'}
                                     </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <a
+                                      href={`/lessons`}
+                                      className="btn btn--xs btn--ghost"
+                                      title="Open Lesson Builder to manage vocabulary and publish"
+                                      style={{ fontSize: '0.75rem' }}
+                                    >
+                                      Manage →
+                                    </a>
                                   </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
+                          {classDetail?.lessons?.some(l => l.contentStatus !== 'PUBLISHED') && (
+                            <div style={{
+                              marginTop: 10,
+                              padding: '8px 14px',
+                              background: 'rgba(245,158,11,0.08)',
+                              border: '1px solid rgba(245,158,11,0.25)',
+                              borderRadius: 8,
+                              fontSize: '0.78rem',
+                              color: '#92400e',
+                            }}>
+                              📝 Draft lessons are not visible to students. Use <strong>Lesson Builder →</strong> to add vocabulary and publish them.
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1043,6 +1403,40 @@ export default function TeacherClassManagementPage() {
                 >
                   {unenrolling ? <span className="spinner spinner--sm" /> : 'Confirm Unenroll'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* ── DELETE CLASS MODAL ─────────────────────────────────────────── */}
+        {classToDelete && (
+          <div className="modal-overlay" onClick={() => setClassToDelete(null)}>
+            <div className="modal modal--sm" onClick={(e) => e.stopPropagation()}>
+              <div className="modal__header">
+                <div>
+                  <h2 className="modal__title">Delete Class?</h2>
+                  <p className="modal__subtitle">Permanently delete this classroom</p>
+                </div>
+                <button className="modal__close" onClick={() => setClassToDelete(null)}>✕</button>
+              </div>
+              <div className="modal__content" style={{ padding: '20px' }}>
+                <p>Are you sure you want to delete <strong>{classToDelete.name}</strong>?</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--color-danger)', marginTop: '8px' }}>
+                  This will unenroll all students and delete all class records. This action cannot be undone.
+                </p>
+                
+                <div style={{ display: 'flex', gap: '10px', marginTop: '24px', justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn btn--secondary" onClick={() => setClassToDelete(null)}>
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn--danger" 
+                    onClick={handleDeleteClass}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Deleting...' : 'Delete Class'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

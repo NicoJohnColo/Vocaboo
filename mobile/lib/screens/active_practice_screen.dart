@@ -131,6 +131,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   final bool _isCompleted = false;
   bool _isNavigating = false;
   bool _isAdvancingNext = false; // Guard against rapid multi-tap on Continue button
+  bool _isCheckingAnswer = false; // Guard against rapid multi-tap on Check button
 
   // Timer Variables
   Timer? _questionTimer;
@@ -936,6 +937,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _secondsRemaining = 0;
     _checked = false;
     _isAdvancingNext = false; // Unlock continue button for new question
+    _isCheckingAnswer = false; // Unlock check button
     _showFeedback = false;
     _selectedOptionIndex = -1;
     _selectedCebuano = null;
@@ -1394,6 +1396,10 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
     // 2. FAMILIAR Tier: Hints/tips MUST be in English (from HINT DEF / hint_definition / English clues)
     if (isFamiliar) {
+      if (item.activityFormat == ActivityFormat.fillInTheBlank) {
+        return null;
+      }
+      
       // Primary: configured HINT (DEF) from the database table (hint_definition)
       if (item.hintDefinition != null && item.hintDefinition!.trim().isNotEmpty) {
         final text = item.hintDefinition!.trim();
@@ -1518,6 +1524,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
 
   // Check Answer Button pressed
   Future<void> _checkAnswer() async {
+    if (_isCheckingAnswer || _showFeedback) return;
+    setState(() {
+      _isCheckingAnswer = true;
+    });
+    
     final item = _practiceQueue[_currentIndex];
     bool correct = false;
     String learnerAns = '';
@@ -1973,9 +1984,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
                 difficultyLevel: newLevel,
               ),
             );
-            final newFormat = (item.activityFormat == ActivityFormat.multipleChoice)
+            var newFormat = (item.activityFormat == ActivityFormat.multipleChoice)
                 ? ActivityFormat.fillInTheBlank
                 : ActivityFormat.multipleChoice;
+
+            if (_module2Activities != null && _module2Activities!.trim().isNotEmpty) {
+              ActivityFormat parseFormatLocal(String f) {
+                switch (f.trim().toUpperCase()) {
+                  case 'FILL_IN_BLANK': return ActivityFormat.fillInTheBlank;
+                  case 'MATCHING': return ActivityFormat.matching;
+                  case 'SENTENCE_ARRANGEMENT': return ActivityFormat.fillInTheBlank;
+                  case 'TYPE_WHAT_YOU_HEAR': return ActivityFormat.listeningTyping;
+                  case 'WORD_SCRAMBLE': return ActivityFormat.wordScramble;
+                  case 'IMAGE_LABELING':
+                  case 'IMAGE_MATCHING': return ActivityFormat.imageLabeling;
+                  case 'TRUE_OR_FALSE': return ActivityFormat.trueOrFalse;
+                  case 'HINT_TO_WORD': return ActivityFormat.hintToWord;
+                  default: return ActivityFormat.multipleChoice;
+                }
+              }
+              final allowed = _module2Activities!
+                  .split(';')
+                  .map((s) => parseFormatLocal(s))
+                  .toSet();
+              if (!allowed.contains(newFormat)) {
+                newFormat = allowed.isNotEmpty ? allowed.first : ActivityFormat.multipleChoice;
+              }
+            }
             final newItem = _createPracticeItem(targetWord, newFormat);
             _practiceQueue.add(newItem);
             _plannedScreens = _practiceQueue.length;
@@ -2012,6 +2047,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       _checked = true;
       _isAnswerCorrect = correct;
       _showFeedback = true;
+      _isCheckingAnswer = false;
     });
 
     if (correct) {
@@ -2066,9 +2102,12 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   }
 
   Future<void> _advanceNext() async {
-    // Guard against double-tap: drop any tap that arrives while already advancing
-    if (_isAdvancingNext) return;
-    _isAdvancingNext = true;
+    // Guard against double-tap: drop any tap that arrives while already advancing or if not in feedback state
+    if (!_showFeedback || _isAdvancingNext) return;
+    setState(() {
+      _isAdvancingNext = true;
+    });
+    
     debugPrint(
       'Continue button tapped, currentIndex: $_currentIndex, queueLength: ${_practiceQueue.length}',
     );
@@ -2140,6 +2179,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ActivityFormat.imageLabeling,
           ActivityFormat.trueOrFalse,
         ];
+      }
+
+      if (_module2Activities != null && _module2Activities!.trim().isNotEmpty) {
+        ActivityFormat parseFormatLocal(String f) {
+          switch (f.trim().toUpperCase()) {
+            case 'FILL_IN_BLANK': return ActivityFormat.fillInTheBlank;
+            case 'MATCHING': return ActivityFormat.matching;
+            case 'SENTENCE_ARRANGEMENT': return ActivityFormat.fillInTheBlank;
+            case 'TYPE_WHAT_YOU_HEAR': return ActivityFormat.listeningTyping;
+            case 'WORD_SCRAMBLE': return ActivityFormat.wordScramble;
+            case 'IMAGE_LABELING':
+            case 'IMAGE_MATCHING': return ActivityFormat.imageLabeling;
+            case 'TRUE_OR_FALSE': return ActivityFormat.trueOrFalse;
+            case 'HINT_TO_WORD': return ActivityFormat.hintToWord;
+            default: return ActivityFormat.multipleChoice;
+          }
+        }
+        final allowed = _module2Activities!
+            .split(';')
+            .map((s) => parseFormatLocal(s))
+            .toSet();
+        final filtered = eligibleFormats.where((f) => allowed.contains(f)).toList();
+        if (filtered.isNotEmpty) {
+          eligibleFormats = filtered;
+        } else {
+          eligibleFormats = allowed.toList();
+        }
       }
 
       final variedFormats = eligibleFormats
@@ -3080,7 +3146,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           item: item,
           options: _options,
           selectedIndex: _selectedOptionIndex,
-          onSelect: (idx) => _selectMcOption(idx),
+          onSelect: _checked ? null : (idx) => _selectMcOption(idx),
         ),
       ],
     );
@@ -3094,29 +3160,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Show image only at LEARNING and FAMILIAR tiers
-        if (level !=
-                'PROFICIENT' &&
-            level != 'MASTERED' &&
-            item.imageAssetPath != null &&
-            item.imageAssetPath!.isNotEmpty &&
-            (item.imageAssetPath!.startsWith('http') ||
-                item.imageAssetPath!.startsWith('assets/')))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                item.imageAssetPath!,
-                height: 150,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const SizedBox.shrink();
-                },
-              ),
-            ),
-          ),
+
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -3170,7 +3214,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: () => _selectMcOption(0),
+                onTap: _checked ? null : () => _selectMcOption(0),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
@@ -3203,7 +3247,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: GestureDetector(
-                onTap: () => _selectMcOption(1),
+                onTap: _checked ? null : () => _selectMcOption(1),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
@@ -3375,7 +3419,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: GestureDetector(
-              onTap: () => _selectMcOption(index),
+              onTap: _checked ? null : () => _selectMcOption(index),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(
@@ -3589,7 +3633,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: GestureDetector(
-              onTap: () => _selectMcOption(index),
+              onTap: _checked ? null : () => _selectMcOption(index),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(
@@ -4444,7 +4488,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           children: [
             Expanded(
               child: ElevatedButton(
-                onPressed: isActionEnabled ? _checkAnswer : null,
+                onPressed: (isActionEnabled && !_isCheckingAnswer) ? _checkAnswer : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6), // Indigo/Blue
                   foregroundColor: Colors.white,
@@ -4560,7 +4604,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: _advanceNext,
+            onPressed: _isAdvancingNext ? null : _advanceNext,
             style: ElevatedButton.styleFrom(
               backgroundColor: btnBg,
               foregroundColor: Colors.white,

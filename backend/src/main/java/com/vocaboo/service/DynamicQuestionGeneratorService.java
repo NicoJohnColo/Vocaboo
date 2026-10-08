@@ -53,6 +53,8 @@ public class DynamicQuestionGeneratorService {
                 List<String> filtered = typesList.stream().filter(f -> lessonFormats.contains(f.trim().toUpperCase())).collect(java.util.stream.Collectors.toList());
                 if (!filtered.isEmpty()) {
                     typesList = filtered;
+                } else {
+                    typesList = lessonFormats;
                 }
             }
             activityType = typesList.get(new java.util.Random().nextInt(typesList.size()));
@@ -105,6 +107,8 @@ public class DynamicQuestionGeneratorService {
         q.put("timeLimitSeconds", timerLimit);
         q.put("showExplanations",       showExplanations);
         q.put("hintLanguage",    hintLanguage);
+        q.put("imageAssetPath",  word.getImageAssetPath());
+        q.put("audioAssetPath",  word.getAudioAssetPath());
         // Cebuano meaning MUST always be exposed because it serves as the prompt for Multiple Choice
         // and other activities, regardless of difficulty tier.
         q.put("cebuanoMeaning",  word.getCebuanoMeaning());

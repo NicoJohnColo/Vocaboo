@@ -7,7 +7,7 @@ class ImageMatchingWidget extends StatelessWidget {
   final PracticeItemModel item;
   final List<String> options;
   final int selectedIndex;
-  final void Function(int) onSelect;
+  final void Function(int)? onSelect;
 
   const ImageMatchingWidget({
     super.key,
@@ -56,7 +56,7 @@ class ImageMatchingWidget extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: GestureDetector(
-              onTap: () => onSelect(index),
+              onTap: onSelect != null ? () => onSelect!(index) : null,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),

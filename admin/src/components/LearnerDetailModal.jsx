@@ -54,7 +54,8 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
   const classSessions = detail?.class_sessions_played ?? detail?.classSessionsPlayed;
   const posBreakdown = detail?.pos_breakdown || detail?.posBreakdown || [];
   const allWords = detail?.all_words || detail?.allWords || [];
-  const lessons = detail?.lessons || detail?.lessonBreakdowns || [];
+  const allLessonsRaw = detail?.lessons || detail?.lessonBreakdowns || [];
+  const lessons = allLessonsRaw.filter(lb => lb.status && lb.status !== 'NOT_STARTED');
   const weakWords = detail?.weak_words || detail?.weakWords || [];
   const isStruggling = detail?.is_struggling ?? detail?.struggling ?? false;
   const strugglingReasons = detail?.struggling_reasons || detail?.strugglingReasons || [];
@@ -420,7 +421,9 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                     <tr>
                       <th>Lesson</th>
                       <th>Status</th>
-                      <th>Mastery Score</th>
+                      <th title="High-water mark: Highest overall score achieved upon completing the lesson">Mastery Score</th>
+                      <th title="Accuracy achieved in the learner's most recent practice session for this lesson">Current Acc</th>
+                      <th title="Cumulative historical accuracy across all attempts and retries for this lesson">Lifetime Acc</th>
                       <th>M1 Intro</th>
                       <th>M2 Practice</th>
                       <th>M3 Review</th>
@@ -431,7 +434,7 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                   <tbody>
                     {lessons.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
+                        <td colSpan={10} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
                           {isClassScoped ? 'No lessons published in this classroom yet.' : 'No lesson activity recorded yet.'}
                         </td>
                       </tr>
@@ -467,6 +470,21 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                       const m3 = clampScore(rawM3);
                       const m4 = clampScore(rawM4);
                       const safeMScore = clampScore(mScore);
+
+                      const currAcc = lb.current_accuracy ?? lb.currentAccuracy;
+                      const lifeAcc = lb.lifetime_accuracy ?? lb.lifetimeAccuracy;
+                      const currCorr = lb.current_correct ?? lb.currentCorrect;
+                      const currAtt = lb.current_attempts ?? lb.currentAttempts;
+                      const lifeCorr = lb.lifetime_correct ?? lb.lifetimeCorrect;
+                      const lifeAtt = lb.lifetime_attempts ?? lb.lifetimeAttempts;
+
+                      // Fallback if not directly provided in payload
+                      const fallbackCurr = rawM4 ?? rawM3 ?? rawM2 ?? mScore;
+                      const fallbackLife = (rawM2 != null && rawM3 != null) ? ((Number(rawM2) + Number(rawM3) + (rawM4 != null ? Number(rawM4) : 0)) / (rawM4 != null ? 3 : 2)) : mScore;
+
+                      const safeCurrAcc = clampScore(currAcc ?? fallbackCurr);
+                      const safeLifeAcc = clampScore(lifeAcc ?? fallbackLife);
+
                       const lastPracticed = lb.last_practiced_at || lb.lastPracticedAt || lb.completed_at || lb.completedAt || detail?.last_active_at || detail?.lastActiveAt;
 
                       return (
@@ -484,7 +502,33 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                             </span>
                           </td>
                           <td style={{ fontWeight: 700 }}>
-                            {safeMScore != null ? `${safeMScore.toFixed(0)}%` : '—'}
+                            <span title="High-water mark: Highest overall score achieved upon completing the lesson">
+                              {safeMScore != null ? `${safeMScore.toFixed(0)}%` : '—'}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 700, color: safeCurrAcc != null ? (safeCurrAcc >= 85 ? 'var(--color-success)' : safeCurrAcc < 70 ? 'var(--color-danger)' : 'var(--color-text-main)') : 'inherit' }}>
+                            {safeCurrAcc != null ? (
+                              <span title={currAtt > 0 ? `${currCorr}/${currAtt} correct in latest session` : 'Latest session accuracy'}>
+                                <div>{safeCurrAcc.toFixed(0)}%</div>
+                                {currAtt > 0 && (
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                                    {currCorr}/{currAtt} session
+                                  </div>
+                                )}
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td style={{ fontWeight: 600, color: safeLifeAcc != null ? (safeLifeAcc >= 85 ? 'var(--color-success)' : safeLifeAcc < 70 ? 'var(--color-danger)' : 'var(--color-text-main)') : 'inherit' }}>
+                            {safeLifeAcc != null ? (
+                              <span title={lifeAtt > 0 ? `${lifeCorr}/${lifeAtt} correct across all attempts and retries` : 'Cumulative historical accuracy across all attempts'}>
+                                <div>{safeLifeAcc.toFixed(0)}%</div>
+                                {lifeAtt > 0 && (
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                                    {lifeCorr}/{lifeAtt} lifetime
+                                  </div>
+                                )}
+                              </span>
+                            ) : '—'}
                           </td>
                           <td>
                             {m1Completed ? (
@@ -560,7 +604,8 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                     <thead>
                       <tr>
                         <th>Lesson Pair / Category</th>
-                        <th>Accuracy</th>
+                        <th>Overall Accuracy</th>
+                        <th>Session Accuracy</th>
                         <th>Badge</th>
                         <th>Points Earned</th>
                         <th>Questions</th>
@@ -570,7 +615,7 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                     <tbody>
                       {(!detail?.cumulative_reviews && !detail?.cumulativeReviews || (detail?.cumulative_reviews || detail?.cumulativeReviews).length === 0) ? (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>
+                          <td colSpan={7} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>
                             No cumulative review sessions completed yet.
                           </td>
                         </tr>
@@ -578,6 +623,8 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
                         (detail?.cumulative_reviews || detail?.cumulativeReviews).map((cs, idx) => {
                           const sid = cs.session_id || cs.sessionId || idx;
                           const pairName = cs.category_name || cs.categoryName || cs.lesson_pair_id || cs.lessonPairId || 'Cumulative Review';
+                          const lessonNames = cs.lesson_names || cs.lessonNames;
+                          const overallAcc = cs.overall_accuracy ?? cs.overallAccuracy;
                           const acc = cs.accuracy_percent ?? cs.accuracyPercent;
                           const badge = cs.badge_awarded || cs.badgeAwarded;
                           const pts = cs.points_earned ?? cs.pointsEarned ?? 0;
@@ -587,7 +634,13 @@ export default function LearnerDetailModal({ learnerId, classContext, onClose, o
 
                           return (
                             <tr key={sid}>
-                              <td><strong>{pairName}</strong></td>
+                              <td>
+                                <strong>{pairName}</strong>
+                                {lessonNames && <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>{lessonNames}</div>}
+                              </td>
+                              <td style={{ fontWeight: 700, color: Number(overallAcc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
+                                {overallAcc != null ? `${Number(overallAcc).toFixed(2)}%` : '—'}
+                              </td>
                               <td style={{ fontWeight: 700, color: Number(acc) >= 80 ? 'var(--color-success)' : 'var(--color-text-main)' }}>
                                 {acc != null ? `${Number(acc).toFixed(1)}%` : '—'}
                               </td>

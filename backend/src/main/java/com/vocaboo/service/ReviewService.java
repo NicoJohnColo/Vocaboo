@@ -446,9 +446,7 @@ public class ReviewService {
             formats = List.of("MULTIPLE_CHOICE", "MATCHING", "FILL_IN_BLANK", "WORD_SCRAMBLE", "SENTENCE_RECONSTRUCTION", "TRUE_OR_FALSE");
         }
         
-        if (formats.isEmpty()) {
-            formats = List.of("MULTIPLE_CHOICE");
-        }
+        // If formats is empty, respect the empty state rather than injecting MULTIPLE_CHOICE.
 
         Random random = new Random();
         List<Map<String, Object>> result = new ArrayList<>();

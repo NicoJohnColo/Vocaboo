@@ -1464,7 +1464,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
   void _checkAnswer({bool timeUp = false}) {
     // Dedupe guard: prevent timer + button tap from both firing
     if (_submittingAnswer || _isChecked) return;
-    _submittingAnswer = true;
+    setState(() {
+      _submittingAnswer = true;
+    });
     _activityTimer?.cancel();
     if (timeUp) {
       _isCorrect = false;
@@ -1706,7 +1708,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     if (!_isChecked) return;
     // Guard against double-tap: if already advancing, ignore subsequent taps
     if (_isAdvancing) return;
-    _isAdvancing = true;
+    setState(() {
+      _isAdvancing = true;
+    });
     final stage = _getWordStage(_currentWord.wordId);
     debugPrint(
       'Continue button tapped in Module 3 (format: $_currentFormat, phase: $_currentPhase, stage: $stage)',
@@ -2149,7 +2153,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
   void _handleContinueFromPronunciation() {
     if (_isAdvancing) return;
-    _isAdvancing = true;
+    setState(() {
+      _isAdvancing = true;
+    });
 
     try {
       final correct = _attemptResult?.isCorrect ?? false;
@@ -2168,7 +2174,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       }
     } finally {
       if (mounted) {
-        _isAdvancing = false;
+        setState(() {
+          _isAdvancing = false;
+        });
       }
     }
   }
@@ -3840,6 +3848,13 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                     final stage = _getWordStage(_currentWord.wordId);
                     if (stage >= 3) return const SizedBox.shrink();
 
+                    // Remove hint for True/False and Rearrangement when Familiar (stage 2)
+                    if (stage == 2 && 
+                        (_currentFormat == ActivityFormat.truthOrFalse || 
+                         _currentFormat == ActivityFormat.rearrangement)) {
+                      return const SizedBox.shrink();
+                    }
+
                     String hintText = '';
                     String highlightWord = _currentWord.englishWord;
 
@@ -4302,7 +4317,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                   ),
                   const SizedBox(height: 16),
                   App3DButton(
-                    onPressed: _handleContinueFromSentence,
+                    onPressed: _isAdvancing ? null : _handleContinueFromSentence,
                     variant: _isCorrect
                         ? App3DButtonVariant.success
                         : App3DButtonVariant.danger,

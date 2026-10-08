@@ -53,8 +53,8 @@ public class LearnerService {
     private final DifficultyAuditLogRepository difficultyAuditLogRepository;
 
     private static final String[] DEFAULT_AVATARS = {
-        "prof1.jpg", "prof2.jpg", "prof3.jpg", "prof4.jpg", "prof5.jpg",
-        "prof6.jpg", "prof7.jpg", "prof8.jpg", "prof9.jpg"
+            "prof1.jpg", "prof2.jpg", "prof3.jpg", "prof4.jpg", "prof5.jpg",
+            "prof6.jpg", "prof7.jpg", "prof8.jpg", "prof9.jpg"
     };
 
     private String getRandomDefaultAvatar() {
@@ -196,7 +196,8 @@ public class LearnerService {
     }
 
     @Transactional
-    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr, Boolean masteryApplyImmediately, String posFocus, String avatar, String gradeLevelStr, Integer age) {
+    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr,
+            Boolean masteryApplyImmediately, String posFocus, String avatar, String gradeLevelStr, Integer age) {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner profile not found."));
 
@@ -264,8 +265,10 @@ public class LearnerService {
     }
 
     @Transactional
-    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr, Boolean masteryApplyImmediately, String posFocus, String avatar) {
-        return updatePreferences(learnerId, displayName, languagePreferenceStr, masteryApplyImmediately, posFocus, avatar, null, null);
+    public LearnerResponse updatePreferences(UUID learnerId, String displayName, String languagePreferenceStr,
+            Boolean masteryApplyImmediately, String posFocus, String avatar) {
+        return updatePreferences(learnerId, displayName, languagePreferenceStr, masteryApplyImmediately, posFocus,
+                avatar, null, null);
     }
 
     @Transactional
@@ -284,12 +287,12 @@ public class LearnerService {
     @Transactional
     public void resetProgress(UUID learnerId) {
         List<SandboxSession> sSessions = sandboxSessionRepository.findByLearnerLearnerIdOrderByCreatedAtDesc(learnerId);
-        
+
         // Delete sandbox module scores first
         for (SandboxSession sSession : sSessions) {
             sandboxModuleScoreRepository.deleteBySessionSessionId(sSession.getSessionId());
         }
-        
+
         for (SandboxSession sSession : sSessions) {
             sandboxWordProgressRepository.deleteBySessionSessionId(sSession.getSessionId());
             sandboxWordRepository.deleteBySessionSessionId(sSession.getSessionId());
@@ -309,7 +312,8 @@ public class LearnerService {
         practiceSessionRepository.deleteByLearnerLearnerId(learnerId);
 
         // Delete cumulative review sessions and results
-        List<CumulativeReviewSession> crSessions = cumulativeReviewSessionRepository.findByLearnerLearnerIdOrderByStartTimeDesc(learnerId);
+        List<CumulativeReviewSession> crSessions = cumulativeReviewSessionRepository
+                .findByLearnerLearnerIdOrderByStartTimeDesc(learnerId);
         for (CumulativeReviewSession cr : crSessions) {
             cumulativeReviewResultRepository.deleteBySessionId(cr.getId());
         }
@@ -327,7 +331,7 @@ public class LearnerService {
         diagnosticResultRepository.deleteByLearnerLearnerId(learnerId);
         introductionSessionRepository.deleteByLearnerLearnerId(learnerId);
         lessonStatusRepository.deleteByLearnerLearnerId(learnerId);
-        
+
         // Delete lesson module scores, lesson word accuracies, and adaptive queues
         lessonModuleScoreRepository.deleteByLearnerLearnerId(learnerId);
         lessonWordAccuracyRepository.deleteByLearnerLearnerId(learnerId);
@@ -348,7 +352,8 @@ public class LearnerService {
             classPerformanceRepository.save(cp);
         }
 
-        // Reset LearnerMastery record in-place (or create if none exists) to prevent unique constraint violation
+        // Reset LearnerMastery record in-place (or create if none exists) to prevent
+        // unique constraint violation
         java.util.Optional<LearnerMastery> existingMastery = masteryRepository.findByLearnerLearnerId(learnerId);
         if (existingMastery.isPresent()) {
             LearnerMastery mastery = existingMastery.get();

@@ -14,11 +14,9 @@ import '../services/pronunciation_matcher.dart';
 import '../models/pronunciation_attempt_model.dart';
 import '../services/localization_service.dart';
 import '../services/phonetic_service.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../widgets/custom_image_viewer.dart';
 import '../widgets/cebuano_text_highlighter.dart';
 import '../widgets/app_3d_progress_bar.dart';
-import '../config/app_config.dart';
 import '../core/motion/motion.dart';
 
 class VocabularyIntroductionScreen extends StatefulWidget {
@@ -58,8 +56,6 @@ class _VocabularyIntroductionScreenState
   int _currentStep =
       0; // 0: Cebuano, 1: English word, 2: English sentence, 3: Phonology, 4: Summary
   List<VocabularyWordModel> _words = [];
-  bool _isPlayingAudio = false;
-  final AudioPlayer _audioPlayer = AudioPlayer();
   final TtsService _ttsService = TtsService();
   final AudioRecorderService _recorderService = AudioRecorderService();
   final SttService _sttService = SttService();
@@ -213,7 +209,6 @@ class _VocabularyIntroductionScreenState
     _streamingSttService.dispose();
     _liveTranscriptNotifier.dispose();
     _recorderService.dispose();
-    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -248,97 +243,24 @@ class _VocabularyIntroductionScreenState
     _playCebuanoAudio(currentWord.cebuanoMeaning);
   }
 
-  Future<void> _playWordAudio(VocabularyWordModel word) async {
-    if (_isPlayingAudio) return;
-    if (mounted) setState(() => _isPlayingAudio = true);
-
-    try {
-      final success = await _ttsService.speakEnglish(word.englishWord);
-      if (!success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
-      if (word.audioAssetPath != null &&
-          word.audioAssetPath!.trim().isNotEmpty) {
-        final path = AppConfig.sanitizeAssetPath(word.audioAssetPath!);
-
-        Source source;
-        if (path.startsWith('http://') || path.startsWith('https://')) {
-          source = UrlSource(path);
-        } else {
-          source = AssetSource(
-            path.startsWith('assets/')
-                ? path.replaceFirst('assets/', '')
-                : path,
-          );
-        }
-
-        Completer<void> completer = Completer<void>();
-        StreamSubscription? sub;
-        sub = _audioPlayer.onPlayerComplete.listen((_) {
-          if (!completer.isCompleted) completer.complete();
-          sub?.cancel();
-        });
-
-        await _audioPlayer.play(source);
-        await completer.future;
-      }
-    } catch (e) {
-      debugPrint('Error playing audio asset: $e');
-    } finally {
-      if (mounted) setState(() => _isPlayingAudio = false);
-    }
+  void _playWordAudio(VocabularyWordModel word) {
+    // Always use TTS — audio asset files are bypassed entirely to guarantee
+    // reliable, instant playback on every tap regardless of asset state.
+    _ttsService.speakEnglish(word.englishWord);
   }
 
   void _speakWord() {
     _playWordAudio(_words[_currentWordIndex]);
   }
 
-  Future<void> _playCebuanoAudio(String text) async {
-    if (_isPlayingAudio) return;
-    if (mounted) setState(() => _isPlayingAudio = true);
-
-    try {
-      final success = await _ttsService.speakCebuano(text);
-      if (!success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
-    } finally {
-      if (mounted) setState(() => _isPlayingAudio = false);
-    }
+  void _playCebuanoAudio(String text) {
+    _ttsService.speakCebuano(text);
   }
 
-  Future<void> _speakSentence() async {
-    if (_isPlayingAudio) return;
-    if (mounted) setState(() => _isPlayingAudio = true);
-
-    try {
-      final success = await _ttsService.speakEnglish(
-        _words[_currentWordIndex].exampleSentenceEnglish,
-      );
-      if (!success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Audio unavailable')));
-      }
-    } finally {
-      if (mounted) setState(() => _isPlayingAudio = false);
-    }
+  void _speakSentence() {
+    _ttsService.speakEnglish(
+      _words[_currentWordIndex].exampleSentenceEnglish,
+    );
   }
 
   void _stopAutoEvaluationMonitoring() {
@@ -1140,32 +1062,32 @@ class _VocabularyIntroductionScreenState
   }
 
   Widget _buildInlineAudioButton({
-    required VoidCallback? onTap,
+    required VoidCallback onTap,
     required Color color,
-    bool isPlaying = false,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color.withValues(alpha: 0.10),
-            border: Border.all(
-              color: color.withValues(alpha: 0.25),
-              width: 1.2,
-            ),
+    // GestureDetector with HitTestBehavior.opaque wins the gesture arena and
+    // consumes the tap, preventing it from bubbling up to any parent InkWell
+    // (e.g. the flashcard flip handler). This is the critical fix for the 40%
+    // screen where the audio button is nested inside the card-flip InkWell.
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withValues(alpha: 0.10),
+          border: Border.all(
+            color: color.withValues(alpha: 0.25),
+            width: 1.2,
           ),
-          child: Center(
-            child: Icon(
-              Icons.volume_up_rounded,
-              color: isPlaying ? Colors.grey : color,
-              size: 20,
-            ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.volume_up_rounded,
+            color: color,
+            size: 20,
           ),
         ),
       ),
@@ -1262,11 +1184,8 @@ class _VocabularyIntroductionScreenState
                       ),
                       const SizedBox(width: 8),
                       _buildInlineAudioButton(
-                        onTap: _isPlayingAudio
-                            ? null
-                            : () => _playCebuanoAudio(word.cebuanoMeaning),
+                        onTap: () => _playCebuanoAudio(word.cebuanoMeaning),
                         color: const Color(0xFF15803D),
-                        isPlaying: _isPlayingAudio,
                       ),
                     ],
                   ),
@@ -1328,9 +1247,8 @@ class _VocabularyIntroductionScreenState
                       ),
                       const SizedBox(width: 8),
                       _buildInlineAudioButton(
-                        onTap: _isPlayingAudio ? null : _speakWord,
+                        onTap: _speakWord,
                         color: const Color(0xFFB45309),
-                        isPlaying: _isPlayingAudio,
                       ),
                     ],
                   ),
@@ -1364,9 +1282,8 @@ class _VocabularyIntroductionScreenState
                       ),
                       const SizedBox(width: 8),
                       _buildInlineAudioButton(
-                        onTap: _isPlayingAudio ? null : _speakSentence,
+                        onTap: _speakSentence,
                         color: const Color(0xFFB45309),
-                        isPlaying: _isPlayingAudio,
                       ),
                     ],
                   ),
@@ -1478,11 +1395,8 @@ class _VocabularyIntroductionScreenState
                 ),
                 const SizedBox(width: 8),
                 _buildInlineAudioButton(
-                  onTap: _isPlayingAudio
-                      ? null
-                      : () => _playCebuanoAudio(word.cebuanoMeaning),
+                  onTap: () => _playCebuanoAudio(word.cebuanoMeaning),
                   color: const Color(0xFF10B981),
-                  isPlaying: _isPlayingAudio,
                 ),
               ],
             ),
@@ -1633,9 +1547,8 @@ class _VocabularyIntroductionScreenState
               ),
               const SizedBox(width: 8),
               _buildInlineAudioButton(
-                onTap: _isPlayingAudio ? null : _speakWord,
+                onTap: _speakWord,
                 color: const Color(0xFF06A6FF),
-                isPlaying: _isPlayingAudio,
               ),
             ],
           ),
@@ -1834,9 +1747,8 @@ class _VocabularyIntroductionScreenState
                 ),
                 const SizedBox(width: 8),
                 _buildInlineAudioButton(
-                  onTap: _isPlayingAudio ? null : _speakSentence,
+                  onTap: _speakSentence,
                   color: const Color(0xFF2563EB),
-                  isPlaying: _isPlayingAudio,
                 ),
               ],
             ),
@@ -1926,9 +1838,8 @@ class _VocabularyIntroductionScreenState
             ),
             const SizedBox(height: 14),
             _buildInlineAudioButton(
-              onTap: _isPlayingAudio ? null : _speakWord,
+              onTap: _speakWord,
               color: const Color(0xFFF59E0B),
-              isPlaying: _isPlayingAudio,
             ),
             const SizedBox(height: 16),
             if (_attemptResult != null) ...[
@@ -2289,9 +2200,8 @@ class _VocabularyIntroductionScreenState
                 ),
                 const SizedBox(width: 8),
                 _buildInlineAudioButton(
-                  onTap: _isPlayingAudio ? null : _speakWord,
+                  onTap: _speakWord,
                   color: const Color(0xFF06A6FF),
-                  isPlaying: _isPlayingAudio,
                 ),
               ],
             ),
@@ -2336,11 +2246,8 @@ class _VocabularyIntroductionScreenState
                       ),
                       const SizedBox(width: 8),
                       _buildInlineAudioButton(
-                        onTap: _isPlayingAudio
-                            ? null
-                            : () => _playCebuanoAudio(word.cebuanoMeaning),
+                        onTap: () => _playCebuanoAudio(word.cebuanoMeaning),
                         color: const Color(0xFF15803D),
-                        isPlaying: _isPlayingAudio,
                       ),
                     ],
                   ),
@@ -2397,9 +2304,8 @@ class _VocabularyIntroductionScreenState
                       ),
                       const SizedBox(width: 8),
                       _buildInlineAudioButton(
-                        onTap: _isPlayingAudio ? null : _speakSentence,
+                        onTap: _speakSentence,
                         color: const Color(0xFFD97706),
-                        isPlaying: _isPlayingAudio,
                       ),
                     ],
                   ),

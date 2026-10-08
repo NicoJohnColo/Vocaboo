@@ -48,8 +48,6 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
 
   bool _isSubmitting = false;
 
-  bool _isPlayingAudio = false;
-
 
 
   @override
@@ -64,16 +62,8 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
 
 
 
-  Future<void> _playAudio() async {
-
-    if (!mounted) return;
-
-    setState(() => _isPlayingAudio = true);
-
-    await _ttsService.speak(widget.word.englishWord);
-
-    if (mounted) setState(() => _isPlayingAudio = false);
-
+  void _playAudio() {
+    _ttsService.speak(widget.word.englishWord);
   }
 
 
@@ -295,25 +285,15 @@ class _ShortReintroductionScreenState extends State<ShortReintroductionScreen> {
                   ),
 
                   IconButton.filled(
-
-                    onPressed: _isPlayingAudio ? null : _playAudio,
-
+                    onPressed: _playAudio,
                     style: IconButton.styleFrom(
-
                       backgroundColor: const Color(0xFFE0F2FE),
-
                       foregroundColor: const Color(0xFF0284C7),
-
                     ),
-
-                    icon: Icon(
-
-                      _isPlayingAudio ? Icons.volume_up_rounded : Icons.volume_down_rounded,
-
+                    icon: const Icon(
+                      Icons.volume_up_rounded,
                       size: 26,
-
                     ),
-
                   ),
 
                 ],

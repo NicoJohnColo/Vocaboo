@@ -18,11 +18,13 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     List<RefreshToken> findByUserIdAndRevokedAtIsNull(UUID userId);
 
     /** Revoke all tokens for a user (force logout everywhere). */
+    @org.springframework.transaction.annotation.Transactional
     @Modifying
     @Query("UPDATE RefreshToken rt SET rt.revokedAt = :now WHERE rt.userId = :userId AND rt.revokedAt IS NULL")
     int revokeAllByUserId(@Param("userId") UUID userId, @Param("now") OffsetDateTime now);
 
     /** Clean up expired and revoked tokens older than a cutoff date. */
+    @org.springframework.transaction.annotation.Transactional
     @Modifying
     @Query("DELETE FROM RefreshToken rt WHERE rt.expiresAt < :cutoff OR rt.revokedAt IS NOT NULL")
     int deleteExpiredAndRevoked(@Param("cutoff") OffsetDateTime cutoff);

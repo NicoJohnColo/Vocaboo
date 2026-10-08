@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @RestController
 @RequestMapping({"/api/learner/classes", "/api/v1/learner/classes"})
 @RequiredArgsConstructor

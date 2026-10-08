@@ -1,6 +1,7 @@
 package com.vocaboo.repository;
 
 import com.vocaboo.entity.VocabularyWord;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,6 +11,17 @@ import java.util.UUID;
 
 @Repository
 public interface VocabularyWordRepository extends JpaRepository<VocabularyWord, UUID> {
+
+    @Query("SELECT w FROM VocabularyWord w JOIN FETCH w.lesson")
+    List<VocabularyWord> findAllWithLesson();
+
+    @Override
+    @EntityGraph(attributePaths = {"lesson"})
+    List<VocabularyWord> findAll();
+
+    @Query("SELECT w FROM VocabularyWord w WHERE w.isDeleted = true")
+    List<VocabularyWord> findAllSoftDeleted();
+
 
     // Learner-facing (existing)
     List<VocabularyWord> findByLessonLessonIdOrderByWordOrderAsc(UUID lessonId);

@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AdminLearnerService {
 
     private final LearnerRepository learnerRepository;
@@ -181,7 +182,7 @@ public class AdminLearnerService {
         return getLearnerDetail(learnerId, teacherId, null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AdminLearnerDetailResponse getLearnerDetail(UUID learnerId, UUID teacherId, UUID classId) {
         if (teacherId != null) {
             List<UUID> enrolledIds = classEnrollmentRepository.findEnrolledLearnerIdsByTeacherId(teacherId);
@@ -394,14 +395,41 @@ public class AdminLearnerService {
         }
         boolean isStruggling = !strugglingReasons.isEmpty();
 
+        // Pre-fetch session summaries and practice results for authentic lesson & word accuracy
+        List<SessionSummary> allSummaries = summaryRepository.findByLearnerLearnerId(learnerId);
+        Map<UUID, List<SessionSummary>> summariesByLesson = (allSummaries != null ? allSummaries : List.<SessionSummary>of()).stream()
+                .filter(s -> s != null && s.getLesson() != null)
+                .collect(Collectors.groupingBy(s -> s.getLesson().getLessonId()));
+
+        List<PracticeResult> allPracticeResults = practiceResultRepository.findBySessionLearnerLearnerId(learnerId);
+        Map<UUID, List<PracticeResult>> practiceResultsByLesson = (allPracticeResults != null ? allPracticeResults : List.<PracticeResult>of()).stream()
+                .filter(pr -> pr != null && (
+                        (pr.getWord() != null && pr.getWord().getLesson() != null) ||
+                        (pr.getSession() != null && pr.getSession().getLesson() != null)
+                ))
+                .collect(Collectors.groupingBy(pr -> {
+                    if (pr.getWord() != null && pr.getWord().getLesson() != null) {
+                        return pr.getWord().getLesson().getLessonId();
+                    }
+                    return pr.getSession().getLesson().getLessonId();
+                }));
+
         // Build Lesson breakdown
-        Map<UUID, LearnerLessonStatus> statusMap = statuses.stream()
-                .collect(Collectors.toMap(s -> s.getLesson().getLessonId(), s -> s, (s1, s2) -> s1));
-        Map<UUID, List<LessonModuleScore>> scoreMap = moduleScores.stream()
-                .collect(Collectors.groupingBy(m -> m.getLesson().getLessonId()));
-        Map<UUID, List<WordPerformance>> lessonPerfMap = wordPerformances.stream()
-                .filter(wp -> wp.getWord() != null && wp.getWord().getLesson() != null)
-                .collect(Collectors.groupingBy(wp -> wp.getWord().getLesson().getLessonId()));
+        Map<UUID, LearnerLessonStatus> statusMap = statuses != null
+                ? statuses.stream()
+                        .filter(s -> s != null && s.getLesson() != null)
+                        .collect(Collectors.toMap(s -> s.getLesson().getLessonId(), s -> s, (s1, s2) -> s1))
+                : Collections.emptyMap();
+        Map<UUID, List<LessonModuleScore>> scoreMap = moduleScores != null
+                ? moduleScores.stream()
+                        .filter(m -> m != null && m.getLesson() != null)
+                        .collect(Collectors.groupingBy(m -> m.getLesson().getLessonId()))
+                : Collections.emptyMap();
+        Map<UUID, List<WordPerformance>> lessonPerfMap = wordPerformances != null
+                ? wordPerformances.stream()
+                        .filter(wp -> wp != null && wp.getWord() != null && wp.getWord().getLesson() != null)
+                        .collect(Collectors.groupingBy(wp -> wp.getWord().getLesson().getLessonId()))
+                : Collections.emptyMap();
 
         List<LearnerLessonProgressDetail> lessonDetails = allLessons.stream().map(lesson -> {
             LearnerLessonStatus st = statusMap.get(lesson.getLessonId());
@@ -442,9 +470,22 @@ public class AdminLearnerService {
                 }
             }
 
-            List<WordPerformance> lPerfs = lessonPerfMap.getOrDefault(lesson.getLessonId(), List.of());
-            int totAtt = lPerfs.stream().mapToInt(wp -> wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0).sum();
-            int totCorr = lPerfs.stream().mapToInt(wp -> wp.getCorrectCount() != null ? wp.getCorrectCount() : 0).sum();
+            UUID lesId = lesson.getLessonId();
+            List<WordPerformance> lPerfs = lessonPerfMap.getOrDefault(lesId, List.of());
+            List<PracticeResult> lResults = practiceResultsByLesson.getOrDefault(lesId, List.of());
+            List<SessionSummary> lSummaries = summariesByLesson.getOrDefault(lesId, List.of());
+
+            int wpAtt = lPerfs.stream().mapToInt(wp -> wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0).sum();
+            int wpCorr = lPerfs.stream().mapToInt(wp -> wp.getCorrectCount() != null ? wp.getCorrectCount() : 0).sum();
+
+            int prTot = lResults.size();
+            int prCorr = (int) lResults.stream().filter(pr -> Boolean.TRUE.equals(pr.getIsCorrect())).count();
+
+            int finalLifeAtt = Math.max(wpAtt, prTot);
+            int finalLifeCorr = Math.max(wpCorr, prCorr);
+            if (finalLifeCorr > finalLifeAtt) {
+                finalLifeCorr = finalLifeAtt;
+            }
 
             double wordAccSum = 0.0;
             int wordsWithAcc = 0;
@@ -457,36 +498,134 @@ public class AdminLearnerService {
 
             boolean isCompleted = st != null && st.getStatus() == LessonStatus.COMPLETED;
             BigDecimal displayScore = null;
-            if (isCompleted) {
-                if (st.getMasteryScore() != null && st.getMasteryScore().compareTo(BigDecimal.ZERO) > 0) {
-                    displayScore = st.getMasteryScore();
-                } else if (totAtt > 0) {
-                    displayScore = BigDecimal.valueOf(totCorr * 100.0 / totAtt).setScale(2, RoundingMode.HALF_UP);
-                } else if (wordsWithAcc > 0) {
-                    displayScore = BigDecimal.valueOf(wordAccSum / wordsWithAcc).setScale(2, RoundingMode.HALF_UP);
-                } else if (!lms.isEmpty()) {
-                    Optional<LessonModuleScore> mod4Opt = lms.stream()
-                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
-                            .findFirst();
-                    if (mod4Opt.isPresent()) {
-                        displayScore = mod4Opt.get().getScore();
-                    } else {
-                        double avg = lms.stream()
-                                .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() > 1 && m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
-                                .mapToDouble(m -> m.getScore().doubleValue())
-                                .average()
-                                .orElse(0.0);
-                        if (avg > 0.0) {
-                            displayScore = BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP);
-                        }
+            
+            if (st != null && st.getMasteryScore() != null && st.getMasteryScore().compareTo(BigDecimal.ZERO) > 0) {
+                displayScore = st.getMasteryScore();
+            } else if (finalLifeAtt > 0) {
+                displayScore = BigDecimal.valueOf(finalLifeCorr * 100.0 / finalLifeAtt).setScale(2, RoundingMode.HALF_UP);
+            } else if (wordsWithAcc > 0) {
+                displayScore = BigDecimal.valueOf(wordAccSum / wordsWithAcc).setScale(2, RoundingMode.HALF_UP);
+            } else if (!lms.isEmpty()) {
+                Optional<LessonModuleScore> mod4Opt = lms.stream()
+                        .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
+                        .findFirst();
+                if (mod4Opt.isPresent()) {
+                    displayScore = mod4Opt.get().getScore();
+                } else {
+                    double avg = lms.stream()
+                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() > 1 && m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
+                            .mapToDouble(m -> m.getScore().doubleValue())
+                            .average()
+                            .orElse(0.0);
+                    if (avg > 0.0) {
+                        displayScore = BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP);
                     }
                 }
-                if (displayScore != null) {
-                    displayScore = displayScore.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+            if (displayScore != null) {
+                displayScore = displayScore.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+
+            // 1. Calculate Lifetime Accuracy across all attempts and retries for this lesson
+            BigDecimal lifetimeAcc = null;
+            if (finalLifeAtt > 0) {
+                lifetimeAcc = BigDecimal.valueOf(finalLifeCorr * 100.0 / finalLifeAtt).setScale(2, RoundingMode.HALF_UP);
+            } else if (!lms.isEmpty()) {
+                int modTot = lms.stream().mapToInt(m -> m.getTotalCount() != null ? m.getTotalCount() : 0).sum();
+                int modCorr = lms.stream().mapToInt(m -> m.getCorrectCount() != null ? m.getCorrectCount() : 0).sum();
+                if (modTot > 0) {
+                    finalLifeAtt = modTot;
+                    finalLifeCorr = Math.min(modCorr, modTot);
+                    lifetimeAcc = BigDecimal.valueOf(finalLifeCorr * 100.0 / finalLifeAtt).setScale(2, RoundingMode.HALF_UP);
+                }
+            }
+            if (lifetimeAcc == null && displayScore != null && isCompleted) {
+                lifetimeAcc = displayScore;
+            }
+            if (lifetimeAcc != null) {
+                lifetimeAcc = lifetimeAcc.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+
+            // 2. Calculate Current Accuracy (accuracy from latest practice session or attempt for this lesson)
+            BigDecimal currentAcc = null;
+            Integer currentCorr = null;
+            Integer currentAtt = null;
+
+            SessionSummary latestSummary = lSummaries.stream()
+                    .filter(Objects::nonNull)
+                    .max(Comparator.comparing(s -> s.getCompletedAt() != null ? s.getCompletedAt() : OffsetDateTime.MIN))
+                    .orElse(null);
+
+            if (latestSummary != null && latestSummary.getAccuracyRate() != null) {
+                currentAcc = latestSummary.getAccuracyRate();
+                currentAtt = latestSummary.getTotalAttempts();
+                currentCorr = latestSummary.getCorrectPronunciations();
+            }
+
+            if (currentAcc == null && !lResults.isEmpty()) {
+                Map<UUID, List<PracticeResult>> sessionMap = lResults.stream()
+                        .filter(pr -> pr.getSession() != null && pr.getSession().getSessionId() != null)
+                        .collect(Collectors.groupingBy(pr -> pr.getSession().getSessionId()));
+
+                List<PracticeResult> latestSessResults = null;
+                OffsetDateTime latestTime = null;
+
+                for (List<PracticeResult> sList : sessionMap.values()) {
+                    if (sList.isEmpty()) continue;
+                    OffsetDateTime maxTime = sList.stream()
+                            .map(pr -> pr.getRecordedAt() != null ? pr.getRecordedAt() : (pr.getSession() != null ? pr.getSession().getCreatedAt() : null))
+                            .filter(Objects::nonNull)
+                            .max(OffsetDateTime::compareTo)
+                            .orElse(null);
+                    if (latestTime == null || (maxTime != null && maxTime.isAfter(latestTime))) {
+                        latestTime = maxTime;
+                        latestSessResults = sList;
+                    }
+                }
+
+                if (latestSessResults != null && !latestSessResults.isEmpty()) {
+                    int sTot = latestSessResults.size();
+                    int sCorr = (int) latestSessResults.stream().filter(pr -> Boolean.TRUE.equals(pr.getIsCorrect())).count();
+                    if (sTot > 0) {
+                        currentAtt = sTot;
+                        currentCorr = sCorr;
+                        currentAcc = BigDecimal.valueOf(sCorr * 100.0 / sTot).setScale(2, RoundingMode.HALF_UP);
+                    }
+                }
+            }
+
+            if (currentAcc == null) {
+                if (m4 != null) {
+                    currentAcc = m4;
+                } else if (m3 != null) {
+                    currentAcc = m3;
+                } else if (m2 != null) {
+                    currentAcc = m2;
+                }
+            }
+
+            if (currentAcc == null && lifetimeAcc != null) {
+                currentAcc = lifetimeAcc;
+                currentAtt = finalLifeAtt;
+                currentCorr = finalLifeCorr;
+            }
+
+            if (currentAcc != null) {
+                currentAcc = currentAcc.min(BigDecimal.valueOf(100.00)).max(BigDecimal.ZERO);
+            }
+
+            String finalStatus = "NOT_STARTED";
+            if (st != null && st.getStatus() != null) {
+                finalStatus = st.getStatus().name();
+                if ("UNLOCKED".equals(finalStatus) && (finalLifeAtt > 0 || wordsWithAcc > 0 || !lms.isEmpty())) {
+                    finalStatus = "IN_PROGRESS";
                 }
             }
 
             OffsetDateTime lastPracticed = st != null ? (st.getCompletedAt() != null ? st.getCompletedAt() : st.getUpdatedAt()) : null;
+            if (lastPracticed == null && latestSummary != null) {
+                lastPracticed = latestSummary.getCompletedAt();
+            }
             boolean bonusAwarded = st != null && (Boolean.TRUE.equals(st.getLessonCompletionBonusAwarded()) || Boolean.TRUE.equals(st.getPerfectScoreBonusAwarded()));
             int starsEarned = isCompleted && st != null && st.getBestLessonPoints() != null ? Math.min(3, st.getBestLessonPoints() / 100) : 0;
 
@@ -494,22 +633,27 @@ public class AdminLearnerService {
                     .lessonId(lesson.getLessonId())
                     .lessonTitle(lesson.getLessonTitle())
                     .gradeLevel(lesson.getGradeLevel() != null ? lesson.getGradeLevel().name() : "")
-                    .status(st != null && st.getStatus() != null ? st.getStatus().name() : "NOT_STARTED")
+                    .status(finalStatus)
                     .masteryScore(displayScore)
-                    .module1Score(isCompleted ? m1 : null)
-                    .module2Score(isCompleted ? m2 : null)
-                    .module3Score(isCompleted ? m3 : null)
-                    .module4Score(isCompleted ? m4 : null)
+                    .currentAccuracy(currentAcc)
+                    .lifetimeAccuracy(lifetimeAcc)
+                    .currentCorrect(currentCorr)
+                    .currentAttempts(currentAtt)
+                    .lifetimeCorrect(finalLifeAtt > 0 ? finalLifeCorr : null)
+                    .lifetimeAttempts(finalLifeAtt > 0 ? finalLifeAtt : null)
+                    .module1Score(m1)
+                    .module2Score(m2)
+                    .module3Score(m3)
+                    .module4Score(m4)
                     .starsEarned(starsEarned)
                     .masteryBonusAwarded(bonusAwarded)
-                    .moduleScores(isCompleted ? modDetails : List.of())
+                    .moduleScores(modDetails)
                     .completedAt(isCompleted && st != null ? st.getCompletedAt() : null)
                     .lastPracticedAt(lastPracticed)
                     .build();
         }).collect(Collectors.toList());
 
-        // Pre-fetch all practice results for this learner to calculate authentic per-word lesson & session accuracy
-        List<PracticeResult> allPracticeResults = practiceResultRepository.findBySessionLearnerLearnerId(learnerId);
+        // Group pre-fetched practice results by word for per-word calculations
         Map<UUID, List<PracticeResult>> resultsByWord = allPracticeResults.stream()
                 .filter(pr -> pr.getWord() != null)
                 .collect(Collectors.groupingBy(pr -> pr.getWord().getWordId()));
@@ -539,7 +683,11 @@ public class AdminLearnerService {
                             .lastPracticedAt(entry.getValue().get(entry.getValue().size() - 1).getRecordedAt())
                             .createdAt(OffsetDateTime.now())
                             .build();
-                    newWp = wordPerformanceRepository.save(newWp);
+                    try {
+                        newWp = wordPerformanceRepository.save(newWp);
+                    } catch (Exception ignored) {
+                        // In case of read-only transaction context or concurrent write
+                    }
                     wordPerformances.add(newWp);
                     wpWordIds.add(wid);
                 }
@@ -566,6 +714,9 @@ public class AdminLearnerService {
                 : Collections.emptyMap();
 
         java.util.function.Function<WordPerformance, AdminLearnerDetailResponse.LearnerWordPerformanceDetail> mapWordDetail = wp -> {
+            if (wp == null || wp.getWord() == null) {
+                return null;
+            }
             UUID wordId = wp.getWord().getWordId();
             List<PracticeResult> wordResults = resultsByWord.getOrDefault(wordId, List.of());
 
@@ -596,7 +747,11 @@ public class AdminLearnerService {
                 wp.setIncorrectCount(finalTotIncorr);
                 wp.setDemeritPoints(finalDemerits);
                 wp.setAccuracy(lifetimeAcc);
-                wordPerformanceRepository.save(wp);
+                try {
+                    wordPerformanceRepository.save(wp);
+                } catch (Exception ignored) {
+                    // Safe guard if in read-only transaction or concurrent write
+                }
             }
 
             // 2. Calculate Session Accuracy: performance in the learner's most recent practice session for this word
@@ -668,12 +823,13 @@ public class AdminLearnerService {
 
         // Build Weak words (accuracy < 70% or demeritPoints > 0)
         List<AdminLearnerDetailResponse.LearnerWordPerformanceDetail> weakWords = wordPerformances.stream()
-                .filter(wp -> (wp.getDemeritPoints() != null && wp.getDemeritPoints() > 0) ||
+                .filter(wp -> wp.getWord() != null && ((wp.getDemeritPoints() != null && wp.getDemeritPoints() > 0) ||
                               (wp.getTotalAttempts() != null && wp.getTotalAttempts() > 0 && 
-                               (wp.getCorrectCount() * 100.0 / wp.getTotalAttempts()) < 70.0))
+                               (wp.getCorrectCount() * 100.0 / wp.getTotalAttempts()) < 70.0)))
                 .sorted(Comparator.comparing((WordPerformance wp) -> wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0).reversed()
                         .thenComparing(wp -> wp.getAccuracy() != null ? wp.getAccuracy() : BigDecimal.ZERO))
                 .map(mapWordDetail)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         // Full Word-by-Word diagnostic list for teacher & admin
@@ -685,6 +841,7 @@ public class AdminLearnerService {
                     return att > 0 ? (double) corr / att : 0.0;
                 }))
                 .map(mapWordDetail)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         // Part of Speech (POS) accuracy breakdown for this student
@@ -761,10 +918,13 @@ public class AdminLearnerService {
         List<AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail> cumDetails = completedCum.stream().map(cs -> {
             String pairId = cs.getLessonPairId();
             String displayName = pairId;
+            String lessonNamesStr = null;
+            String catName = null;
+            BigDecimal overallAccuracy = null;
             if (pairId != null && !pairId.isBlank()) {
                 String[] parts = pairId.split("_");
                 List<String> names = new ArrayList<>();
-                String catName = null;
+                List<Double> lessonAccuracies = new ArrayList<>();
                 for (String p : parts) {
                     try {
                         UUID lid = UUID.fromString(p.trim());
@@ -774,19 +934,87 @@ public class AdminLearnerService {
                             if (catName == null && l.getCategory() != null && l.getCategory().getCategoryName() != null) {
                                 catName = l.getCategory().getCategoryName();
                             }
+                            
+                            // Find corresponding lesson detail to get its mastery score
+                            lessonDetails.stream()
+                                    .filter(ld -> lid.equals(ld.getLessonId()))
+                                    .findFirst()
+                                    .ifPresent(ld -> {
+                                        if (ld.getMasteryScore() != null) {
+                                            lessonAccuracies.add(ld.getMasteryScore().doubleValue());
+                                        } else {
+                                            // Fallback: calculate accuracy from raw attempts exactly like DashboardService does
+                                            // for lessons that are "In Progress" but have practice data.
+                                            List<WordPerformance> lPerfs = lessonPerfMap.getOrDefault(lid, List.of());
+                                            int totAtt = lPerfs.stream().mapToInt(wp -> wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0).sum();
+                                            int totCorr = lPerfs.stream().mapToInt(wp -> wp.getCorrectCount() != null ? wp.getCorrectCount() : 0).sum();
+                                            
+                                            double wordAccSum = 0.0;
+                                            int wordsWithAcc = 0;
+                                            for (WordPerformance wp : lPerfs) {
+                                                if (wp.getAccuracy() != null && (wp.getTotalAttempts() == null || wp.getTotalAttempts() > 0)) {
+                                                    wordAccSum += wp.getAccuracy().doubleValue();
+                                                    wordsWithAcc++;
+                                                }
+                                            }
+                                            
+                                            if (wordsWithAcc > 0) {
+                                                lessonAccuracies.add(wordAccSum / wordsWithAcc);
+                                            } else if (totAtt > 0) {
+                                                lessonAccuracies.add((double) totCorr * 100.0 / totAtt);
+                                            } else {
+                                                // Module scores fallback
+                                                List<LessonModuleScore> lms = scoreMap.getOrDefault(lid, List.of());
+                                                if (!lms.isEmpty()) {
+                                                    Optional<LessonModuleScore> mod4Opt = lms.stream()
+                                                            .filter(m -> m.getModuleNumber() != null && m.getModuleNumber() == 4 && m.getScore() != null)
+                                                            .findFirst();
+                                                    if (mod4Opt.isPresent()) {
+                                                        lessonAccuracies.add(mod4Opt.get().getScore().doubleValue());
+                                                    } else {
+                                                        double avg = lms.stream()
+                                                                .filter(m -> m.getTotalCount() != null && m.getTotalCount() > 0 && m.getScore() != null)
+                                                                .mapToDouble(m -> m.getScore().doubleValue())
+                                                                .average()
+                                                                .orElse(0.0);
+                                                        if (avg > 0.0) {
+                                                            lessonAccuracies.add(avg);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
                         }
                     } catch (Exception ignored) {}
                 }
                 if (!names.isEmpty()) {
-                    displayName = (catName != null ? catName + ": " : "") + String.join(" & ", names);
+                    lessonNamesStr = String.join(" + ", names);
+                    if (catName == null) {
+                        catName = "Cumulative Review";
+                    }
+                }
+                
+                if (!lessonAccuracies.isEmpty() && cs.getAccuracyPercent() != null) {
+                    double lessonAvg = lessonAccuracies.stream().mapToDouble(d -> d).average().orElse(0.0);
+                    double cumScore = cs.getAccuracyPercent().doubleValue();
+                    double overall = (lessonAvg * 0.60) + (cumScore * 0.40);
+                    overallAccuracy = BigDecimal.valueOf(overall).setScale(2, RoundingMode.HALF_UP);
+                } else if (!lessonAccuracies.isEmpty()) {
+                    double lessonAvg = lessonAccuracies.stream().mapToDouble(d -> d).average().orElse(0.0);
+                    overallAccuracy = BigDecimal.valueOf(lessonAvg).setScale(2, RoundingMode.HALF_UP);
+                } else if (cs.getAccuracyPercent() != null) {
+                    overallAccuracy = cs.getAccuracyPercent().setScale(2, RoundingMode.HALF_UP);
                 }
             }
 
             return AdminLearnerDetailResponse.CumulativeReviewPerformanceDetail.builder()
                     .sessionId(cs.getId())
                     .lessonPairId(cs.getLessonPairId())
-                    .categoryName(displayName)
+                    .categoryName(catName != null ? catName : displayName)
+                    .lessonNames(lessonNamesStr != null ? lessonNamesStr : "")
                     .accuracyPercent(cs.getAccuracyPercent())
+                    .overallAccuracy(overallAccuracy)
                     .badgeAwarded(cs.getBadgeAwarded())
                     .pointsEarned(cs.getPointsEarned())
                     .correctCount(cs.getCorrectCount())
@@ -933,6 +1161,13 @@ public class AdminLearnerService {
         Learner learner = learnerRepository.findById(learnerId)
                 .orElseThrow(() -> new IllegalArgumentException("Learner not found: " + learnerId));
         String displayName = learner.getDisplayName();
+
+        // Safely wipe all child records to avoid FK constraints
+        learnerService.resetProgress(learnerId);
+        classPerformanceRepository.deleteByLearnerLearnerId(learnerId);
+        masteryRepository.deleteByLearnerLearnerId(learnerId);
+        classEnrollmentRepository.deleteByLearnerLearnerId(learnerId);
+
         learnerRepository.delete(learner);
 
         if (adminId != null) {
@@ -1216,8 +1451,17 @@ public class AdminLearnerService {
             masteryVal = mastery != null && mastery.getMasteryLevel() != null ? mastery.getMasteryLevel() : "LEARNING";
         }
 
-        UUID resSecId = learner.getSection() != null ? learner.getSection().getSectionId() : null;
-        String resSecName = learner.getSection() != null ? learner.getSection().getSectionName() : null;
+        UUID resSecId = null;
+        String resSecName = null;
+        try {
+            if (learner.getSection() != null) {
+                resSecId = learner.getSection().getSectionId();
+                resSecName = learner.getSection().getSectionName();
+            }
+        } catch (Exception e) {
+            resSecId = null;
+            resSecName = null;
+        }
 
         if (resSecName == null) {
             if (sectionId != null) {
@@ -1225,11 +1469,13 @@ public class AdminLearnerService {
                 resSecName = classroomRepository.findById(sectionId).map(com.vocaboo.entity.Classroom::getName).orElse(null);
             }
             if (resSecName == null) {
-                List<com.vocaboo.entity.ClassEnrollment> enrollments = classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learner.getLearnerId(), "ACTIVE");
-                if (!enrollments.isEmpty() && enrollments.get(0).getClassroom() != null) {
-                    resSecId = enrollments.get(0).getClassroom().getClassId();
-                    resSecName = enrollments.get(0).getClassroom().getName();
-                }
+                try {
+                    List<com.vocaboo.entity.ClassEnrollment> enrollments = classEnrollmentRepository.findByLearnerLearnerIdAndStatus(learner.getLearnerId(), "ACTIVE");
+                    if (!enrollments.isEmpty() && enrollments.get(0).getClassroom() != null) {
+                        resSecId = enrollments.get(0).getClassroom().getClassId();
+                        resSecName = enrollments.get(0).getClassroom().getName();
+                    }
+                } catch (Exception ignored) {}
             }
         }
 
@@ -1406,67 +1652,7 @@ public class AdminLearnerService {
                     .build());
         }
 
-        // 2. Process severe struggles from WordPerformance (high demerits or low accuracy)
-        List<WordPerformance> performances = wordPerformanceRepository.findAll();
-        for (WordPerformance wp : performances) {
-            Learner learner = wp.getLearner();
-            VocabularyWord word = wp.getWord();
-            if (learner == null || word == null) continue;
-
-            if (enrolledIds != null) {
-                if (!enrolledIds.contains(learner.getLearnerId())) continue;
-            } else if (sectionId != null) {
-                if (learner.getSection() == null || !sectionId.equals(learner.getSection().getSectionId())) continue;
-            }
-
-            if (gradeLevel != null) {
-                if (learner.getGradeLevel() != gradeLevel) continue;
-            }
-
-            String key = learner.getLearnerId() + "_" + word.getWordId();
-            if (processedKeys.contains(key)) continue;
-
-            int demerits = wp.getDemeritPoints() != null ? wp.getDemeritPoints() : 0;
-            int totalAttempts = wp.getTotalAttempts() != null ? wp.getTotalAttempts() : 0;
-            BigDecimal accuracy = wp.getAccuracy() != null ? wp.getAccuracy() : BigDecimal.ZERO;
-            int incorrectCount = wp.getIncorrectCount() != null ? wp.getIncorrectCount() : 0;
-
-            boolean severeStruggle = demerits >= 20 || (totalAttempts >= 3 && accuracy.compareTo(BigDecimal.valueOf(60.0)) < 0 && incorrectCount >= 2);
-            if (!severeStruggle) continue;
-
-            processedKeys.add(key);
-
-            String reason;
-            if (demerits >= 20) {
-                reason = "High error severity (" + demerits + " demerit points accumulated)";
-            } else {
-                reason = "Low accuracy (" + accuracy.setScale(1, RoundingMode.HALF_UP) + "% with " + incorrectCount + " mistakes)";
-            }
-
-            responses.add(com.vocaboo.dto.response.FlaggedLearnerResponse.builder()
-                    .progressId(wp.getPerformanceId())
-                    .learnerId(learner.getLearnerId())
-                    .learnerName(learner.getDisplayName())
-                    .username(learner.getUserId() != null ? learner.getUserId() : learner.getLearnerId().toString().substring(0, 8))
-                    .sectionName(resolveSectionName(learner))
-                    .gradeLevel(learner.getGradeLevel() != null ? learner.getGradeLevel().name() : "")
-                    .wordId(word.getWordId())
-                    .englishWord(word.getEnglishWord())
-                    .cebuanoMeaning(word.getCebuanoMeaning())
-                    .partOfSpeech(word.getPartOfSpeech())
-                    .lessonId(word.getLesson() != null ? word.getLesson().getLessonId() : null)
-                    .lessonTitle(word.getLesson() != null ? word.getLesson().getLessonTitle() : "Unknown Lesson")
-                    .reintroductionCount(0)
-                    .consecutiveIncorrect(incorrectCount)
-                    .currentLevel("LEARNING")
-                    .flaggedAt(wp.getLastPracticedAt() != null ? wp.getLastPracticedAt() : wp.getUpdatedAt())
-                    .flagReason(reason)
-                    .totalAttempts(totalAttempts)
-                    .accuracy(accuracy)
-                    .build());
-        }
-
-        // Sort: most recent or highest error severity first
+        // Sort: most recent first
         responses.sort((a, b) -> {
             if (a.getFlaggedAt() != null && b.getFlaggedAt() != null) {
                 return b.getFlaggedAt().compareTo(a.getFlaggedAt());

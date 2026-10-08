@@ -8,6 +8,11 @@ import java.util.UUID;
 
 @Repository
 public interface LearnerMasteryRepository extends JpaRepository<LearnerMastery, UUID> {
+    @Override
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"learner"})
+    java.util.List<LearnerMastery> findAll();
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"learner"})
     Optional<LearnerMastery> findByLearnerLearnerId(UUID learnerId);
     void deleteByLearnerLearnerId(UUID learnerId);
 }

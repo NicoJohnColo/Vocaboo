@@ -79,6 +79,18 @@ public class DifficultyController {
         return ResponseEntity.ok(reintroductionService.acknowledgeUnderstanding(resolvedLearnerId, wordId, moduleNumber));
     }
 
+    @PostMapping("/sandbox/{id}/difficulty/adjust")
+    public ResponseEntity<DifficultyProgressResponse> adjustSandboxDifficulty(
+            @PathVariable("id") UUID sandboxWordId,
+            @RequestBody DifficultyAdjustmentRequest request,
+            @RequestParam(name = "moduleNumber", required = false, defaultValue = "2") Integer moduleNumber,
+            Principal principal) {
+        UUID resolvedLearnerId = resolveLearnerId(request.getLearnerId(), principal);
+        boolean isCorrect = Boolean.TRUE.equals(request.getCorrect());
+        return ResponseEntity.ok(difficultyService.calculateNextForSandbox(
+                resolvedLearnerId, sandboxWordId, isCorrect, moduleNumber, request.getActivityType()));
+    }
+
     private UUID resolveLearnerId(UUID requestLearnerId, Principal principal) {
         if (requestLearnerId != null) {
             return requestLearnerId;

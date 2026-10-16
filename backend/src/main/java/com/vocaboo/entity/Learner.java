@@ -67,6 +67,10 @@ public class Learner {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(name = "is_test_account", nullable = false)
+    @Builder.Default
+    private Boolean isTestAccount = false;
+
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
@@ -117,6 +121,14 @@ public class Learner {
 
     public Boolean getIsActive() {
         return isActive;
+    }
+
+    public Boolean getIsTestAccount() {
+        return isTestAccount;
+    }
+
+    public void setIsTestAccount(Boolean isTestAccount) {
+        this.isTestAccount = isTestAccount;
     }
 
     public OffsetDateTime getCreatedAt() {
@@ -181,6 +193,7 @@ public class Learner {
         private LanguageMedium languagePreference = LanguageMedium.FULL_ENGLISH;
         private String posFocus = "ALL";
         private Boolean isActive = true;
+        private Boolean isTestAccount = false;
         private Boolean onboardingComplete = false;
         private Boolean masteryApplyImmediately = true;
         private OffsetDateTime createdAt;
@@ -197,6 +210,7 @@ public class Learner {
         public LearnerBuilder languagePreference(LanguageMedium languagePreference) { this.languagePreference = languagePreference; return this; }
         public LearnerBuilder posFocus(String posFocus) { this.posFocus = posFocus; return this; }
         public LearnerBuilder isActive(Boolean isActive) { this.isActive = isActive; return this; }
+        public LearnerBuilder isTestAccount(Boolean isTestAccount) { this.isTestAccount = isTestAccount; return this; }
         public LearnerBuilder onboardingComplete(Boolean onboardingComplete) { this.onboardingComplete = onboardingComplete; return this; }
         public LearnerBuilder masteryApplyImmediately(Boolean masteryApplyImmediately) { this.masteryApplyImmediately = masteryApplyImmediately; return this; }
         public LearnerBuilder createdAt(OffsetDateTime createdAt) { this.createdAt = createdAt; return this; }
@@ -223,6 +237,7 @@ public class Learner {
             l.languagePreference = this.languagePreference;
             l.posFocus = this.posFocus;
             l.isActive = this.isActive;
+            l.isTestAccount = this.isTestAccount != null ? this.isTestAccount : false;
             l.onboardingComplete = this.onboardingComplete;
             l.masteryApplyImmediately = this.masteryApplyImmediately;
             l.createdAt = this.createdAt != null ? this.createdAt : OffsetDateTime.now();

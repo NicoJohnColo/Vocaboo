@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface DifficultyProgressRepository extends JpaRepository<DifficultyProgress, UUID> {
     Optional<DifficultyProgress> findByLearnerLearnerIdAndWordWordIdAndModuleNumber(UUID learnerId, UUID wordId, Integer moduleNumber);
 
+    Optional<DifficultyProgress> findByLearnerLearnerIdAndSandboxWordWordIdAndModuleNumber(UUID learnerId, UUID sandboxWordId, Integer moduleNumber);
+
     Optional<DifficultyProgress> findFirstByLearnerLearnerIdAndWordWordIdOrderByUpdatedAtDesc(UUID learnerId, UUID wordId);
 
     default Optional<DifficultyProgress> findByLearnerLearnerIdAndWordWordId(UUID learnerId, UUID wordId) {

@@ -36,10 +36,18 @@ public class DifficultyAdjustmentService {
     private final LearnerLessonStatusRepository lessonStatusRepository;
     private final LessonModuleScoreRepository lessonModuleScoreRepository;
     private final LessonRepository lessonRepository;
+    private final SandboxWordRepository sandboxWordRepository;
 
     @Transactional(readOnly = true)
     public DifficultyLevel getCurrentLevel(UUID learnerId, UUID wordId, Integer moduleNumber) {
         return progressRepository.findByLearnerLearnerIdAndWordWordIdAndModuleNumber(learnerId, wordId, moduleNumber != null ? moduleNumber : 2)
+                .map(DifficultyProgress::getCurrentLevel)
+                .orElse(DifficultyLevel.LEARNING);
+    }
+
+    @Transactional(readOnly = true)
+    public DifficultyLevel getCurrentSandboxLevel(UUID learnerId, UUID sandboxWordId, Integer moduleNumber) {
+        return progressRepository.findByLearnerLearnerIdAndSandboxWordWordIdAndModuleNumber(learnerId, sandboxWordId, moduleNumber != null ? moduleNumber : 2)
                 .map(DifficultyProgress::getCurrentLevel)
                 .orElse(DifficultyLevel.LEARNING);
     }
@@ -657,12 +665,92 @@ public class DifficultyAdjustmentService {
         lessonWordAccuracyRepository.deleteByLearnerLearnerIdAndLessonLessonId(learnerId, lessonId);
     }
 
+    @Transactional
+    public DifficultyProgressResponse calculateNextForSandbox(UUID learnerId, UUID sandboxWordId, boolean isCorrect, Integer moduleNumber, String activityType) {
+        int modNum = moduleNumber != null ? moduleNumber : 2;
+        DifficultyProgress progress = progressRepository
+                .findByLearnerLearnerIdAndSandboxWordWordIdAndModuleNumber(learnerId, sandboxWordId, modNum)
+                .orElseGet(() -> {
+                    Learner learner = learnerRepository.findById(learnerId)
+                            .orElseThrow(() -> new IllegalArgumentException("Learner not found"));
+                    SandboxWord sandboxWord = sandboxWordRepository.findById(sandboxWordId)
+                            .orElseThrow(() -> new IllegalArgumentException("Sandbox word not found"));
+                    DifficultyProgress created = DifficultyProgress.builder()
+                            .learner(learner)
+                            .sandboxWord(sandboxWord)
+                            .moduleNumber(modNum)
+                            .currentLevel(DifficultyLevel.LEARNING)
+                            .consecutiveCorrect(0)
+                            .consecutiveIncorrect(0)
+                            .needsReintroduction(false)
+                            .reintroductionCount(0)
+                            .build();
+                    return progressRepository.save(created);
+                });
+
+        if ("PRONUNCIATION_FEEDBACK".equalsIgnoreCase(activityType)
+                || "PRONUNCIATION".equalsIgnoreCase(activityType)
+                || "SPEAKING".equalsIgnoreCase(activityType)
+                || "MICROPHONE".equalsIgnoreCase(activityType)) {
+            return toProgressResponse(progress);
+        }
+
+        DifficultyLevel oldLevel = progress.getCurrentLevel();
+        DifficultyLevel newLevel = oldLevel;
+        boolean isRecallType = isRecallActivity(activityType);
+
+        if (isCorrect) {
+            progress.setConsecutiveIncorrect(0);
+            progress.setConsecutiveCorrect(progress.getConsecutiveCorrect() + 1);
+            if (isRecallType) {
+                progress.setRecallInCurrentStreak(true);
+            }
+            int requiredStreak = (oldLevel == DifficultyLevel.PROFICIENT && modNum != 3) ? 1 : getRequiredUpgradeStreak(oldLevel);
+            if (progress.getConsecutiveCorrect() >= requiredStreak && oldLevel != DifficultyLevel.MASTERED) {
+                newLevel = getNextHigher(oldLevel);
+                progress.setCurrentLevel(newLevel);
+                progress.setConsecutiveCorrect(0);
+                progress.setConsecutiveIncorrect(0);
+                progress.setAttemptCountAtCurrentTier(1);
+                progress.setRecallInCurrentStreak(false);
+            } else {
+                progress.setAttemptCountAtCurrentTier(progress.getAttemptCountAtCurrentTier() + 1);
+            }
+        } else {
+            progress.setConsecutiveCorrect(0);
+            progress.setRecallInCurrentStreak(false);
+            int newIncorrect = progress.getConsecutiveIncorrect() + 1;
+            progress.setConsecutiveIncorrect(newIncorrect);
+            progress.setAttemptCountAtCurrentTier(progress.getAttemptCountAtCurrentTier() + 1);
+
+            if (oldLevel != DifficultyLevel.MASTERED) {
+                if (oldLevel != DifficultyLevel.LEARNING && newIncorrect >= 2) {
+                    newLevel = getNextLower(oldLevel);
+                    progress.setCurrentLevel(newLevel);
+                    progress.setConsecutiveIncorrect(0);
+                    progress.setConsecutiveCorrect(0);
+                    progress.setAttemptCountAtCurrentTier(1);
+                } else if (oldLevel == DifficultyLevel.LEARNING && newIncorrect >= 4) {
+                    progress.setNeedsReintroduction(true);
+                    progress.setReintroductionCount(progress.getReintroductionCount() + 1);
+                    progress.setLastReintroducedAt(OffsetDateTime.now());
+                    progress.setConsecutiveIncorrect(0);
+                }
+            }
+        }
+
+        progress.setLastAdjustedAt(OffsetDateTime.now());
+        progress.setUpdatedAt(OffsetDateTime.now());
+        progress = progressRepository.save(progress);
+        return toProgressResponse(progress);
+    }
+
     private DifficultyProgressResponse toProgressResponse(DifficultyProgress progress) {
         boolean showExplanations = shouldOfferExplanations(progress.getConsecutiveIncorrect(), progress.getCurrentLevel());
         return DifficultyProgressResponse.builder()
                 .progressId(progress.getProgressId())
                 .learnerId(progress.getLearner().getLearnerId())
-                .wordId(progress.getWord().getWordId())
+                .wordId(progress.getEffectiveWordId())
                 .currentLevel(progress.getCurrentLevel().name())
                 .consecutiveCorrect(progress.getConsecutiveCorrect())
                 .consecutiveIncorrect(progress.getConsecutiveIncorrect())

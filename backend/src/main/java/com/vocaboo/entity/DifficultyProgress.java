@@ -29,12 +29,27 @@ public class DifficultyProgress {
     private Learner learner;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "word_id", nullable = false)
+    @JoinColumn(name = "word_id", nullable = true)
     private VocabularyWord word;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sandbox_word_id", nullable = true)
+    private SandboxWord sandboxWord;
 
     @Column(name = "module_number", nullable = false)
     @Builder.Default
     private Integer moduleNumber = 2;
+
+    public boolean isSandbox() {
+        return this.sandboxWord != null;
+    }
+
+    public UUID getEffectiveWordId() {
+        if (this.sandboxWord != null) {
+            return this.sandboxWord.getWordId();
+        }
+        return this.word != null ? this.word.getWordId() : null;
+    }
 
 
     @Enumerated(EnumType.STRING)
@@ -132,6 +147,8 @@ public class DifficultyProgress {
     public Boolean getSentenceCompletionClearedAtCurrentTier() { return sentenceCompletionClearedAtCurrentTier; }
     public Boolean getSentenceRearrangementClearedAtCurrentTier() { return sentenceRearrangementClearedAtCurrentTier; }
     public VocabularyWord getWord() { return word; }
+    public SandboxWord getSandboxWord() { return sandboxWord; }
+    public void setSandboxWord(SandboxWord sandboxWord) { this.sandboxWord = sandboxWord; }
     public Integer getAttemptCountAtCurrentTier() { return attemptCountAtCurrentTier; }
 
     public void setCurrentLevel(DifficultyLevel currentLevel) { this.currentLevel = currentLevel; }
@@ -167,6 +184,7 @@ public class DifficultyProgress {
     public static class DifficultyProgressBuilder {
         private Learner learner;
         private VocabularyWord word;
+        private SandboxWord sandboxWord;
         private Integer moduleNumber = 2;
         private DifficultyLevel currentLevel = DifficultyLevel.LEARNING;
         private Integer consecutiveCorrect = 0;
@@ -180,6 +198,7 @@ public class DifficultyProgress {
 
         public DifficultyProgressBuilder learner(Learner learner) { this.learner = learner; return this; }
         public DifficultyProgressBuilder word(VocabularyWord word) { this.word = word; return this; }
+        public DifficultyProgressBuilder sandboxWord(SandboxWord sandboxWord) { this.sandboxWord = sandboxWord; return this; }
         public DifficultyProgressBuilder moduleNumber(Integer moduleNumber) { this.moduleNumber = moduleNumber; return this; }
         public DifficultyProgressBuilder currentLevel(DifficultyLevel currentLevel) { this.currentLevel = currentLevel; return this; }
         public DifficultyProgressBuilder consecutiveCorrect(Integer consecutiveCorrect) { this.consecutiveCorrect = consecutiveCorrect; return this; }
@@ -198,6 +217,7 @@ public class DifficultyProgress {
             DifficultyProgress p = new DifficultyProgress();
             p.learner = this.learner;
             p.word = this.word;
+            p.sandboxWord = this.sandboxWord;
             p.moduleNumber = this.moduleNumber;
             p.currentLevel = this.currentLevel;
             p.consecutiveCorrect = this.consecutiveCorrect;

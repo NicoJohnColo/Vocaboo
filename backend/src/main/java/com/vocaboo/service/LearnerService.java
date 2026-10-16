@@ -75,13 +75,25 @@ public class LearnerService {
         throw new IllegalStateException("Unable to generate unique user ID after multiple attempts");
     }
 
+    private boolean isTestAccountName(String normalizedName) {
+        if (normalizedName == null) return false;
+        String lower = normalizedName.trim().toLowerCase();
+        return lower.contains("tin") || lower.contains("aaaa") || lower.contains("test") || lower.contains("grade4test");
+    }
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (learnerRepository.findByDisplayNameIgnoreCase(request.getDisplayName().trim()).isPresent()) {
+        String sanitizedDisplayName = request.getDisplayName() != null
+                ? request.getDisplayName().trim().toLowerCase()
+                : "";
+        if (sanitizedDisplayName.isEmpty()) {
+            throw new IllegalArgumentException("Display name is required.");
+        }
+        if (learnerRepository.findByDisplayNameIgnoreCase(sanitizedDisplayName).isPresent()) {
             throw new IllegalArgumentException("This name is already taken. Please choose another one.");
         }
 
-        String hashedPin = passwordEncoder.encode(request.getPin());
+        String hashedPin = passwordEncoder.encode(request.getPin() != null ? request.getPin().trim() : "");
         String avatar = (request.getAvatar() != null && !request.getAvatar().trim().isEmpty())
                 ? request.getAvatar().trim()
                 : getRandomDefaultAvatar();
@@ -91,12 +103,13 @@ public class LearnerService {
 
         Learner learner = Learner.builder()
                 .userId(generatedUserId)
-                .displayName(request.getDisplayName())
+                .displayName(sanitizedDisplayName)
                 .age(request.getAge())
                 .pinHash(hashedPin)
                 .avatar(avatar)
                 .languagePreference(request.getLanguagePreference())
                 .gradeLevel(gradeLevel)
+                .isTestAccount(isTestAccountName(sanitizedDisplayName))
                 .onboardingComplete(true)
                 .build();
 
@@ -116,11 +129,13 @@ public class LearnerService {
     }
 
     public boolean isNameAvailable(String displayName) {
-        return learnerRepository.findByDisplayNameIgnoreCase(displayName.trim()).isEmpty();
+        if (displayName == null) return false;
+        return learnerRepository.findByDisplayNameIgnoreCase(displayName.trim().toLowerCase()).isEmpty();
     }
 
     public AuthResponse login(LoginRequest request) {
-        String identifier = request.getLearnerId().trim();
+        String identifier = request.getLearnerId() != null ? request.getLearnerId().trim() : "";
+        String normalizedIdentifier = identifier.toLowerCase();
         Learner learner = null;
 
         // 1. Check if identifier matches structured User ID format XX-XXXX-XXX
@@ -143,9 +158,9 @@ public class LearnerService {
             learner = learnerRepository.findByUserIdIgnoreCase(identifier).orElse(null);
         }
 
-        // 4. Fallback to display name lookup
+        // 4. Fallback to sanitized display name lookup (.trim().toLowerCase())
         if (learner == null) {
-            learner = learnerRepository.findByDisplayNameIgnoreCase(identifier)
+            learner = learnerRepository.findByDisplayNameIgnoreCase(normalizedIdentifier)
                     .orElseThrow(() -> new BadCredentialsException("Incorrect PIN, please try again."));
         }
 

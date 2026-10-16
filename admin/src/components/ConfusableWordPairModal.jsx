@@ -168,6 +168,7 @@ export default function ConfusableWordPairModal({
   const [wordBId, setWordBId]     = useState('');
   const [sentenceA, setSentenceA] = useState('');
   const [sentenceB, setSentenceB] = useState('');
+  const [distinctionExplanation, setDistinctionExplanation] = useState('');
 
   const [notInLessonA, setNotInLessonA] = useState('');
   const [notInLessonB, setNotInLessonB] = useState('');
@@ -196,6 +197,7 @@ export default function ConfusableWordPairModal({
   const applySuggestion = (s) => {
     setWordAId(s.word_a.word_id);
     setWordBId(s.word_b.word_id);
+    setDistinctionExplanation(s.reason ? `These two words are easily confused: ${s.reason}.` : '');
     setNotInLessonA('');
     setNotInLessonB('');
     setFieldErrors({});
@@ -208,10 +210,16 @@ export default function ConfusableWordPairModal({
     if (!wordBId) errs.wordB = 'Please select Word B from the lesson';
     if (wordAId && wordBId && wordAId === wordBId)
       errs.wordB = 'Word B must be different from Word A';
-    if (!sentenceA.trim() || sentenceA.trim().length < 5)
+    if (!sentenceA.trim() || sentenceA.trim().length < 5) {
       errs.sentenceA = 'Contrastive sentence for Word A required (min 5 chars)';
-    if (!sentenceB.trim() || sentenceB.trim().length < 5)
+    } else if (wordA && !sentenceA.toLowerCase().includes(wordA.english_word.toLowerCase())) {
+      errs.sentenceA = `Sentence must include "${wordA.english_word}" to form the fill-in blank in Module 3`;
+    }
+    if (!sentenceB.trim() || sentenceB.trim().length < 5) {
       errs.sentenceB = 'Contrastive sentence for Word B required (min 5 chars)';
+    } else if (wordB && !sentenceB.toLowerCase().includes(wordB.english_word.toLowerCase())) {
+      errs.sentenceB = `Sentence must include "${wordB.english_word}" to form the fill-in blank in Module 3`;
+    }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -226,6 +234,7 @@ export default function ConfusableWordPairModal({
         word_b_id: wordBId,
         contrastive_sentence_a: sentenceA.trim(),
         contrastive_sentence_b: sentenceB.trim(),
+        distinction_explanation: distinctionExplanation.trim(),
       };
       await ConfusableWordService.createPair(lessonId, payload);
       onCreated();
@@ -356,39 +365,70 @@ export default function ConfusableWordPairModal({
               />
             </div>
 
-            {/* Contrastive sentences */}
+            {/* Contrastive distinction & sentences */}
             {bothSelected && !notInLessonTerm && (
-              <div className="confusable-modal__sentences">
-                <div className="confusable-modal__sentence-block">
-                  <label className="form-label" htmlFor="sentence-a">
-                    Contrastive sentence for <strong>{wordA?.english_word ?? 'Word A'}</strong> *
-                  </label>
+              <>
+                <div className="confusable-modal__sentence-block" style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                    <label className="form-label" htmlFor="distinction-explanation" style={{ marginBottom: 0, fontWeight: 700, color: '#4338ca' }}>
+                      💡 Why are they not the same? (Distinction Explanation)
+                    </label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      Shown to learner when confused
+                    </span>
+                  </div>
+                  <textarea
+                    id="distinction-explanation"
+                    className="form-textarea"
+                    rows={2}
+                    placeholder={`e.g. Even though both words look/sound similar, "${wordA?.english_word}" means ${wordA?.cebuano_meaning || '...'}, while "${wordB?.english_word}" means ${wordB?.cebuano_meaning || '...'}.`}
+                    value={distinctionExplanation}
+                    onChange={e => setDistinctionExplanation(e.target.value)}
+                  />
+                </div>
+
+                <div className="confusable-modal__sentences">
+                  <div className="confusable-modal__sentence-block">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                    <label className="form-label" htmlFor="sentence-a" style={{ marginBottom: 0 }}>
+                      Example sentence containing <strong>{wordA?.english_word ?? 'Word A'}</strong> *
+                    </label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      Module 3 will blank out "{wordA?.english_word}"
+                    </span>
+                  </div>
                   <textarea
                     id="sentence-a"
                     className={`form-textarea ${fieldErrors.sentenceA ? 'form-input--error' : ''}`}
                     rows={2}
-                    placeholder={`e.g. I write with a ${wordA?.english_word?.toLowerCase() ?? 'pencil'}.`}
+                    placeholder={`e.g. The sun is very ${wordA?.english_word?.toLowerCase() ?? 'bright'} today.`}
                     value={sentenceA}
                     onChange={e => { setSentenceA(e.target.value); setFieldErrors(fe => ({ ...fe, sentenceA: '' })); }}
                   />
                   {fieldErrors.sentenceA && <span className="form-error">{fieldErrors.sentenceA}</span>}
                 </div>
                 <div className="confusable-modal__sentence-block">
-                  <label className="form-label" htmlFor="sentence-b">
-                    Contrastive sentence for <strong>{wordB?.english_word ?? 'Word B'}</strong> *
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                    <label className="form-label" htmlFor="sentence-b" style={{ marginBottom: 0 }}>
+                      Example sentence containing <strong>{wordB?.english_word ?? 'Word B'}</strong> *
+                    </label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      Module 3 will blank out "{wordB?.english_word}"
+                    </span>
+                  </div>
                   <textarea
                     id="sentence-b"
                     className={`form-textarea ${fieldErrors.sentenceB ? 'form-input--error' : ''}`}
                     rows={2}
-                    placeholder={`e.g. I write with a ${wordB?.english_word?.toLowerCase() ?? 'pen'}.`}
+                    placeholder={`e.g. We will ${wordB?.english_word?.toLowerCase() ?? 'discover'} new stars at night.`}
                     value={sentenceB}
                     onChange={e => { setSentenceB(e.target.value); setFieldErrors(fe => ({ ...fe, sentenceB: '' })); }}
                   />
                   {fieldErrors.sentenceB && <span className="form-error">{fieldErrors.sentenceB}</span>}
                 </div>
               </div>
-            )}
+            </>
+          )}
           </>
         )}
 

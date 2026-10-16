@@ -16,6 +16,9 @@ public interface ConfusableWordPairRepository extends JpaRepository<ConfusableWo
     @EntityGraph(attributePaths = {"lesson", "wordA", "wordB"})
     List<ConfusableWordPair> findByLessonLessonId(UUID lessonId);
 
+    @EntityGraph(attributePaths = {"lesson", "wordA", "wordB"})
+    List<ConfusableWordPair> findByWordAWordIdOrWordBWordId(UUID wordAId, UUID wordBId);
+
     /**
      * Order-independent duplicate check: returns true if a pair already exists
      * for (wordAId, wordBId) OR (wordBId, wordAId) within the same lesson.

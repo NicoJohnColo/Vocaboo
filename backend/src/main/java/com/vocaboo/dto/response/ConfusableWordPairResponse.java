@@ -15,6 +15,7 @@ public class ConfusableWordPairResponse {
     private VocabularyWordResponse wordB;
     private String contrastiveSentenceA;
     private String contrastiveSentenceB;
+    private String distinctionExplanation;
 
     public static ConfusableWordPairResponseBuilder builder() { return new ConfusableWordPairResponseBuilder(); }
 
@@ -25,6 +26,7 @@ public class ConfusableWordPairResponse {
         private VocabularyWordResponse wordB;
         private String contrastiveSentenceA;
         private String contrastiveSentenceB;
+        private String distinctionExplanation;
 
         public ConfusableWordPairResponseBuilder pairId(UUID pairId) { this.pairId = pairId; return this; }
         public ConfusableWordPairResponseBuilder lessonId(UUID lessonId) { this.lessonId = lessonId; return this; }
@@ -32,6 +34,7 @@ public class ConfusableWordPairResponse {
         public ConfusableWordPairResponseBuilder wordB(VocabularyWordResponse wordB) { this.wordB = wordB; return this; }
         public ConfusableWordPairResponseBuilder contrastiveSentenceA(String contrastiveSentenceA) { this.contrastiveSentenceA = contrastiveSentenceA; return this; }
         public ConfusableWordPairResponseBuilder contrastiveSentenceB(String contrastiveSentenceB) { this.contrastiveSentenceB = contrastiveSentenceB; return this; }
+        public ConfusableWordPairResponseBuilder distinctionExplanation(String distinctionExplanation) { this.distinctionExplanation = distinctionExplanation; return this; }
 
         public ConfusableWordPairResponse build() {
             ConfusableWordPairResponse c = new ConfusableWordPairResponse();
@@ -41,6 +44,7 @@ public class ConfusableWordPairResponse {
             c.wordB = this.wordB;
             c.contrastiveSentenceA = this.contrastiveSentenceA;
             c.contrastiveSentenceB = this.contrastiveSentenceB;
+            c.distinctionExplanation = this.distinctionExplanation;
             return c;
         }
     }

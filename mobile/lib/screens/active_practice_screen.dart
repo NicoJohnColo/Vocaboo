@@ -133,6 +133,11 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   bool _isAdvancingNext = false; // Guard against rapid multi-tap on Continue button
   bool _isCheckingAnswer = false; // Guard against rapid multi-tap on Check button
 
+  // Confusable pairs and Diagnostic-Known Verification Queue (TASK 2.2 & TASK 4.3)
+  List<Map<String, dynamic>> _confusablePairs = [];
+  Set<String> _verificationWordIds = {};
+  final Set<String> _verifiedWordIds = {};
+
   // Timer Variables
   Timer? _questionTimer;
   int _secondsRemaining = 0;
@@ -144,6 +149,7 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _words = widget.allWords
         .map((w) => VocabularyWordModel.fromJson(w))
         .toList();
+    _verificationWordIds = widget.knownWordIds.take(3).toSet();
     if (!widget.isSandbox) {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final posFocus = auth.learner?.posFocus;
@@ -173,9 +179,33 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
   Future<void> _initializeSession() async {
     setState(() => _isLoading = true);
 
-    // 1. Load streak-celebration threshold and lesson config first.
-    if (!widget.isSandbox && mounted) {
+    // 1. Load streak-celebration threshold, confusable pairs, and lesson config first.
+    if (widget.isSandbox) {
+      _confusablePairs = [];
+      for (final raw in widget.allWords) {
+        final pair = raw['confusablePair'];
+        if (pair is Map) {
+          _confusablePairs.add({
+            'wordA': {
+              'wordId': raw['wordId'],
+              'englishWord': raw['englishWord'],
+              'cebuanoMeaning': raw['cebuanoMeaning'],
+            },
+            'wordB': {
+              'wordId': 'sandbox_partner_${raw['wordId']}',
+              'englishWord': pair['partnerWord'] ?? '',
+              'cebuanoMeaning': pair['partnerCebuano'] ?? '',
+            },
+            'contrastiveSentenceA': pair['contrastiveSentenceTarget'] ?? raw['exampleSentenceEnglish'] ?? '',
+            'contrastiveSentenceB': pair['contrastiveSentencePartner'] ?? '',
+          });
+        }
+      }
+    } else if (mounted) {
       final lessonProvider = Provider.of<LessonProvider>(context, listen: false);
+      try {
+        _confusablePairs = await lessonProvider.loadConfusablePairs(widget.lessonId);
+      } catch (_) {}
       var lesson = lessonProvider.lessons
           .where((l) => l.lessonId == widget.lessonId)
           .firstOrNull;
@@ -424,23 +454,27 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _practiceQueue.clear();
 
     if (widget.isSandbox) {
-      // Sandbox mode: fixed sequence of activities
-      // 1. Flashcard recall
-      // 2. Multiple choice
-      // 3. Fill in the blank
+      // Sandbox mode (TASK 3.3 & 3.4): 5 text-only recognition activities in Module 2
+      // (Combined with 5 contextual/production activities in Module 3 = 10 total activities for 1 word)
       for (var word in _words) {
         if ((_wordBestTier[word.wordId] ?? 0) >= 3 ||
             word.difficultyLevel?.toUpperCase() == 'MASTERED') {
           continue;
         }
         _practiceQueue.add(
-          _createPracticeItem(word, ActivityFormat.flashcardRecall),
-        );
-        _practiceQueue.add(
           _createPracticeItem(word, ActivityFormat.multipleChoice),
         );
         _practiceQueue.add(
           _createPracticeItem(word, ActivityFormat.fillInTheBlank),
+        );
+        _practiceQueue.add(
+          _createPracticeItem(word, ActivityFormat.trueOrFalse),
+        );
+        _practiceQueue.add(
+          _createPracticeItem(word, ActivityFormat.wordScramble),
+        );
+        _practiceQueue.add(
+          _createPracticeItem(word, ActivityFormat.hintToWord),
         );
       }
     } else {
@@ -479,6 +513,15 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       ).toList();
 
       for (final word in activeWords) {
+        // TASK 4.3: Words in _verificationWordIds get a single verification check first
+        if (_verificationWordIds.contains(word.wordId) &&
+            !_verifiedWordIds.contains(word.wordId)) {
+          _practiceQueue.add(
+            _createPracticeItem(word, ActivityFormat.multipleChoice),
+          );
+          continue;
+        }
+
         List<ActivityFormat> wordFormats = [];
         final eligible = word.eligibleActivityTypes;
         if (eligible != null && eligible.isNotEmpty) {
@@ -539,10 +582,34 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     ActivityFormat format,
   ) {
     var resolvedFormat = format;
-    // Keep image matching even if no image - will show placeholder
-    // if (resolvedFormat == ActivityFormat.imageMatching && (word.imageAssetPath == null || word.imageAssetPath!.isEmpty)) {
-    //   resolvedFormat = ActivityFormat.multipleChoice;
-    // }
+    // TASK 3.3: Strip image activities in AI Sandbox mode
+    if (widget.isSandbox &&
+        (resolvedFormat == ActivityFormat.imageLabeling ||
+            resolvedFormat == ActivityFormat.imageMatching)) {
+      resolvedFormat = ActivityFormat.multipleChoice;
+    }
+
+    // Extract Sandbox-specific Gemini fields if available
+    Map<String, dynamic>? rawSandboxMap;
+    if (widget.isSandbox) {
+      for (final raw in widget.allWords) {
+        if ((raw['wordId'] ?? '').toString() == word.wordId) {
+          rawSandboxMap = raw;
+          break;
+        }
+      }
+    }
+
+    final tfAnswer = resolvedFormat == ActivityFormat.trueOrFalse
+        ? ((rawSandboxMap?['trueOrFalseAnswer'] == false) ? 'False' : 'True')
+        : word.fitbAnswer;
+
+    final clueText = resolvedFormat == ActivityFormat.hintToWord
+        ? (rawSandboxMap?['hintClue']?.toString() ??
+              word.hintDefinition ??
+              word.explanationText ??
+              'A word that means "${word.cebuanoMeaning}".')
+        : null;
 
     return PracticeItemModel(
       wordId: word.wordId,
@@ -551,19 +618,20 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       exampleSentenceEnglish: word.exampleSentenceEnglish,
       exampleSentenceCebuano: word.exampleSentenceCebuano,
       activityFormat: resolvedFormat,
-      imageAssetPath: word.imageAssetPath,
+      imageAssetPath: widget.isSandbox ? null : word.imageAssetPath,
       distractors: _resolveDistractors(word),
       mcDistractor1: word.mcDistractor1,
       mcDistractor2: word.mcDistractor2,
       mcDistractor3: word.mcDistractor3,
       fitbSentence: word.fitbSentence,
-      fitbAnswer: word.fitbAnswer,
+      fitbAnswer: tfAnswer,
       matchingSet: word.matchingSet,
       sentenceArrangementTokens: word.sentenceArrangementTokens,
       tileSentence: word.tileSentence,
       hintText: word.explanationText,
       hintDefinition: word.hintDefinition,
       hintCebuanoSentence: word.hintCebuanoSentence,
+      hintToWordClue: clueText,
       sentenceCompletionSentence: word.sentenceCompletionSentence,
       sentenceCompletionAnswer: word.sentenceCompletionAnswer,
       sentenceCompletionOption1: word.sentenceCompletionOption1,
@@ -1725,40 +1793,94 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
     _questionTimer?.cancel();
     await LocalStorageService.saveEvaluationResult(widget.sessionId, result);
 
+    String formatName;
+    switch (item.activityFormat) {
+      case ActivityFormat.multipleChoice:
+        formatName = 'MULTIPLE_CHOICE';
+        break;
+      case ActivityFormat.fillInTheBlank:
+        formatName = 'FILL_IN_BLANK';
+        break;
+      case ActivityFormat.matching:
+        formatName = 'MATCHING';
+        break;
+      case ActivityFormat.listeningTyping:
+        formatName = 'TYPE_WHAT_YOU_HEAR';
+        break;
+      case ActivityFormat.rearrangement:
+        formatName = 'SENTENCE_ARRANGEMENT';
+        break;
+      case ActivityFormat.wordScramble:
+        formatName = 'WORD_SCRAMBLE';
+        break;
+      case ActivityFormat.imageLabeling:
+        formatName = 'IMAGE_LABELING';
+        break;
+      case ActivityFormat.trueOrFalse:
+        formatName = 'TRUE_OR_FALSE';
+        break;
+      case ActivityFormat.hintToWord:
+        formatName = 'HINT_TO_WORD';
+        break;
+      default:
+        formatName = 'MULTIPLE_CHOICE';
+    }
+
+    // TASK 3.5: Persist AI Sandbox difficulty progression
+    if (widget.isSandbox && item.activityFormat != ActivityFormat.flashcardRecall) {
+      await provider.adjustSandboxDifficulty(
+        item.wordId,
+        correct,
+        activityType: formatName,
+        moduleNumber: 2,
+      );
+      if (!correct && learnerAns.trim().isNotEmpty) {
+        final matchedPair = _findConfusablePartnerForAnswer(item, learnerAns);
+        await provider.recordWrongAnswerExplicit(
+          wordId: item.wordId,
+          sessionId: widget.sessionId,
+          wrongAnswer: learnerAns,
+          activityFormat: formatName,
+          errorType: matchedPair != null ? 'CONFUSABLE_PAIR' : null,
+        );
+      }
+    }
+
     if (!widget.isSandbox &&
         item.activityFormat != ActivityFormat.flashcardRecall) {
-      String formatName;
-      switch (item.activityFormat) {
-        case ActivityFormat.multipleChoice:
-          formatName = 'MULTIPLE_CHOICE';
-          break;
-        case ActivityFormat.fillInTheBlank:
-          formatName = 'FILL_IN_BLANK';
-          break;
-        case ActivityFormat.matching:
-          formatName = 'MATCHING';
-          break;
-        case ActivityFormat.listeningTyping:
-          formatName = 'TYPE_WHAT_YOU_HEAR';
-          break;
-        case ActivityFormat.rearrangement:
-          formatName = 'SENTENCE_ARRANGEMENT';
-          break;
-        case ActivityFormat.wordScramble:
-          formatName = 'WORD_SCRAMBLE';
-          break;
-        case ActivityFormat.imageLabeling:
-          formatName = 'IMAGE_LABELING';
-          break;
-        case ActivityFormat.trueOrFalse:
-          formatName = 'TRUE_OR_FALSE';
-          break;
-        case ActivityFormat.hintToWord:
-          formatName = 'HINT_TO_WORD';
-          break;
-        default:
-          formatName = 'MULTIPLE_CHOICE';
+      // TASK 2.2 & 2.3: Check if wrong answer matches a confusable partner word
+      if (!correct && learnerAns.trim().isNotEmpty) {
+        final matchedPair = _findConfusablePartnerForAnswer(item, learnerAns);
+        if (matchedPair != null) {
+          await provider.recordWrongAnswerExplicit(
+            wordId: item.wordId,
+            sessionId: widget.sessionId,
+            wrongAnswer: learnerAns,
+            activityFormat: formatName,
+            errorType: 'CONFUSABLE_PAIR',
+          );
+        }
       }
+
+      // TASK 4.3: 1-Question Verification for Diagnostic-Known Words
+      if (_verificationWordIds.contains(item.wordId) &&
+          !_verifiedWordIds.contains(item.wordId)) {
+        _verifiedWordIds.add(item.wordId);
+        if (correct) {
+          await provider.applyDiagnosticBoost(item.wordId, activityType: formatName);
+          _wordBestTier[item.wordId] = 2; // PROFICIENT
+          _practiceQueue.removeWhere((qItem) =>
+              _practiceQueue.indexOf(qItem) > _currentIndex &&
+              qItem.wordId == item.wordId);
+          _plannedScreens = _practiceQueue.length;
+        } else {
+          await provider.recordDiagnosticFail(item.wordId, activityType: formatName);
+          _verificationWordIds.remove(item.wordId);
+          _wordBestTier[item.wordId] = 0; // Demote to LEARNING
+          _wordWrongAttempts[item.wordId] = 2; // Trigger ShortReintroductionScreen on _advanceNext
+        }
+      }
+
       Map<String, dynamic>? submitResp;
       try {
         submitResp = await provider.submitRetrievalAnswer(
@@ -2054,7 +2176,240 @@ class _ActivePracticeScreenState extends State<ActivePracticeScreen> {
       LessonAudioService().playCorrect();
     } else {
       LessonAudioService().playWrong();
+      // TASK 2.2: Show Confusable Partner Interception Sheet if learner selected a confusable partner
+      final matchedPair = _findConfusablePartnerForAnswer(item, learnerAns);
+      if (matchedPair != null && mounted) {
+        await _showConfusableContrastSheet(matchedPair);
+      }
     }
+  }
+
+  /// Checks whether [learnerAns] matches the confusable partner of [item].
+  Map<String, dynamic>? _findConfusablePartnerForAnswer(
+    PracticeItemModel item,
+    String learnerAns,
+  ) {
+    final cleanAns = learnerAns.trim().toLowerCase();
+    final cleanTarget = item.englishWord.trim().toLowerCase();
+    if (cleanAns.isEmpty || cleanAns == cleanTarget) return null;
+
+    for (final pair in _confusablePairs) {
+      final wordA = pair['wordA'] as Map<String, dynamic>?;
+      final wordB = pair['wordB'] as Map<String, dynamic>?;
+      if (wordA == null || wordB == null) continue;
+      final aEng = (wordA['englishWord'] ?? '').toString().trim().toLowerCase();
+      final bEng = (wordB['englishWord'] ?? '').toString().trim().toLowerCase();
+      if ((aEng == cleanTarget && bEng == cleanAns) ||
+          (bEng == cleanTarget && aEng == cleanAns)) {
+        return pair;
+      }
+    }
+    return null;
+  }
+
+  /// Displays a side-by-side contrastive bottom sheet when a learner confuses two words (TASK 2.2).
+  Future<void> _showConfusableContrastSheet(Map<String, dynamic> pair) async {
+    final wordA = pair['wordA'] as Map<String, dynamic>? ?? {};
+    final wordB = pair['wordB'] as Map<String, dynamic>? ?? {};
+    final wordAEng = (wordA['englishWord'] ?? '').toString();
+    final wordACeb = (wordA['cebuanoMeaning'] ?? '').toString();
+    final wordBEng = (wordB['englishWord'] ?? '').toString();
+    final wordBCeb = (wordB['cebuanoMeaning'] ?? '').toString();
+    final sentA = (pair['contrastiveSentenceA'] ?? '').toString();
+    final sentB = (pair['contrastiveSentenceB'] ?? '').toString();
+    final distinction = (pair['distinctionExplanation'] ?? pair['distinction_explanation'] ?? pair['confusableCebuanoDistinction'] ?? '').toString().trim();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.compare_arrows_rounded, color: Color(0xFFD97706), size: 28),
+                  SizedBox(width: 8),
+                  Text(
+                    'Watch Out! Confusable Pair',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'You picked a look-alike or sound-alike word! Compare their meanings carefully:',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              ),
+              if (distinction.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFF59E0B), width: 1.2),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('💡', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          distinction,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF92400E),
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F9FF),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF0284C7), width: 1.5),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            wordAEng,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0369A1),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Bisaya: $wordACeb',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                          if (sentA.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '"$sentA"',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                                color: Color(0xFF334155),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFD97706), width: 1.5),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            wordBEng,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFFB45309),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Bisaya: $wordBCeb',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                          if (sentB.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '"$sentB"',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                                color: Color(0xFF334155),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF06A6FF),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  'GOT IT, CONTINUE',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Returns the earliest queue index >= [startFrom] such that there are at

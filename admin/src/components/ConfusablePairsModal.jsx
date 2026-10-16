@@ -179,6 +179,12 @@ export default function ConfusablePairsModal({ lessonId, lesson, onClose, onUpda
                       </div>
                     </div>
 
+                    {pair.distinction_explanation && (
+                      <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: 6, fontSize: '0.8rem', color: '#4338ca' }}>
+                        💡 <strong>Difference:</strong> {pair.distinction_explanation}
+                      </div>
+                    )}
+
                     <div className="confusable-pair-card__footer">
                       <span className="confusable-pair-card__date">
                         Created {new Date(pair.created_at).toLocaleDateString()}

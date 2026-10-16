@@ -205,4 +205,31 @@ public class SandboxController {
                 .build()).toList();
         return ResponseEntity.ok(dto);
     }
+
+    @GetMapping("/unlocked")
+    public ResponseEntity<java.util.Map<String, Object>> getUnlockedStatus() {
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("unlocked", true);
+        resp.put("completedLessons", 0);
+        resp.put("requiredLessons", 0);
+        return ResponseEntity.ok(resp);
+    }
+
+    @GetMapping("/sessions/{sessionId}")
+    public ResponseEntity<SandboxSessionResponse> getSession(@PathVariable UUID sessionId) {
+        SandboxSessionGenerationResult result = sandboxService.getSession(sessionId);
+        com.vocaboo.entity.SandboxSession s = result.getSession();
+        com.vocaboo.dto.response.SandboxSessionDto dto = com.vocaboo.dto.response.SandboxSessionDto.builder()
+                .sessionId(s.getSessionId())
+                .customWord(s.getCustomWord())
+                .masteryScore(s.getMasteryScore())
+                .createdAt(s.getCreatedAt())
+                .completedAt(s.getCompletedAt())
+                .build();
+        List<SandboxLessonResponse> words = result.getLesson() != null ? List.of(result.getLesson()) : List.of();
+        return ResponseEntity.ok(SandboxSessionResponse.builder()
+                .session(dto)
+                .words(words)
+                .build());
+    }
 }

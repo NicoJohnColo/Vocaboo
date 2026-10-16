@@ -55,6 +55,8 @@ public class SandboxService {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini returned an empty sandbox word.");
         }
 
+        GeminiService.ConfusablePairDto confusablePair = dto.getConfusablePair();
+
         SandboxWord word = SandboxWord.builder()
                 .session(session)
                 .englishWord(dto.getEnglishWord())
@@ -62,6 +64,13 @@ public class SandboxService {
                 .exampleSentenceEnglish(dto.getExampleSentenceEnglish())
                 .exampleSentenceCebuano(dto.getExampleSentenceCebuano())
                 .phonologicalTipKey(dto.getPhonologicalTip())
+                .trueOrFalseStatement(dto.getTrueOrFalseStatement())
+                .trueOrFalseAnswer(dto.getTrueOrFalseAnswer() != null ? dto.getTrueOrFalseAnswer() : Boolean.TRUE)
+                .hintClue(dto.getHintClue())
+                .confusablePartnerWord(confusablePair != null ? confusablePair.getPartnerWord() : null)
+                .confusableCebuanoDistinction(confusablePair != null ? confusablePair.getCebuanoDistinction() : null)
+                .confusableContrastSentenceA(confusablePair != null ? confusablePair.getContrastiveSentenceA() : null)
+                .confusableContrastSentenceB(confusablePair != null ? confusablePair.getContrastiveSentenceB() : null)
                 .wordOrder(1)
                 .createdAt(OffsetDateTime.now())
                 .build();
@@ -83,6 +92,7 @@ public class SandboxService {
         }
 
         SandboxLessonResponse lessonResponse = SandboxLessonResponse.builder()
+            .sandboxWordId(word.getWordId())
             .englishWord(dto.getEnglishWord())
             .cebuanoMeaning(dto.getCebuanoMeaning())
             .englishExampleSentence(dto.getExampleSentenceEnglish())
@@ -100,6 +110,13 @@ public class SandboxService {
             .sentenceArrangementTokens(buildSentenceArrangementTokens(dto.getExampleSentenceEnglish()))
             .sentenceCompletionBlank(buildFillInTheBlankSentence(dto.getExampleSentenceEnglish(), dto.getEnglishWord()))
             .sentenceCompletionOptions(buildSentenceCompletionOptions(dto.getEnglishWord(), dto.getMultipleChoiceDistractors()))
+            .trueOrFalseStatement(word.getTrueOrFalseStatement())
+            .trueOrFalseAnswer(word.getTrueOrFalseAnswer())
+            .hintClue(word.getHintClue())
+            .confusablePartnerWord(word.getConfusablePartnerWord())
+            .confusableCebuanoDistinction(word.getConfusableCebuanoDistinction())
+            .confusableContrastSentenceA(word.getConfusableContrastSentenceA())
+            .confusableContrastSentenceB(word.getConfusableContrastSentenceB())
             .build();
 
         return SandboxSessionGenerationResult.builder()
@@ -294,4 +311,46 @@ public class SandboxService {
     public List<SandboxSession> getHistory(UUID learnerId) {
         return sandboxSessionRepository.findByLearnerLearnerIdOrderByCreatedAtDesc(learnerId);
     }
+
+    public SandboxLessonResponse toLessonResponse(SandboxWord word) {
+        if (word == null) return null;
+        List<String> distractors = new ArrayList<>();
+        if (word.getConfusablePartnerWord() != null && !word.getConfusablePartnerWord().isBlank()) {
+            distractors.add(word.getConfusablePartnerWord());
+        }
+        return SandboxLessonResponse.builder()
+                .sandboxWordId(word.getWordId())
+                .englishWord(word.getEnglishWord())
+                .cebuanoMeaning(word.getCebuanoMeaning())
+                .englishExampleSentence(word.getExampleSentenceEnglish())
+                .exampleSentenceCebuano(word.getExampleSentenceCebuano())
+                .phonologicalTip(word.getPhonologicalTipKey())
+                .multipleChoiceDistractors(distractors)
+                .fillInTheBlankSentence(buildFillInTheBlankSentence(word.getExampleSentenceEnglish(), word.getEnglishWord()))
+                .matchingSet(List.of())
+                .sentenceArrangementTokens(buildSentenceArrangementTokens(word.getExampleSentenceEnglish()))
+                .sentenceCompletionBlank(buildFillInTheBlankSentence(word.getExampleSentenceEnglish(), word.getEnglishWord()))
+                .sentenceCompletionOptions(buildSentenceCompletionOptions(word.getEnglishWord(), distractors))
+                .trueOrFalseStatement(word.getTrueOrFalseStatement())
+                .trueOrFalseAnswer(word.getTrueOrFalseAnswer())
+                .hintClue(word.getHintClue())
+                .confusablePartnerWord(word.getConfusablePartnerWord())
+                .confusableCebuanoDistinction(word.getConfusableCebuanoDistinction())
+                .confusableContrastSentenceA(word.getConfusableContrastSentenceA())
+                .confusableContrastSentenceB(word.getConfusableContrastSentenceB())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public SandboxSessionGenerationResult getSession(UUID sessionId) {
+        SandboxSession session = sandboxSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        List<SandboxWord> words = sandboxWordRepository.findBySessionSessionIdOrderByWordOrderAsc(sessionId);
+        SandboxLessonResponse lesson = words.isEmpty() ? null : toLessonResponse(words.get(0));
+        return SandboxSessionGenerationResult.builder()
+                .session(session)
+                .lesson(lesson)
+                .build();
+    }
 }
+

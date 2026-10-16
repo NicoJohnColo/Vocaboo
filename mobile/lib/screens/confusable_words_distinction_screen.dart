@@ -136,14 +136,18 @@ class _ConfusableWordsDistinctionScreenState extends State<ConfusableWordsDistin
     final sentenceBCebuano = (pair['contrastiveSentenceBCebuano'] ?? wordB['exampleSentenceCebuano'] ?? '') as String;
 
     // Create sentence frames with blank
-    final sentenceAFrame = sentenceA.replaceAll(
-      RegExp('\b${RegExp.escape(wordAEnglish)}\b', caseSensitive: false),
-      '________',
-    );
-    final sentenceBFrame = sentenceB.replaceAll(
-      RegExp('\b${RegExp.escape(wordBEnglish)}\b', caseSensitive: false),
-      '________',
-    );
+    final rxA = RegExp('\\b${RegExp.escape(wordAEnglish)}\\b', caseSensitive: false);
+    final rxB = RegExp('\\b${RegExp.escape(wordBEnglish)}\\b', caseSensitive: false);
+    final sentenceAFrame = sentenceA.contains(rxA)
+        ? sentenceA.replaceAll(rxA, '________')
+        : (wordAEnglish.isNotEmpty
+            ? sentenceA.replaceAll(RegExp(RegExp.escape(wordAEnglish), caseSensitive: false), '________')
+            : sentenceA);
+    final sentenceBFrame = sentenceB.contains(rxB)
+        ? sentenceB.replaceAll(rxB, '________')
+        : (wordBEnglish.isNotEmpty
+            ? sentenceB.replaceAll(RegExp(RegExp.escape(wordBEnglish), caseSensitive: false), '________')
+            : sentenceB);
 
     final isCorrectA = _selectedForA?.toLowerCase() == wordAEnglish.toLowerCase();
     final isCorrectB = _selectedForB?.toLowerCase() == wordBEnglish.toLowerCase();

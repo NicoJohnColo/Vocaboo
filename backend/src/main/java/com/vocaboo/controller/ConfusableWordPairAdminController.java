@@ -52,6 +52,7 @@ public class ConfusableWordPairAdminController {
                         ),
                         "contrastive_sentence_a", p.getContrastiveSentenceA(),
                         "contrastive_sentence_b", p.getContrastiveSentenceB(),
+                        "distinction_explanation", p.getDistinctionExplanation() != null ? p.getDistinctionExplanation() : "",
                         "created_at", p.getCreatedAt()
                 ))
                 .collect(Collectors.toList());
@@ -83,6 +84,7 @@ public class ConfusableWordPairAdminController {
         String wordBIdStr = body.get("word_b_id");
         String sentenceA  = body.get("contrastive_sentence_a");
         String sentenceB  = body.get("contrastive_sentence_b");
+        String distinctionExplanation = body.get("distinction_explanation");
 
         if (wordAIdStr == null || wordAIdStr.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "word_a_id is required");
@@ -124,6 +126,7 @@ public class ConfusableWordPairAdminController {
                 .wordB(wordB)
                 .contrastiveSentenceA(sentenceA)
                 .contrastiveSentenceB(sentenceB)
+                .distinctionExplanation(distinctionExplanation != null && !distinctionExplanation.isBlank() ? distinctionExplanation.trim() : null)
                 .build();
 
         ConfusableWordPair saved = pairRepository.save(pair);

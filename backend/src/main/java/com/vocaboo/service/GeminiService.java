@@ -55,6 +55,10 @@ public class GeminiService {
         private List<String> sentenceArrangementTokens;
         private String sentenceCompletionBlank;
         private List<String> sentenceCompletionOptions;
+        private String trueOrFalseStatement;
+        private Boolean trueOrFalseAnswer;
+        private String hintClue;
+        private ConfusablePairDto confusablePair;
 
         public String getEnglishWord() { return englishWord; }
         public String getCebuanoMeaning() { return cebuanoMeaning; }
@@ -62,10 +66,15 @@ public class GeminiService {
         public String getExampleSentenceCebuano() { return exampleSentenceCebuano; }
         public String getPhonologicalTip() { return phonologicalTip; }
         public List<String> getMultipleChoiceDistractors() { return multipleChoiceDistractors; }
+        public String getFillInTheBlankSentence() { return fillInTheBlankSentence; }
         public List<MatchingEntryDto> getMatchingSet() { return matchingSet; }
         public List<String> getSentenceArrangementTokens() { return sentenceArrangementTokens; }
         public String getSentenceCompletionBlank() { return sentenceCompletionBlank; }
         public List<String> getSentenceCompletionOptions() { return sentenceCompletionOptions; }
+        public String getTrueOrFalseStatement() { return trueOrFalseStatement; }
+        public Boolean getTrueOrFalseAnswer() { return trueOrFalseAnswer; }
+        public String getHintClue() { return hintClue; }
+        public ConfusablePairDto getConfusablePair() { return confusablePair; }
 
         public void setEnglishWord(String englishWord) { this.englishWord = englishWord; }
         public void setCebuanoMeaning(String cebuanoMeaning) { this.cebuanoMeaning = cebuanoMeaning; }
@@ -78,6 +87,21 @@ public class GeminiService {
         public void setSentenceArrangementTokens(List<String> sentenceArrangementTokens) { this.sentenceArrangementTokens = sentenceArrangementTokens; }
         public void setSentenceCompletionBlank(String sentenceCompletionBlank) { this.sentenceCompletionBlank = sentenceCompletionBlank; }
         public void setSentenceCompletionOptions(List<String> sentenceCompletionOptions) { this.sentenceCompletionOptions = sentenceCompletionOptions; }
+        public void setTrueOrFalseStatement(String trueOrFalseStatement) { this.trueOrFalseStatement = trueOrFalseStatement; }
+        public void setTrueOrFalseAnswer(Boolean trueOrFalseAnswer) { this.trueOrFalseAnswer = trueOrFalseAnswer; }
+        public void setHintClue(String hintClue) { this.hintClue = hintClue; }
+        public void setConfusablePair(ConfusablePairDto confusablePair) { this.confusablePair = confusablePair; }
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ConfusablePairDto {
+        private String partnerWord;
+        private String cebuanoDistinction;
+        private String contrastiveSentenceA;
+        private String contrastiveSentenceB;
     }
 
     @Data
@@ -114,9 +138,9 @@ public class GeminiService {
         }
     }
 
-    private static final String SANDBOX_SYSTEM_PROMPT = "You generate exactly one child-friendly Cebuano-English vocabulary lesson for Vocaboo.\n"
-            + "Return only raw JSON that matches the schema exactly.\n"
-            + "The input word will be one English word only. Do not add explanations, markdown, or surrounding text.\n"
+    private static final String SANDBOX_SYSTEM_PROMPT = "You generate══════════════════════════════════════════════════════════════════════════════\n"
+            + "You generate a strictly TEXT-ONLY, child-friendly Cebuano-English vocabulary lesson for one single English word in Vocaboo.\n"
+            + "Return ONLY raw JSON that matches the schema below with zero image references.\n"
             + "The JSON schema is:\n"
             + "{\n"
             + "  \"english_word\": \"string\",\n"
@@ -129,16 +153,21 @@ public class GeminiService {
             + "  \"matching_set\": [{\"english_word\": \"string\", \"cebuano_meaning\": \"string\"}],\n"
             + "  \"sentence_arrangement_tokens\": [\"string\"],\n"
             + "  \"sentence_completion_blank\": \"string\",\n"
-            + "  \"sentence_completion_options\": [\"string\", \"string\", \"string\", \"string\"]\n"
+            + "  \"sentence_completion_options\": [\"string\", \"string\", \"string\", \"string\"],\n"
+            + "  \"true_or_false_statement\": \"string\",\n"
+            + "  \"true_or_false_answer\": true,\n"
+            + "  \"hint_clue\": \"string\",\n"
+            + "  \"confusable_pair\": {\n"
+            + "    \"partner_word\": \"string\",\n"
+            + "    \"cebuano_distinction\": \"string\",\n"
+            + "    \"contrastive_sentence_a\": \"string\",\n"
+            + "    \"contrastive_sentence_b\": \"string\"\n"
+            + "  }\n"
             + "}\n"
             + "Rules:\n"
-            + "1. When writing bilingual translations, explanations, and phonological tips, write in natural Bislish — the informal way Cebuano speakers code-switch between Cebuano and English in everyday conversation.\n"
-            + "2. Blend Cebuano and English naturally within the same sentence, the way a native Cebuano-English bilingual speaker actually talks (e.g. \"Kani nga prutas kay 'apple' sa English. Ganahan ka mokaon ani?\").\n"
-            + "3. Keep common English words (numbers, technical terms, everyday nouns like 'phone', 'computer', 'okay', 'sure') in English, since that is how Cebuano speakers naturally talk.\n"
-            + "4. Use Cebuano for connectors, particles, and everyday phrasing (e.g. 'bitaw', 'kay', 'man gud', 'ba', 'diay', 'unya', 'na', 'kaayo').\n"
-            + "5. Keep the tone casual, friendly, and conversational for young learners (aged 9-12).\n"
-            + "6. Do NOT alternate by translating each sentence twice with slashes (e.g. do not write 'HELLO / KUMUSTA') — mix them naturally within a single sentence.\n"
-            + "7. Ensure the Cebuano meaning is an accurate translation, never reuse or transliterate the English word as the meaning, and ensure the matching set includes the target word plus related words.";
+            + "1. Write explanations and tips in natural Cebuano/Bislish for ages 9-12.\n"
+            + "2. Strictly ZERO image references: true_or_false_statement and hint_clue must be pure text assertions (never mention pictures, photos, or images).\n"
+            + "3. Ensure the Cebuano meaning is an accurate translation, never reuse or transliterate the English word as the meaning.";
 
     public SandboxWordDto generateSandboxLesson(String userInput) {
         String normalizedInput = validateSandboxInput(userInput);
@@ -268,6 +297,27 @@ public class GeminiService {
             dto.setSentenceArrangementTokens(readStringList(root, "sentence_arrangement_tokens", "sentenceArrangementTokens"));
             dto.setSentenceCompletionBlank(readNullableText(root, "sentence_completion_blank", "sentenceCompletionBlank"));
             dto.setSentenceCompletionOptions(readStringList(root, "sentence_completion_options", "sentenceCompletionOptions"));
+            dto.setTrueOrFalseStatement(readNullableText(root, "true_or_false_statement", "trueOrFalseStatement"));
+            JsonNode tfAnswerNode = root.path("true_or_false_answer");
+            if (tfAnswerNode.isMissingNode() || tfAnswerNode.isNull()) {
+                tfAnswerNode = root.path("trueOrFalseAnswer");
+            }
+            dto.setTrueOrFalseAnswer(tfAnswerNode.isBoolean() ? tfAnswerNode.asBoolean() : Boolean.TRUE);
+            dto.setHintClue(readNullableText(root, "hint_clue", "hintClue"));
+
+            JsonNode confusableNode = root.path("confusable_pair");
+            if (confusableNode.isMissingNode() || confusableNode.isNull()) {
+                confusableNode = root.path("confusablePair");
+            }
+            if (confusableNode.isObject()) {
+                ConfusablePairDto pair = ConfusablePairDto.builder()
+                        .partnerWord(readNullableText(confusableNode, "partner_word", "partnerWord"))
+                        .cebuanoDistinction(readNullableText(confusableNode, "cebuano_distinction", "cebuanoDistinction"))
+                        .contrastiveSentenceA(readNullableText(confusableNode, "contrastive_sentence_a", "contrastiveSentenceA"))
+                        .contrastiveSentenceB(readNullableText(confusableNode, "contrastive_sentence_b", "contrastiveSentenceB"))
+                        .build();
+                dto.setConfusablePair(pair);
+            }
             return dto;
         } catch (Exception e) {
             return null;
@@ -405,6 +455,21 @@ public class GeminiService {
         // Provide fallback for missing sentence completion options
         if (dto.getSentenceCompletionOptions() == null || dto.getSentenceCompletionOptions().size() < 4) {
             dto.setSentenceCompletionOptions(Arrays.asList(requestedWord, "house", "tree", "water"));
+        }
+
+        // Provide fallback for missing or image-referencing true_or_false_statement
+        if (dto.getTrueOrFalseStatement() == null || dto.getTrueOrFalseStatement().trim().isEmpty()
+                || dto.getTrueOrFalseStatement().toLowerCase(Locale.ROOT).matches(".*\\b(image|picture|photo|drawing)\\b.*")) {
+            dto.setTrueOrFalseStatement("Sa Binisaya, ang pasabot sa \"" + targetWord + "\" kay \"" + dto.getCebuanoMeaning() + "\".");
+            dto.setTrueOrFalseAnswer(Boolean.TRUE);
+        }
+        if (dto.getTrueOrFalseAnswer() == null) {
+            dto.setTrueOrFalseAnswer(Boolean.TRUE);
+        }
+
+        // Provide fallback for missing hint_clue
+        if (dto.getHintClue() == null || dto.getHintClue().trim().isEmpty()) {
+            dto.setHintClue("Sa Binisaya: " + dto.getCebuanoMeaning());
         }
     }
 

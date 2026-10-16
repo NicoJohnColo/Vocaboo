@@ -486,9 +486,47 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
         }
       }
 
-      fetchedConfusables = (!widget.isSandbox && widget.moduleNumber == 3)
-          ? await lessonProvider.loadConfusablePairs(widget.lessonId)
-          : <Map<String, dynamic>>[];
+      if (widget.isSandbox) {
+        fetchedConfusables = [];
+        for (final raw in widget.allWords) {
+          final pair = raw['confusablePair'];
+          if (pair is Map) {
+            final wId = (raw['wordId'] ?? 'sandbox').toString();
+            fetchedConfusables.add({
+              'pairId': 'sandbox_pair_$wId',
+              'wordA': {
+                'wordId': wId,
+                'englishWord': (raw['englishWord'] ?? '').toString(),
+                'cebuanoMeaning': (raw['cebuanoMeaning'] ?? '').toString(),
+              },
+              'wordB': {
+                'wordId': 'partner_$wId',
+                'englishWord': (pair['partnerWord'] ?? 'similar').toString(),
+                'cebuanoMeaning': (pair['partnerCebuano'] ?? '').toString(),
+              },
+              'contrastiveSentenceA':
+                  (pair['contrastiveSentenceTarget'] ??
+                          raw['exampleSentenceEnglish'] ??
+                          '')
+                      .toString(),
+              'contrastiveSentenceB':
+                  (pair['contrastiveSentencePartner'] ?? '').toString(),
+            });
+          }
+        }
+        _enabledM3Activities = {
+          'SENTENCE_TRUE_OR_FALSE',
+          'SENTENCE_COMPLETION',
+          'SENTENCE_ARRANGEMENT',
+          'PRONUNCIATION_FEEDBACK',
+        };
+        _upgradeStreakRequired = 1;
+        _module3UpgradeStreakRequired = 1;
+      } else if (widget.moduleNumber == 3) {
+        fetchedConfusables = await lessonProvider.loadConfusablePairs(
+          widget.lessonId,
+        );
+      }
 
       debugPrint(
         'SentenceBuilding: allWords=${widget.allWords.length}, fetchedWords=${fetchedWords.length}, confusables=${fetchedConfusables.length}',
@@ -555,7 +593,7 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
         // Initialize per-word stages:
         for (final w in fetchedWords) {
-          final s = _getWordStage(w.wordId);
+          final s = widget.isSandbox ? 1 : _getWordStage(w.wordId);
           _wordStage[w.wordId] = s;
           _maxWordStage[w.wordId] = max(_maxWordStage[w.wordId] ?? s, s);
           if (s >= 4) {
@@ -1304,6 +1342,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       _confusableMastery[pair['pairId'] as String] = true;
     } else {
       _confusableMastery[pair['pairId'] as String] = false;
+      final provider = Provider.of<LessonProvider>(context, listen: false);
+      provider.recordWrongAnswerExplicit(
+        wordId: _currentWord.wordId,
+        sessionId: widget.sessionId,
+        wrongAnswer: _confusableSelectedForA ?? _confusableSelectedForB ?? 'confusable_mismatch',
+        activityFormat: 'CONFUSABLE_DISTINCTION',
+        errorType: 'CONFUSABLE_PAIR',
+      );
     }
     setState(() {
       _confusableChecked = true;
@@ -1313,11 +1359,8 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
   Future<void> _handleConfusableContinue() async {
     if (_confusableCorrect) {
-      // Advance past confusable phase
-      setState(() {
-        _currentPhase = Phase.sentenceActivity;
-      });
-      _startNextItem();
+      // Advance to next unmastered confusable pair or finish module
+      await _handleQueueEmpty();
     } else {
       // Reset and retry
       setState(() {
@@ -1548,28 +1591,41 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
       LessonAudioService().playWrong();
     }
 
+    final provider = Provider.of<LessonProvider>(context, listen: false);
+    final activityTypeStr = _currentFormat == ActivityFormat.truthOrFalse
+        ? 'SENTENCE_TRUE_OR_FALSE'
+        : _currentFormat == ActivityFormat.completion
+            ? 'SENTENCE_COMPLETION'
+            : 'SENTENCE_ARRANGEMENT';
+
     if (widget.isSandbox) {
-      if (_isCorrect) {
+      provider.adjustSandboxDifficulty(
+        _currentWord.wordId,
+        _isCorrect,
+        activityType: activityTypeStr,
+        moduleNumber: widget.moduleNumber,
+      );
+      if (!_isCorrect) {
+        provider.recordWrongAnswerExplicit(
+          wordId: _currentWord.wordId,
+          sessionId: widget.sessionId,
+          wrongAnswer: timeUp ? 'TIME_UP' : 'sandbox_sentence_error',
+          activityFormat: activityTypeStr,
+          errorType: 'DISTRACTOR',
+        );
+      } else {
         final currentStage = _getWordStage(_currentWord.wordId);
         final isFinalFormat = _currentFormat == ActivityFormat.rearrangement ||
             (_currentFormat == ActivityFormat.completion && !_hasRearrangement);
-        if (isFinalFormat) {
-          if (currentStage >= 3) {
-            setState(() {
-              _wordStage[_currentWord.wordId] = 4;
-              _wordDifficulties[_currentWord.wordId] = 'MASTERED';
-              _sentenceMasteredWordIds.add(_currentWord.wordId);
-            });
-          }
+        if (isFinalFormat && !_hasPronunciation && currentStage >= 3) {
+          setState(() {
+            _wordStage[_currentWord.wordId] = 4;
+            _wordDifficulties[_currentWord.wordId] = 'MASTERED';
+            _sentenceMasteredWordIds.add(_currentWord.wordId);
+          });
         }
       }
     } else {
-      final provider = Provider.of<LessonProvider>(context, listen: false);
-      final activityTypeStr = _currentFormat == ActivityFormat.truthOrFalse
-          ? 'SENTENCE_TRUE_OR_FALSE'
-          : _currentFormat == ActivityFormat.completion
-              ? 'SENTENCE_COMPLETION'
-              : 'SENTENCE_ARRANGEMENT';
       provider.submitPracticeResult(
         widget.sessionId,
         _currentWord.wordId,
@@ -2096,7 +2152,14 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     // earn MASTERED — the word stays at PROFICIENT so it re-appears in future sessions.
     final pronunciationPassed = (_attemptResult?.isCorrect ?? false) && !skipped;
 
-    if (!widget.isSandbox) {
+    if (widget.isSandbox) {
+      provider.adjustSandboxDifficulty(
+        _currentWord.wordId,
+        pronunciationPassed,
+        activityType: 'PRONUNCIATION',
+        moduleNumber: widget.moduleNumber,
+      );
+    } else {
       final tier = pronunciationPassed ? 'MASTERED' : 'PROFICIENT';
       unawaited(provider.updateWordProgress(
         widget.sessionId,
@@ -2117,6 +2180,24 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
     _startNextItem();
   }
 
+  bool _tryStartNextConfusablePair() {
+    for (final pair in _confusablePairs) {
+      final pairId = pair['pairId']?.toString() ?? '';
+      if (pairId.isNotEmpty && _confusableMastery[pairId] != true) {
+        setState(() {
+          _activeConfusablePair = pair;
+          _confusableSelectedForA = null;
+          _confusableSelectedForB = null;
+          _confusableChecked = false;
+          _confusableCorrect = false;
+          _currentPhase = Phase.confusableDistinction;
+        });
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _handleQueueEmpty() async {
     debugPrint(
       'Queue empty! isReinforcementPass: $_isReinforcementPass, failedWords: ${_failedSentenceWords.length}',
@@ -2133,6 +2214,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
           _startNextItem();
         });
       } else {
+        if (_tryStartNextConfusablePair()) {
+          return;
+        }
         debugPrint('No failed words, completing module...');
         await _completeModuleAndAdvance();
       }
@@ -2145,6 +2229,9 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
           _startNextItem();
         });
       } else {
+        if (_tryStartNextConfusablePair()) {
+          return;
+        }
         debugPrint('Reinforcement pass complete, completing module...');
         await _completeModuleAndAdvance();
       }
@@ -2919,22 +3006,32 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
 
   Widget _buildConfusableBody(ThemeData theme) {
     final pair = _activeConfusablePair!;
-    final wordA = pair['wordA'] as Map<String, dynamic>;
-    final wordB = pair['wordB'] as Map<String, dynamic>;
-    final wordAEnglish = wordA['englishWord'] as String;
-    final wordACebuano = wordA['cebuanoMeaning'] as String;
-    final wordBEnglish = wordB['englishWord'] as String;
-    final wordBCebuano = wordB['cebuanoMeaning'] as String;
-    final sentenceA = pair['contrastiveSentenceA'] as String;
-    final sentenceB = pair['contrastiveSentenceB'] as String;
-    final sentenceAFrame = sentenceA.replaceAll(
-      RegExp('(?i)\\b${RegExp.escape(wordAEnglish)}\\b'),
-      '________',
-    );
-    final sentenceBFrame = sentenceB.replaceAll(
-      RegExp('(?i)\\b${RegExp.escape(wordBEnglish)}\\b'),
-      '________',
-    );
+    final wordA = (pair['wordA'] as Map<String, dynamic>?) ?? {};
+    final wordB = (pair['wordB'] as Map<String, dynamic>?) ?? {};
+    final wordAEnglish = (wordA['englishWord'] ?? '').toString();
+    final wordACebuano = (wordA['cebuanoMeaning'] ?? '').toString();
+    final wordBEnglish = (wordB['englishWord'] ?? '').toString();
+    final wordBCebuano = (wordB['cebuanoMeaning'] ?? '').toString();
+    final sentenceA = (pair['contrastiveSentenceA'] ?? '').toString();
+    final sentenceB = (pair['contrastiveSentenceB'] ?? '').toString();
+    final distinction = (pair['distinctionExplanation'] ??
+            pair['distinction_explanation'] ??
+            pair['confusableCebuanoDistinction'] ??
+            '')
+        .toString()
+        .trim();
+    final rxA = RegExp('\\b${RegExp.escape(wordAEnglish)}\\b', caseSensitive: false);
+    final rxB = RegExp('\\b${RegExp.escape(wordBEnglish)}\\b', caseSensitive: false);
+    final sentenceAFrame = sentenceA.contains(rxA)
+        ? sentenceA.replaceAll(rxA, '________')
+        : (wordAEnglish.isNotEmpty
+            ? sentenceA.replaceAll(RegExp(RegExp.escape(wordAEnglish), caseSensitive: false), '________')
+            : sentenceA);
+    final sentenceBFrame = sentenceB.contains(rxB)
+        ? sentenceB.replaceAll(rxB, '________')
+        : (wordBEnglish.isNotEmpty
+            ? sentenceB.replaceAll(RegExp(RegExp.escape(wordBEnglish), caseSensitive: false), '________')
+            : sentenceB);
     final isCorrectA =
         _confusableSelectedForA?.toLowerCase() == wordAEnglish.toLowerCase();
     final isCorrectB =
@@ -2951,14 +3048,15 @@ class _SentenceBuildingScreenState extends State<SentenceBuildingScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Mascot
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 20.0,
                       vertical: 8.0,
                     ),
                     child: MascotBubble(
-                      speechText:
-                          'These words look similar but mean different things. Fill in the blanks correctly.',
+                      speechText: distinction.isNotEmpty
+                          ? '💡 $distinction\nFill in the blanks correctly!'
+                          : 'These words look similar but mean different things. Fill in the blanks correctly.',
                       mascotName: 'sippy',
                     ),
                   ),

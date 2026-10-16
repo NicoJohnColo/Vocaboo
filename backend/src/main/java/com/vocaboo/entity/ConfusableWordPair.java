@@ -42,6 +42,9 @@ public class ConfusableWordPair {
     @Column(name = "contrastive_sentence_b", nullable = false, columnDefinition = "TEXT")
     private String contrastiveSentenceB;
 
+    @Column(name = "distinction_explanation", columnDefinition = "TEXT")
+    private String distinctionExplanation;
+
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();
@@ -52,6 +55,7 @@ public class ConfusableWordPair {
     public VocabularyWord getWordB() { return wordB; }
     public String getContrastiveSentenceA() { return contrastiveSentenceA; }
     public String getContrastiveSentenceB() { return contrastiveSentenceB; }
+    public String getDistinctionExplanation() { return distinctionExplanation; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 
     public static ConfusableWordPairBuilder builder() {
@@ -64,12 +68,14 @@ public class ConfusableWordPair {
         private VocabularyWord wordB;
         private String contrastiveSentenceA;
         private String contrastiveSentenceB;
+        private String distinctionExplanation;
 
         public ConfusableWordPairBuilder lesson(Lesson lesson) { this.lesson = lesson; return this; }
         public ConfusableWordPairBuilder wordA(VocabularyWord wordA) { this.wordA = wordA; return this; }
         public ConfusableWordPairBuilder wordB(VocabularyWord wordB) { this.wordB = wordB; return this; }
         public ConfusableWordPairBuilder contrastiveSentenceA(String contrastiveSentenceA) { this.contrastiveSentenceA = contrastiveSentenceA; return this; }
         public ConfusableWordPairBuilder contrastiveSentenceB(String contrastiveSentenceB) { this.contrastiveSentenceB = contrastiveSentenceB; return this; }
+        public ConfusableWordPairBuilder distinctionExplanation(String distinctionExplanation) { this.distinctionExplanation = distinctionExplanation; return this; }
 
         public ConfusableWordPair build() {
             ConfusableWordPair p = new ConfusableWordPair();
@@ -78,6 +84,7 @@ public class ConfusableWordPair {
             p.wordB = this.wordB;
             p.contrastiveSentenceA = this.contrastiveSentenceA;
             p.contrastiveSentenceB = this.contrastiveSentenceB;
+            p.distinctionExplanation = this.distinctionExplanation;
             p.createdAt = OffsetDateTime.now();
             return p;
         }

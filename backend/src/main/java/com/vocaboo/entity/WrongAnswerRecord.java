@@ -14,6 +14,11 @@ import java.util.UUID;
 @Builder
 public class WrongAnswerRecord {
 
+    public static final String ERROR_CONFUSABLE_PAIR = "CONFUSABLE_PAIR";
+    public static final String ERROR_PHONETIC_MISPRONUNCIATION = "PHONETIC_MISPRONUNCIATION";
+    public static final String ERROR_NEAR_MISS_SPELLING = "NEAR_MISS_SPELLING";
+    public static final String ERROR_INCORRECT_CHOICE = "INCORRECT_CHOICE";
+
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "record_id", updatable = false, nullable = false)
@@ -33,6 +38,10 @@ public class WrongAnswerRecord {
     @Column(name = "activity_format", nullable = false)
     private String activityFormat;
 
+    @Column(name = "error_type", nullable = false, length = 50)
+    @Builder.Default
+    private String errorType = ERROR_INCORRECT_CHOICE;
+
     @Column(name = "recorded_at", updatable = false)
     @Builder.Default
     private OffsetDateTime recordedAt = OffsetDateTime.now();
@@ -44,11 +53,13 @@ public class WrongAnswerRecord {
         private VocabularyWord word;
         private String wrongAnswer;
         private String activityFormat;
+        private String errorType = ERROR_INCORRECT_CHOICE;
 
         public WrongAnswerRecordBuilder learner(Learner learner) { this.learner = learner; return this; }
         public WrongAnswerRecordBuilder word(VocabularyWord word) { this.word = word; return this; }
         public WrongAnswerRecordBuilder wrongAnswer(String wrongAnswer) { this.wrongAnswer = wrongAnswer; return this; }
         public WrongAnswerRecordBuilder activityFormat(String activityFormat) { this.activityFormat = activityFormat; return this; }
+        public WrongAnswerRecordBuilder errorType(String errorType) { this.errorType = errorType; return this; }
 
         public WrongAnswerRecord build() {
             WrongAnswerRecord r = new WrongAnswerRecord();
@@ -56,6 +67,7 @@ public class WrongAnswerRecord {
             r.word = this.word;
             r.wrongAnswer = this.wrongAnswer;
             r.activityFormat = this.activityFormat;
+            r.errorType = this.errorType != null ? this.errorType : ERROR_INCORRECT_CHOICE;
             r.recordedAt = OffsetDateTime.now();
             return r;
         }
@@ -63,6 +75,9 @@ public class WrongAnswerRecord {
 
     @PrePersist
     protected void onCreate() {
+        if (errorType == null || errorType.isBlank()) {
+            errorType = ERROR_INCORRECT_CHOICE;
+        }
         recordedAt = OffsetDateTime.now();
     }
 }

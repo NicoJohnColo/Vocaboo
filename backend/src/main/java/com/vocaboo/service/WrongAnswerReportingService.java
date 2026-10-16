@@ -34,6 +34,7 @@ public class WrongAnswerReportingService {
     private final PronunciationAttemptRepository pronunciationAttemptRepository;
     private final LearnerRepository learnerRepository;
     private final com.vocaboo.repository.ClassEnrollmentRepository classEnrollmentRepository;
+    private final WrongAnswerRecordRepository wrongAnswerRecordRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Learner endpoint
@@ -138,6 +139,11 @@ public class WrongAnswerReportingService {
                     .collect(Collectors.toList());
         }
 
+        // Exclude research test accounts from class-wide wrong answer analytics
+        learners = learners.stream()
+                .filter(l -> !Boolean.TRUE.equals(l.getIsTestAccount()))
+                .collect(Collectors.toList());
+
         Set<UUID> cohortLearnerIds = learners.stream()
                 .map(Learner::getLearnerId)
                 .collect(Collectors.toSet());
@@ -163,6 +169,18 @@ public class WrongAnswerReportingService {
                 errorsByWordAndLearner.computeIfAbsent(wordId, k -> new HashMap<>())
                         .put(learnerId, demerits);
             }
+        }
+
+        // Also include explicit CONFUSABLE_PAIR records from wrong_answer_records
+        List<WrongAnswerRecord> confusableRecords = wrongAnswerRecordRepository.findByErrorType(WrongAnswerRecord.ERROR_CONFUSABLE_PAIR);
+        for (WrongAnswerRecord rec : confusableRecords) {
+            if (rec.getLearner() == null || rec.getWord() == null) continue;
+            UUID lid = rec.getLearner().getLearnerId();
+            if (!cohortLearnerIds.contains(lid)) continue;
+            UUID wid = rec.getWord().getWordId();
+            wordEntityMap.putIfAbsent(wid, rec.getWord());
+            errorsByWordAndLearner.computeIfAbsent(wid, k -> new HashMap<>())
+                    .merge(lid, 1, Integer::sum);
         }
 
         // 3. Compute class-wide totals

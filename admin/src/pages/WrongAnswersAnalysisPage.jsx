@@ -341,6 +341,38 @@ export default function WrongAnswersAnalysisPage() {
             {/* Confused Pairs Panel */}
             {activeTab === 'pairs' && (
               <section>
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.04))',
+                  border: '1.5px solid rgba(139, 92, 246, 0.25)',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '14px 18px',
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#5b21b6' }}>
+                      🔀 Confusable Word Confusion Patterns (CONFUSABLE_PAIR Telemetry)
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      Tracks explicit confusable-partner selections in Module 2/3 alongside dual-word error co-occurrences across non-test learners.
+                    </div>
+                  </div>
+                  <span style={{
+                    padding: '4px 10px',
+                    borderRadius: 999,
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    background: 'rgba(139, 92, 246, 0.14)',
+                    color: '#6d28d9',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                  }}>
+                    {data.confusedPairs.length} Active Pattern{data.confusedPairs.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
                 {data.confusedPairs.length === 0 ? (
                   <div className="coming-soon" style={{ padding: 48 }}>
                     <div className="coming-soon__icon">🎉</div>
@@ -388,7 +420,7 @@ export default function WrongAnswersAnalysisPage() {
                               border: '1px solid rgba(239, 68, 68, 0.20)',
                             }}
                           >
-                            VS
+                            CONFUSED WITH
                           </div>
 
                           {/* Word B */}
